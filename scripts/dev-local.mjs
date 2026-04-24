@@ -1,0 +1,166 @@
+import { spawn } from "node:child_process";
+import net from "node:net";
+
+const rawArgs = process.argv.slice(2);
+const skipBackend =
+  rawArgs.includes("--skip-backend") || process.env.J12_SKIP_BACKEND === "1";
+const skipFrontend =
+  rawArgs.includes("--skip-frontend") || process.env.J12_SKIP_FRONTEND === "1";
+
+const viteArgs = rawArgs.filter(
+  (arg) => arg !== "--skip-backend" && arg !== "--skip-frontend",
+);
+
+const BACKEND_HOST = process.env.HOST || "127.0.0.1";
+const BACKEND_PORT = Number(process.env.PORT || "4001");
+const DEFAULT_FRONTEND_HOST = "127.0.0.1";
+const DEFAULT_FRONTEND_PORT = "3000";
+
+const managedChildren = new Set();
+let shuttingDown = false;
+
+function withDefaultFlag(args, flag, value, aliases = []) {
+  const matchesFlag = args.some(
+    (arg, index) =>
+      arg === flag ||
+      aliases.includes(arg) ||
+      arg.startsWith(`${flag}=`) ||
+      aliases.some((alias) => arg.startsWith(`${alias}=`)) ||
+      (aliases.includes(arg) && index < args.length - 1),
+  );
+
+  if (matchesFlag) return args;
+  return [...args, flag, value];
+}
+
+function waitForPort(host, port, timeoutMs = 5000) {
+  const startedAt = Date.now();
+
+  return new Promise((resolve) => {
+    function attempt() {
+      const socket = new net.Socket();
+
+      socket.setTimeout(500);
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once("timeout", () => socket.destroy());
+      socket.once("error", () => socket.destroy());
+      socket.once("close", () => {
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(attempt, 150);
+      });
+
+      socket.connect(port, host);
+    }
+
+    attempt();
+  });
+}
+
+function spawnManaged(label, args) {
+  const child = spawn(process.execPath, args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  });
+
+  managedChildren.add(child);
+
+  child.once("exit", (code, signal) => {
+    managedChildren.delete(child);
+
+    if (shuttingDown) return;
+
+    const reason =
+      signal ? `${label} encerrado por sinal ${signal}.` : `${label} encerrou com codigo ${code}.`;
+    console.error(reason);
+    shutdown(code ?? 1);
+  });
+
+  child.once("error", (error) => {
+    managedChildren.delete(child);
+
+    if (shuttingDown) return;
+
+    console.error(`Falha ao iniciar ${label}: ${error.message}`);
+    shutdown(1);
+  });
+
+  return child;
+}
+
+function shutdown(exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  for (const child of managedChildren) {
+    if (!child.killed) {
+      child.kill();
+    }
+  }
+
+  setTimeout(() => process.exit(exitCode), 100);
+}
+
+process.on("SIGINT", () => shutdown(0));
+process.on("SIGTERM", () => shutdown(0));
+
+async function main() {
+  const normalizedViteArgs = withDefaultFlag(
+    withDefaultFlag(viteArgs, "--host", DEFAULT_FRONTEND_HOST),
+    "--port",
+    DEFAULT_FRONTEND_PORT,
+    ["-p"],
+  );
+
+  if (!skipBackend) {
+    const backendAlreadyRunning = await waitForPort(BACKEND_HOST, BACKEND_PORT, 300);
+
+    if (backendAlreadyRunning) {
+      console.log(`Backend ja esta ativo em http://${BACKEND_HOST}:${BACKEND_PORT}/health`);
+    } else {
+      console.log(`Iniciando backend local em http://${BACKEND_HOST}:${BACKEND_PORT}...`);
+      spawnManaged("backend", ["server/index.mjs"]);
+
+      const backendReady = await waitForPort(BACKEND_HOST, BACKEND_PORT, 5000);
+      if (!backendReady) {
+        console.error("Backend local nao respondeu na porta 4001.");
+        shutdown(1);
+        return;
+      }
+    }
+  }
+
+  if (!skipFrontend) {
+    console.log("Iniciando frontend Vite...");
+    spawnManaged("frontend", ["node_modules/vite/bin/vite.js", ...normalizedViteArgs]);
+  } else if (managedChildren.size === 0) {
+    console.log("Nada para iniciar.");
+    process.exit(0);
+    return;
+  }
+
+  console.log("");
+  console.log("Aplicacao pronta:");
+  if (!skipFrontend) {
+    const frontendHost = normalizedViteArgs.includes("--host")
+      ? normalizedViteArgs[normalizedViteArgs.indexOf("--host") + 1]
+      : DEFAULT_FRONTEND_HOST;
+    const portIndex = normalizedViteArgs.findIndex(
+      (arg) => arg === "--port" || arg === "-p",
+    );
+    const frontendPort = portIndex >= 0 ? normalizedViteArgs[portIndex + 1] : DEFAULT_FRONTEND_PORT;
+    console.log(`Frontend: http://${frontendHost}:${frontendPort}`);
+  }
+  if (!skipBackend) {
+    console.log(`Backend:  http://${BACKEND_HOST}:${BACKEND_PORT}/health`);
+  }
+  console.log("");
+}
+
+await main();

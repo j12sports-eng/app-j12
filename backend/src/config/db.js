@@ -1,0 +1,1172 @@
+const mysql = require("mysql2/promise");
+const path = require("node:path");
+const dotenv = require("dotenv");
+
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
+const MYSQL_CONFIG = {
+  host: process.env.DB_HOST || "108.167.168.27",
+  user: process.env.DB_USER || "bestt486_appj12",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "bestt486_appj12",
+  port: Number(process.env.DB_PORT || 3306),
+  waitForConnections: true,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
+  queueLimit: 0,
+  charset: "utf8mb4",
+  dateStrings: true,
+  connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 10000),
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+};
+
+const pool = mysql.createPool(MYSQL_CONFIG);
+
+function sanitizeIdentifier(value) {
+  const normalized = String(value ?? "").trim();
+  if (!/^[a-zA-Z0-9_]+$/.test(normalized)) {
+    throw new Error(`Identificador SQL invalido: ${value}`);
+  }
+  return normalized;
+}
+
+function text(value, max = 65535) {
+  return String(value ?? "")
+    .trim()
+    .slice(0, max);
+}
+
+function nullableText(value, max = 65535) {
+  const normalized = text(value, max);
+  return normalized || null;
+}
+
+function uniqueValues(values) {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .filter((value) => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function safeJsonParse(value, fallback) {
+  if (!value) return fallback;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function stringifyJson(value) {
+  return JSON.stringify(value ?? null);
+}
+
+function normalizeDocument(value) {
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value;
+  const name = text(candidate.name, 255);
+  if (!name) return null;
+
+  const size = Number(candidate.size ?? 0);
+
+  return {
+    name,
+    size: Number.isFinite(size) ? size : 0,
+    type: text(candidate.type, 191),
+    uploadedAt: nullableText(candidate.uploadedAt, 40),
+    expiresAt: nullableText(candidate.expiresAt, 10),
+  };
+}
+
+function normalizeEnrollmentNumber(value) {
+  const digits = String(value ?? "")
+    .replace(/\D/g, "")
+    .trim();
+
+  if (!digits) return null;
+
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeEnrollmentRegistryStatus(value) {
+  const normalized = text(value, 30).toLowerCase();
+
+  if (normalized === "inativo") return "inativo";
+  if (normalized === "excluido") return "excluido";
+  if (normalized === "reservado") return "reservado";
+  if (normalized === "experimental") return "experimental";
+  return "ativo";
+}
+
+function isReusableEnrollmentRegistryStatus(status) {
+  return status === "inativo" || status === "excluido";
+}
+
+function getEnrollmentStatusPriority(status) {
+  if (status === "ativo" || status === "experimental") return 4;
+  if (status === "reservado") return 3;
+  if (status === "inativo") return 2;
+  if (status === "excluido") return 1;
+  return 0;
+}
+
+async function upsertEnrollmentNumberRegistry(connection, enrollment) {
+  const numero = normalizeEnrollmentNumber(
+    enrollment?.numeroMatricula ?? enrollment?.numero ?? enrollment?.numero_matricula,
+  );
+
+  if (!numero) {
+    return null;
+  }
+
+  const status = normalizeEnrollmentRegistryStatus(enrollment?.status);
+  const releasedAt = isReusableEnrollmentRegistryStatus(status)
+    ? new Date().toISOString().slice(0, 19).replace("T", " ")
+    : null;
+
+  await connection.execute(
+    `
+      INSERT INTO j12_matricula_numeros (
+        numero,
+        aluno_id,
+        aluno_nome,
+        status,
+        last_assigned_at,
+        released_at
+      ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+      ON DUPLICATE KEY UPDATE
+        aluno_id = VALUES(aluno_id),
+        aluno_nome = VALUES(aluno_nome),
+        status = VALUES(status),
+        last_assigned_at = CASE
+          WHEN VALUES(status) IN ('ativo', 'experimental', 'reservado')
+            THEN CURRENT_TIMESTAMP
+          ELSE last_assigned_at
+        END,
+        released_at = CASE
+          WHEN VALUES(status) IN ('inativo', 'excluido')
+            THEN COALESCE(VALUES(released_at), CURRENT_TIMESTAMP)
+          ELSE NULL
+        END
+    `,
+    [
+      numero,
+      nullableText(enrollment?.alunoId, 64),
+      nullableText(enrollment?.alunoNome, 191),
+      status,
+      releasedAt,
+    ],
+  );
+
+  return numero;
+}
+
+async function getNextEnrollmentNumberPreview() {
+  const registryCountRows = await query("SELECT COUNT(*) AS total FROM j12_matricula_numeros");
+  const registryTotal = Number(registryCountRows?.[0]?.total || 0);
+
+  if (registryTotal === 0) {
+    await syncEnrollmentNumberRegistry();
+  }
+
+  const reusableRows = await query(
+    `
+      SELECT numero, status
+      FROM j12_matricula_numeros
+      WHERE status IN ('inativo', 'excluido')
+      ORDER BY numero ASC
+      LIMIT 1
+    `,
+  );
+
+  if (Array.isArray(reusableRows) && reusableRows.length > 0) {
+    return {
+      numeroMatricula: String(reusableRows[0].numero),
+      strategy: "reused",
+      reusedFrom: reusableRows[0].status,
+    };
+  }
+
+  const maxRows = await query("SELECT MAX(numero) AS numero FROM j12_matricula_numeros");
+  return {
+    numeroMatricula: String(Number(maxRows?.[0]?.numero || 0) + 1),
+    strategy: "sequential",
+    reusedFrom: null,
+  };
+}
+
+async function allocateEnrollmentNumber(connection) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const [reusableRows] = await connection.execute(
+      `
+        SELECT numero, status
+        FROM j12_matricula_numeros
+        WHERE status IN ('inativo', 'excluido')
+        ORDER BY numero ASC
+        LIMIT 1
+      `,
+    );
+
+    if (Array.isArray(reusableRows) && reusableRows.length > 0) {
+      const candidate = Number(reusableRows[0].numero);
+      const [updateResult] = await connection.execute(
+        `
+          UPDATE j12_matricula_numeros
+          SET
+            aluno_id = NULL,
+            aluno_nome = NULL,
+            status = 'reservado',
+            last_assigned_at = CURRENT_TIMESTAMP,
+            released_at = NULL
+          WHERE numero = ?
+            AND status IN ('inativo', 'excluido')
+        `,
+        [candidate],
+      );
+
+      if (updateResult?.affectedRows === 1) {
+        return {
+          numeroMatricula: String(candidate),
+          strategy: "reused",
+          reusedFrom: reusableRows[0].status,
+        };
+      }
+
+      continue;
+    }
+
+    const [maxRows] = await connection.execute(
+      "SELECT MAX(numero) AS numero FROM j12_matricula_numeros",
+    );
+    const candidate = Number(maxRows?.[0]?.numero || 0) + 1;
+
+    try {
+      await connection.execute(
+        `
+          INSERT INTO j12_matricula_numeros (
+            numero,
+            aluno_id,
+            aluno_nome,
+            status,
+            last_assigned_at,
+            released_at
+          ) VALUES (?, NULL, NULL, 'reservado', CURRENT_TIMESTAMP, NULL)
+        `,
+        [candidate],
+      );
+
+      return {
+        numeroMatricula: String(candidate),
+        strategy: "sequential",
+        reusedFrom: null,
+      };
+    } catch (error) {
+      if (error?.code === "ER_DUP_ENTRY") {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Nao foi possivel reservar o proximo numero de matricula.");
+}
+
+function buildMatriculaSnapshotFromLegacyRow(row) {
+  const raw = safeJsonParse(row.matricula_json, {});
+  const dadosAluno = raw?.dadosAluno ?? {};
+  const responsavel = raw?.responsavel ?? {};
+  const endereco = raw?.endereco ?? {};
+  const documentos = raw?.documentos ?? {};
+  const esportivas = raw?.esportivas ?? {};
+  const saude = raw?.saude ?? {};
+  const estrategicas = raw?.estrategicas ?? {};
+
+  return {
+    dadosAluno: {
+      numeroMatricula: text(dadosAluno.numeroMatricula || row.numero_matricula, 50),
+      nomeCompleto: text(dadosAluno.nomeCompleto || row.nome, 191),
+      dataNascimento: text(dadosAluno.dataNascimento || row.data_nascimento, 10),
+      idade: text(dadosAluno.idade, 10),
+      cpf: text(dadosAluno.cpf || row.cpf, 20),
+      rg: text(dadosAluno.rg || row.rg, 30),
+      sexo: text(dadosAluno.sexo || row.sexo, 30),
+      colegio: text(dadosAluno.colegio, 191),
+      periodoEscolar: text(dadosAluno.periodoEscolar, 50),
+    },
+    responsavel: {
+      nomeCompleto: text(responsavel.nomeCompleto || row.responsavel, 191),
+      cpf: text(responsavel.cpf || row.responsavel_cpf, 20),
+      rg: text(responsavel.rg, 30),
+      whatsapp: text(
+        responsavel.whatsapp || row.responsavel_whatsapp || row.telefone_responsavel,
+        50,
+      ),
+      email: text(responsavel.email || row.responsavel_email || row.email, 191),
+      parentesco: text(responsavel.parentesco, 100),
+    },
+    endereco: {
+      cep: text(endereco.cep, 20),
+      rua: text(endereco.rua, 191),
+      numero: text(endereco.numero, 30),
+      complemento: text(endereco.complemento, 191),
+      bairro: text(endereco.bairro, 191),
+      cidade: text(endereco.cidade, 191),
+      estado: text(endereco.estado, 50),
+    },
+    documentos: {
+      fotoPerfilAluno: normalizeDocument(documentos.fotoPerfilAluno),
+      rgCpfAluno: normalizeDocument(documentos.rgCpfAluno),
+      rgCpfResponsavel: normalizeDocument(documentos.rgCpfResponsavel),
+      comprovanteEndereco: normalizeDocument(documentos.comprovanteEndereco),
+      atestadoMedico: normalizeDocument(documentos.atestadoMedico),
+    },
+    esportivas: {
+      modalidades: uniqueValues(
+        esportivas.modalidades?.length ? esportivas.modalidades : [row.modalidade],
+      ),
+      unidades: uniqueValues(
+        esportivas.unidades?.length ? esportivas.unidades : safeJsonParse(row.unidades_json, []),
+      ),
+      horarios: uniqueValues(
+        esportivas.horarios?.length ? esportivas.horarios : safeJsonParse(row.horarios_json, []),
+      ),
+      turmas: uniqueValues(
+        esportivas.turmas?.length
+          ? esportivas.turmas
+          : [...safeJsonParse(row.turmas_json, []), row.turma].filter(Boolean),
+      ),
+      nivel: text(esportivas.nivel, 100),
+      treinouAntes: text(esportivas.treinouAntes, 100),
+      caracteristica: text(esportivas.caracteristica, 191),
+      objetivo: text(esportivas.objetivo, 191),
+    },
+    saude: {
+      restricaoMedica: text(saude.restricaoMedica, 191),
+      medicamentos: text(saude.medicamentos, 191),
+      alergias: text(saude.alergias, 191),
+      lesoes: text(saude.lesoes, 191),
+      planoSaude: text(saude.planoSaude, 191),
+      observacoesImportantes: text(saude.observacoesImportantes, 1000),
+    },
+    estrategicas: {
+      comoConheceu: text(estrategicas.comoConheceu || row.origem_cadastro, 191),
+      indicacaoQuem: text(estrategicas.indicacaoQuem, 191),
+      observacoesGerais: text(estrategicas.observacoesGerais, 1000),
+    },
+  };
+}
+
+async function persistJ12SectionsFromLegacyRow(connection, row) {
+  const matricula = buildMatriculaSnapshotFromLegacyRow(row);
+  const modalidades = uniqueValues(matricula.esportivas.modalidades);
+  const unidades = uniqueValues(matricula.esportivas.unidades);
+  const horarios = uniqueValues(matricula.esportivas.horarios);
+  const turmas = uniqueValues(matricula.esportivas.turmas);
+  const planos = uniqueValues(safeJsonParse(row.planos_json, row.plano ? [row.plano] : []));
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos (
+        id,
+        numero_matricula,
+        nome_completo,
+        data_nascimento,
+        idade,
+        cpf,
+        rg,
+        sexo,
+        colegio,
+        periodo_escolar,
+        email_contato,
+        telefone_contato,
+        status,
+        matricula_em,
+        modalidade_principal,
+        turma_principal,
+        plano_principal,
+        planos_json,
+        origem_cadastro,
+        matricula_publica_protocolo,
+        financeiro_json,
+        matricula_snapshot_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        numero_matricula = VALUES(numero_matricula),
+        nome_completo = VALUES(nome_completo),
+        data_nascimento = VALUES(data_nascimento),
+        idade = VALUES(idade),
+        cpf = VALUES(cpf),
+        rg = VALUES(rg),
+        sexo = VALUES(sexo),
+        colegio = VALUES(colegio),
+        periodo_escolar = VALUES(periodo_escolar),
+        email_contato = VALUES(email_contato),
+        telefone_contato = VALUES(telefone_contato),
+        status = VALUES(status),
+        matricula_em = VALUES(matricula_em),
+        modalidade_principal = VALUES(modalidade_principal),
+        turma_principal = VALUES(turma_principal),
+        plano_principal = VALUES(plano_principal),
+        planos_json = VALUES(planos_json),
+        origem_cadastro = VALUES(origem_cadastro),
+        matricula_publica_protocolo = VALUES(matricula_publica_protocolo),
+        financeiro_json = VALUES(financeiro_json),
+        matricula_snapshot_json = VALUES(matricula_snapshot_json)
+    `,
+    [
+      row.id,
+      nullableText(matricula.dadosAluno.numeroMatricula, 50),
+      text(matricula.dadosAluno.nomeCompleto || row.nome, 191),
+      nullableText(matricula.dadosAluno.dataNascimento, 10),
+      nullableText(matricula.dadosAluno.idade, 10),
+      nullableText(matricula.dadosAluno.cpf, 20),
+      nullableText(matricula.dadosAluno.rg, 30),
+      nullableText(matricula.dadosAluno.sexo, 30),
+      nullableText(matricula.dadosAluno.colegio, 191),
+      nullableText(matricula.dadosAluno.periodoEscolar, 50),
+      nullableText(row.email, 191) || nullableText(matricula.responsavel.email, 191),
+      nullableText(row.telefone, 50) || nullableText(matricula.responsavel.whatsapp, 50),
+      nullableText(row.status, 50) || "ativo",
+      nullableText(row.matricula_em, 10),
+      nullableText(row.modalidade, 191) || nullableText(modalidades[0], 191),
+      nullableText(row.turma, 191) || nullableText(turmas[0], 191),
+      nullableText(row.plano, 191) || nullableText(planos[0], 191),
+      stringifyJson(planos),
+      nullableText(row.origem_cadastro, 100),
+      nullableText(row.matricula_publica_protocolo, 100),
+      row.financeiro_json ? String(row.financeiro_json) : null,
+      stringifyJson(matricula),
+    ],
+  );
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos_responsaveis (
+        aluno_id,
+        nome_completo,
+        cpf,
+        rg,
+        whatsapp,
+        email,
+        parentesco
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nome_completo = VALUES(nome_completo),
+        cpf = VALUES(cpf),
+        rg = VALUES(rg),
+        whatsapp = VALUES(whatsapp),
+        email = VALUES(email),
+        parentesco = VALUES(parentesco)
+    `,
+    [
+      row.id,
+      nullableText(matricula.responsavel.nomeCompleto, 191),
+      nullableText(matricula.responsavel.cpf, 20),
+      nullableText(matricula.responsavel.rg, 30),
+      nullableText(matricula.responsavel.whatsapp, 50),
+      nullableText(matricula.responsavel.email, 191),
+      nullableText(matricula.responsavel.parentesco, 100),
+    ],
+  );
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos_enderecos (
+        aluno_id,
+        cep,
+        rua,
+        numero,
+        complemento,
+        bairro,
+        cidade,
+        estado
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        cep = VALUES(cep),
+        rua = VALUES(rua),
+        numero = VALUES(numero),
+        complemento = VALUES(complemento),
+        bairro = VALUES(bairro),
+        cidade = VALUES(cidade),
+        estado = VALUES(estado)
+    `,
+    [
+      row.id,
+      nullableText(matricula.endereco.cep, 20),
+      nullableText(matricula.endereco.rua, 191),
+      nullableText(matricula.endereco.numero, 30),
+      nullableText(matricula.endereco.complemento, 191),
+      nullableText(matricula.endereco.bairro, 191),
+      nullableText(matricula.endereco.cidade, 191),
+      nullableText(matricula.endereco.estado, 50),
+    ],
+  );
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos_documentos (
+        aluno_id,
+        foto_perfil_aluno_json,
+        rg_cpf_aluno_json,
+        rg_cpf_responsavel_json,
+        comprovante_endereco_json,
+        atestado_medico_json
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        foto_perfil_aluno_json = VALUES(foto_perfil_aluno_json),
+        rg_cpf_aluno_json = VALUES(rg_cpf_aluno_json),
+        rg_cpf_responsavel_json = VALUES(rg_cpf_responsavel_json),
+        comprovante_endereco_json = VALUES(comprovante_endereco_json),
+        atestado_medico_json = VALUES(atestado_medico_json)
+    `,
+    [
+      row.id,
+      stringifyJson(matricula.documentos.fotoPerfilAluno),
+      stringifyJson(matricula.documentos.rgCpfAluno),
+      stringifyJson(matricula.documentos.rgCpfResponsavel),
+      stringifyJson(matricula.documentos.comprovanteEndereco),
+      stringifyJson(matricula.documentos.atestadoMedico),
+    ],
+  );
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos_esportes (
+        aluno_id,
+        modalidades_json,
+        unidades_json,
+        horarios_json,
+        turmas_json,
+        nivel,
+        treinou_antes,
+        caracteristica,
+        objetivo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        modalidades_json = VALUES(modalidades_json),
+        unidades_json = VALUES(unidades_json),
+        horarios_json = VALUES(horarios_json),
+        turmas_json = VALUES(turmas_json),
+        nivel = VALUES(nivel),
+        treinou_antes = VALUES(treinou_antes),
+        caracteristica = VALUES(caracteristica),
+        objetivo = VALUES(objetivo)
+    `,
+    [
+      row.id,
+      stringifyJson(modalidades),
+      stringifyJson(unidades),
+      stringifyJson(horarios),
+      stringifyJson(turmas),
+      nullableText(matricula.esportivas.nivel, 100),
+      nullableText(matricula.esportivas.treinouAntes, 100),
+      nullableText(matricula.esportivas.caracteristica, 191),
+      nullableText(matricula.esportivas.objetivo, 191),
+    ],
+  );
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos_saude (
+        aluno_id,
+        restricao_medica,
+        medicamentos,
+        alergias,
+        lesoes,
+        plano_saude,
+        observacoes_importantes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        restricao_medica = VALUES(restricao_medica),
+        medicamentos = VALUES(medicamentos),
+        alergias = VALUES(alergias),
+        lesoes = VALUES(lesoes),
+        plano_saude = VALUES(plano_saude),
+        observacoes_importantes = VALUES(observacoes_importantes)
+    `,
+    [
+      row.id,
+      nullableText(matricula.saude.restricaoMedica, 191),
+      nullableText(matricula.saude.medicamentos, 191),
+      nullableText(matricula.saude.alergias, 191),
+      nullableText(matricula.saude.lesoes, 191),
+      nullableText(matricula.saude.planoSaude, 191),
+      nullableText(matricula.saude.observacoesImportantes, 1000),
+    ],
+  );
+
+  await connection.execute(
+    `
+      INSERT INTO j12_alunos_estrategico (
+        aluno_id,
+        como_conheceu,
+        indicacao_quem,
+        observacoes_gerais
+      ) VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        como_conheceu = VALUES(como_conheceu),
+        indicacao_quem = VALUES(indicacao_quem),
+        observacoes_gerais = VALUES(observacoes_gerais)
+    `,
+    [
+      row.id,
+      nullableText(matricula.estrategicas.comoConheceu, 191),
+      nullableText(matricula.estrategicas.indicacaoQuem, 191),
+      nullableText(matricula.estrategicas.observacoesGerais, 1000),
+    ],
+  );
+}
+
+async function testConnection() {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.ping();
+  } finally {
+    connection.release();
+  }
+}
+
+async function query(sql, params = []) {
+  try {
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  } catch (error) {
+    console.error("[mysql] Falha na query.", {
+      code: error?.code,
+      errno: error?.errno,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
+async function tableExists(tableName) {
+  const rows = await query(
+    `
+      SELECT COUNT(*) AS total
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = ?
+    `,
+    [tableName],
+  );
+
+  return Number(rows?.[0]?.total || 0) > 0;
+}
+
+async function ensureColumn(tableName, columnName, definition) {
+  const safeTable = sanitizeIdentifier(tableName);
+  const rows = await query(
+    `SHOW COLUMNS FROM \`${safeTable}\` LIKE ${mysql.escape(String(columnName ?? ""))}`,
+  );
+  if (Array.isArray(rows) && rows.length > 0) return;
+  await query(
+    `ALTER TABLE \`${safeTable}\` ADD COLUMN \`${sanitizeIdentifier(columnName)}\` ${definition}`,
+  );
+}
+
+async function ensureIndex(tableName, indexName, definition) {
+  const safeTable = sanitizeIdentifier(tableName);
+  const rows = await query(
+    `SHOW INDEX FROM \`${safeTable}\` WHERE Key_name = ${mysql.escape(String(indexName ?? ""))}`,
+  );
+  if (Array.isArray(rows) && rows.length > 0) return;
+  await query(`ALTER TABLE \`${safeTable}\` ADD ${definition}`);
+}
+
+async function transaction(work) {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const result = await work(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function ensureSchema() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS alunos (
+      id VARCHAR(64) PRIMARY KEY,
+      nome VARCHAR(191) NOT NULL,
+      email VARCHAR(191) NULL,
+      telefone VARCHAR(50) NULL,
+      data_nascimento DATE NULL,
+      responsavel VARCHAR(191) NULL,
+      telefone_responsavel VARCHAR(50) NULL,
+      modalidade VARCHAR(191) NULL,
+      turma VARCHAR(191) NULL,
+      plano VARCHAR(191) NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'ativo',
+      matricula_em DATE NULL,
+      numero_matricula VARCHAR(50) NULL,
+      cpf VARCHAR(20) NULL,
+      rg VARCHAR(30) NULL,
+      sexo VARCHAR(30) NULL,
+      origem_cadastro VARCHAR(100) NULL,
+      matricula_publica_protocolo VARCHAR(100) NULL,
+      unidades_json LONGTEXT NULL,
+      turmas_json LONGTEXT NULL,
+      planos_json LONGTEXT NULL,
+      horarios_json LONGTEXT NULL,
+      matricula_json LONGTEXT NULL,
+      financeiro_json LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await ensureColumn("alunos", "foto_url", "VARCHAR(500) NULL");
+  await ensureColumn("alunos", "responsavel_cpf", "VARCHAR(20) NULL");
+  await ensureColumn("alunos", "responsavel_email", "VARCHAR(191) NULL");
+  await ensureColumn("alunos", "responsavel_whatsapp", "VARCHAR(50) NULL");
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos (
+      id VARCHAR(64) PRIMARY KEY,
+      numero_matricula VARCHAR(50) NULL,
+      nome_completo VARCHAR(191) NOT NULL,
+      data_nascimento DATE NULL,
+      idade VARCHAR(10) NULL,
+      cpf VARCHAR(20) NULL,
+      rg VARCHAR(30) NULL,
+      sexo VARCHAR(30) NULL,
+      colegio VARCHAR(191) NULL,
+      periodo_escolar VARCHAR(50) NULL,
+      email_contato VARCHAR(191) NULL,
+      telefone_contato VARCHAR(50) NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'ativo',
+      matricula_em DATE NULL,
+      modalidade_principal VARCHAR(191) NULL,
+      turma_principal VARCHAR(191) NULL,
+      plano_principal VARCHAR(191) NULL,
+      planos_json LONGTEXT NULL,
+      origem_cadastro VARCHAR(100) NULL,
+      matricula_publica_protocolo VARCHAR(100) NULL,
+      financeiro_json LONGTEXT NULL,
+      matricula_snapshot_json LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureIndex("j12_alunos", "idx_j12_alunos_nome", "INDEX `idx_j12_alunos_nome` (`nome_completo`)");
+  await ensureIndex("j12_alunos", "idx_j12_alunos_numero", "INDEX `idx_j12_alunos_numero` (`numero_matricula`)");
+  await ensureIndex("j12_alunos", "idx_j12_alunos_status", "INDEX `idx_j12_alunos_status` (`status`)");
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos_responsaveis (
+      aluno_id VARCHAR(64) PRIMARY KEY,
+      nome_completo VARCHAR(191) NULL,
+      cpf VARCHAR(20) NULL,
+      rg VARCHAR(30) NULL,
+      whatsapp VARCHAR(50) NULL,
+      email VARCHAR(191) NULL,
+      parentesco VARCHAR(100) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos_enderecos (
+      aluno_id VARCHAR(64) PRIMARY KEY,
+      cep VARCHAR(20) NULL,
+      rua VARCHAR(191) NULL,
+      numero VARCHAR(30) NULL,
+      complemento VARCHAR(191) NULL,
+      bairro VARCHAR(191) NULL,
+      cidade VARCHAR(191) NULL,
+      estado VARCHAR(50) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos_documentos (
+      aluno_id VARCHAR(64) PRIMARY KEY,
+      foto_perfil_aluno_json LONGTEXT NULL,
+      rg_cpf_aluno_json LONGTEXT NULL,
+      rg_cpf_responsavel_json LONGTEXT NULL,
+      comprovante_endereco_json LONGTEXT NULL,
+      atestado_medico_json LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos_esportes (
+      aluno_id VARCHAR(64) PRIMARY KEY,
+      modalidades_json LONGTEXT NULL,
+      unidades_json LONGTEXT NULL,
+      horarios_json LONGTEXT NULL,
+      turmas_json LONGTEXT NULL,
+      nivel VARCHAR(100) NULL,
+      treinou_antes VARCHAR(100) NULL,
+      caracteristica VARCHAR(191) NULL,
+      objetivo VARCHAR(191) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos_saude (
+      aluno_id VARCHAR(64) PRIMARY KEY,
+      restricao_medica VARCHAR(191) NULL,
+      medicamentos VARCHAR(191) NULL,
+      alergias VARCHAR(191) NULL,
+      lesoes VARCHAR(191) NULL,
+      plano_saude VARCHAR(191) NULL,
+      observacoes_importantes TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_alunos_estrategico (
+      aluno_id VARCHAR(64) PRIMARY KEY,
+      como_conheceu VARCHAR(191) NULL,
+      indicacao_quem VARCHAR(191) NULL,
+      observacoes_gerais TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_matricula_numeros (
+      numero INT PRIMARY KEY,
+      aluno_id VARCHAR(64) NULL,
+      aluno_nome VARCHAR(191) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      last_assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_at DATETIME NULL
+    )
+  `);
+  await ensureIndex(
+    "j12_matricula_numeros",
+    "idx_j12_matricula_numeros_status",
+    "INDEX `idx_j12_matricula_numeros_status` (`status`)",
+  );
+  await ensureIndex(
+    "j12_matricula_numeros",
+    "idx_j12_matricula_numeros_aluno",
+    "INDEX `idx_j12_matricula_numeros_aluno` (`aluno_id`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_matriculas_publicas (
+      id VARCHAR(64) PRIMARY KEY,
+      protocolo VARCHAR(100) NOT NULL,
+      numero_matricula VARCHAR(50) NOT NULL,
+      aluno_id VARCHAR(64) NOT NULL,
+      nome_aluno VARCHAR(191) NOT NULL,
+      nome_responsavel VARCHAR(191) NOT NULL,
+      email_responsavel VARCHAR(191) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'recebida',
+      payload_json LONGTEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      synced_at DATETIME NULL
+    )
+  `);
+  await ensureIndex(
+    "j12_matriculas_publicas",
+    "idx_j12_matriculas_publicas_protocolo",
+    "UNIQUE INDEX `idx_j12_matriculas_publicas_protocolo` (`protocolo`)",
+  );
+  await ensureIndex(
+    "j12_matriculas_publicas",
+    "idx_j12_matriculas_publicas_numero",
+    "INDEX `idx_j12_matriculas_publicas_numero` (`numero_matricula`)",
+  );
+  await ensureIndex(
+    "j12_matriculas_publicas",
+    "idx_j12_matriculas_publicas_aluno",
+    "INDEX `idx_j12_matriculas_publicas_aluno` (`aluno_id`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS financeiro (
+      id VARCHAR(64) PRIMARY KEY,
+      aluno_id VARCHAR(64) NOT NULL,
+      aluno_nome VARCHAR(191) NOT NULL,
+      descricao TEXT NOT NULL,
+      tipo VARCHAR(50) NOT NULL,
+      valor DECIMAL(12,2) NOT NULL,
+      vencimento DATE NOT NULL,
+      pago_em DATE NULL,
+      forma_pagamento VARCHAR(50) NULL,
+      observacao TEXT NULL,
+      responsavel_financeiro VARCHAR(191) NULL,
+      responsavel_cpf VARCHAR(20) NULL,
+      telefone_whatsapp VARCHAR(50) NULL,
+      email VARCHAR(191) NULL,
+      unidade VARCHAR(191) NULL,
+      modalidade VARCHAR(191) NULL,
+      turma VARCHAR(191) NULL,
+      plano_id VARCHAR(64) NULL,
+      plano_nome VARCHAR(191) NULL,
+      periodicidade VARCHAR(30) NULL,
+      competencia VARCHAR(32) NULL,
+      valor_original DECIMAL(12,2) NULL,
+      desconto_valor DECIMAL(12,2) NULL,
+      desconto_percentual DECIMAL(10,2) NULL,
+      bolsa_valor DECIMAL(12,2) NULL,
+      bolsa_percentual DECIMAL(10,2) NULL,
+      multa_percentual DECIMAL(10,2) NULL,
+      juros_dia_percentual DECIMAL(10,2) NULL,
+      valor_final DECIMAL(12,2) NULL,
+      data_geracao DATE NULL,
+      data_pagamento DATE NULL,
+      status VARCHAR(30) NULL,
+      tipo_cobranca VARCHAR(30) NULL,
+      origem VARCHAR(30) NULL,
+      ativo TINYINT(1) NOT NULL DEFAULT 1,
+      alterado_em DATETIME NULL,
+      alterado_por VARCHAR(191) NULL,
+      cancelamento_motivo TEXT NULL,
+      desconto_motivo TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_financeiro_aluno (aluno_id),
+      INDEX idx_financeiro_competencia (competencia),
+      INDEX idx_financeiro_status (status)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(191) NOT NULL,
+      email VARCHAR(191) NOT NULL,
+      login VARCHAR(191) NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      password_salt VARCHAR(255) NOT NULL,
+      role VARCHAR(50) NOT NULL,
+      aluno_id VARCHAR(64) NULL,
+      professor_id VARCHAR(64) NULL,
+      responsavel_id VARCHAR(64) NULL,
+      linked_aluno_id VARCHAR(64) NULL,
+      class_scope_json LONGTEXT NULL,
+      phone_whatsapp VARCHAR(50) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureIndex("users", "uniq_users_email", "UNIQUE INDEX `uniq_users_email` (`email`)");
+  await ensureIndex("users", "uniq_users_login", "UNIQUE INDEX `uniq_users_login` (`login`)");
+  await ensureIndex("users", "idx_users_role", "INDEX `idx_users_role` (`role`)");
+  await ensureIndex("users", "idx_users_aluno", "INDEX `idx_users_aluno` (`aluno_id`)");
+  await ensureIndex(
+    "users",
+    "idx_users_professor",
+    "INDEX `idx_users_professor` (`professor_id`)",
+  );
+  await ensureIndex(
+    "users",
+    "idx_users_responsavel",
+    "INDEX `idx_users_responsavel` (`responsavel_id`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      token VARCHAR(128) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL,
+      last_seen_at DATETIME NULL,
+      INDEX idx_sessions_user (user_id),
+      INDEX idx_sessions_expires (expires_at)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token VARCHAR(128) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      channel VARCHAR(30) NOT NULL DEFAULT 'email',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      INDEX idx_password_reset_user (user_id),
+      INDEX idx_password_reset_expires (expires_at)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS student_presencas (
+      id VARCHAR(64) PRIMARY KEY,
+      aluno_id VARCHAR(64) NOT NULL,
+      turma VARCHAR(191) NOT NULL,
+      modalidade VARCHAR(191) NULL,
+      data_aula DATE NOT NULL,
+      presente TINYINT(1) NOT NULL DEFAULT 0,
+      observacao TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_student_presencas_aluno (aluno_id),
+      INDEX idx_student_presencas_data (data_aula)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS student_contracts (
+      id VARCHAR(64) PRIMARY KEY,
+      aluno_id VARCHAR(64) NOT NULL,
+      tipo_documento VARCHAR(50) NOT NULL,
+      titulo VARCHAR(191) NOT NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+      arquivo_pdf VARCHAR(500) NULL,
+      template_html LONGTEXT NULL,
+      data_emissao DATE NULL,
+      data_assinatura DATE NULL,
+      observacoes TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_student_contracts_aluno (aluno_id),
+      INDEX idx_student_contracts_status (status)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS student_notifications (
+      id VARCHAR(64) PRIMARY KEY,
+      aluno_id VARCHAR(64) NOT NULL,
+      titulo VARCHAR(191) NOT NULL,
+      mensagem TEXT NOT NULL,
+      canal VARCHAR(30) NOT NULL DEFAULT 'painel',
+      tipo VARCHAR(30) NOT NULL DEFAULT 'info',
+      lida TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_student_notifications_aluno (aluno_id),
+      INDEX idx_student_notifications_created (created_at)
+    )
+  `);
+}
+
+async function syncJ12TablesFromLegacy() {
+  const hasLegacyTable = await tableExists("alunos");
+  const hasJ12Table = await tableExists("j12_alunos");
+
+  if (!hasLegacyTable || !hasJ12Table) {
+    return { synced: 0, skipped: true, reason: "schema-missing" };
+  }
+
+  const j12CountRows = await query("SELECT COUNT(*) AS total FROM j12_alunos");
+  const legacyCountRows = await query("SELECT COUNT(*) AS total FROM alunos");
+  const j12Total = Number(j12CountRows?.[0]?.total || 0);
+  const legacyTotal = Number(legacyCountRows?.[0]?.total || 0);
+
+  if (j12Total > 0 || legacyTotal === 0) {
+    return {
+      synced: 0,
+      skipped: true,
+      reason: j12Total > 0 ? "j12-has-data" : "legacy-empty",
+    };
+  }
+
+  const legacyRows = await query("SELECT * FROM alunos ORDER BY created_at ASC, nome ASC");
+
+  await transaction(async (connection) => {
+    for (const row of legacyRows) {
+      await persistJ12SectionsFromLegacyRow(connection, row);
+    }
+  });
+
+  console.log(
+    `[mysql] Estrutura J12 inicializada com ${legacyTotal} aluno(s) a partir do cadastro atual.`,
+  );
+
+  return { synced: legacyTotal, skipped: false, reason: null };
+}
+
+async function syncEnrollmentNumberRegistry() {
+  const hasJ12Table = await tableExists("j12_alunos");
+  const hasRegistryTable = await tableExists("j12_matricula_numeros");
+
+  if (!hasJ12Table || !hasRegistryTable) {
+    return { synced: 0, skipped: true, reason: "schema-missing" };
+  }
+
+  const rows = await query(`
+    SELECT id, numero_matricula, nome_completo, status
+    FROM j12_alunos
+    WHERE numero_matricula IS NOT NULL AND numero_matricula <> ''
+    ORDER BY updated_at DESC, created_at DESC
+  `);
+
+  const registryEntries = new Map();
+
+  for (const row of rows) {
+    const numero = normalizeEnrollmentNumber(row.numero_matricula);
+    if (!numero) continue;
+
+    const entry = {
+      numeroMatricula: numero,
+      alunoId: row.id,
+      alunoNome: row.nome_completo,
+      status: normalizeEnrollmentRegistryStatus(row.status),
+    };
+
+    const existing = registryEntries.get(numero);
+    if (
+      !existing ||
+      getEnrollmentStatusPriority(entry.status) >= getEnrollmentStatusPriority(existing.status)
+    ) {
+      registryEntries.set(numero, entry);
+    }
+  }
+
+  if (registryEntries.size === 0) {
+    return { synced: 0, skipped: true, reason: "j12-empty" };
+  }
+
+  await transaction(async (connection) => {
+    for (const entry of registryEntries.values()) {
+      await upsertEnrollmentNumberRegistry(connection, entry);
+    }
+  });
+
+  console.log(
+    `[mysql] Registro de matriculas sincronizado com ${registryEntries.size} numero(s).`,
+  );
+
+  return { synced: registryEntries.size, skipped: false, reason: null };
+}
+
+module.exports = {
+  MYSQL_CONFIG,
+  pool,
+  query,
+  tableExists,
+  transaction,
+  ensureSchema,
+  testConnection,
+  syncJ12TablesFromLegacy,
+  syncEnrollmentNumberRegistry,
+  getNextEnrollmentNumberPreview,
+  allocateEnrollmentNumber,
+  upsertEnrollmentNumberRegistry,
+};

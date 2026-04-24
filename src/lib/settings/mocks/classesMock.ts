@@ -1,0 +1,42 @@
+export const classesMock = [
+  {
+    id: "tu1",
+    name: "Sub-11 Tarde",
+    teacherId: "pr1",
+    teacherName: "Ricardo Mendes",
+    modality: "Futebol",
+    unit: "Unidade Centro",
+  },
+  {
+    id: "tu2",
+    name: "Sub-13 Tarde",
+    teacherId: "pr2",
+    teacherName: "Camila Rocha",
+    modality: "Volei",
+    unit: "Unidade Centro",
+  },
+  {
+    id: "tu3",
+    name: "Sub-15 Noite",
+    teacherId: "pr4",
+    teacherName: "Andre Silva",
+    modality: "Futsal",
+    unit: "Unidade Zona Sul",
+  },
+  {
+    id: "tu4",
+    name: "Adulto Noite",
+    teacherId: "pr3",
+    teacherName: "Bruno Lima",
+    modality: "Basquete",
+    unit: "Unidade Centro",
+  },
+  {
+    id: "tu5",
+    name: "Sub-9 Manha",
+    teacherId: "pr1",
+    teacherName: "Ricardo Mendes",
+    modality: "Futebol",
+    unit: "Unidade Zona Norte",
+  },
+] as const;
