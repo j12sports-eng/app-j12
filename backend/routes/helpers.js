@@ -30,13 +30,7 @@ function sanitizeBoolean(value, fallback = false) {
 
 function sanitizeArray(value) {
   if (!Array.isArray(value)) return [];
-  return Array.from(
-    new Set(
-      value
-        .map((item) => sanitizeString(item, 191))
-        .filter(Boolean),
-    ),
-  );
+  return Array.from(new Set(value.map((item) => sanitizeString(item, 191)).filter(Boolean)));
 }
 
 function parseJson(value, fallback) {

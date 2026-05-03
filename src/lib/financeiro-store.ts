@@ -9,22 +9,12 @@ import {
   type Aluno,
 } from "./alunos-store";
 import { createMysqlResourceStore } from "./mysql-resource-store";
-import { planosStore } from "./planos-store";
+import { mysqlApi } from "./mysql-api";
+import { planosStore, type Plano } from "./planos-store";
 
-export type StatusCobranca =
-  | "pago"
-  | "pendente"
-  | "vencido"
-  | "cancelada"
-  | "isenta"
-  | "parcial";
+export type StatusCobranca = "pago" | "pendente" | "vencido" | "cancelada" | "isenta" | "parcial";
 export type TipoCobranca = "mensalidade" | "matricula" | "uniforme" | "evento" | "outros";
-export type PeriodicidadeCobranca =
-  | "mensal"
-  | "bimestral"
-  | "trimestral"
-  | "semestral"
-  | "anual";
+export type PeriodicidadeCobranca = "mensal" | "bimestral" | "trimestral" | "semestral" | "anual";
 export type TipoLancamento = "recorrente" | "avulsa";
 
 export interface Transacao {
@@ -97,6 +87,13 @@ export interface RecorrenciaFinanceiraAluno {
   ultimaGeracaoEm?: string | null;
 }
 
+type GerarMensalidadesResponse = {
+  competencia: string;
+  createdCount: number;
+  skippedCount: number;
+  message: string;
+};
+
 type TransacaoInput = Omit<Transacao, "id" | "alunoNome" | "valor" | "pagoEm"> & {
   alunoNome?: string;
   pagoEm?: string | null;
@@ -151,7 +148,9 @@ function inferPeriodicidade(name?: string | null): PeriodicidadeCobranca {
 }
 
 function normalizeTransacao(transacao: Transacao): Transacao {
-  const valorOriginal = sanitizeCurrency(transacao.valorOriginal ?? transacao.valorFinal ?? transacao.valor);
+  const valorOriginal = sanitizeCurrency(
+    transacao.valorOriginal ?? transacao.valorFinal ?? transacao.valor,
+  );
   const valorFinal = sanitizeCurrency(transacao.valorFinal ?? transacao.valor);
 
   return {
@@ -186,44 +185,89 @@ function monthOffset(months: number, day = 10) {
   return dateToISO(ensureDueDate(date.getFullYear(), date.getMonth(), day));
 }
 
-function resolvePlanoFinanceiro(aluno: Aluno) {
-  const planos = planosStore.getSnapshot();
-  const planNames = getAlunoPlanos(aluno);
-  const alunoPlanName = aluno.plano || planNames[0] || "";
-  const matchedPlano =
-    planos.find((plano) => plano.id === aluno.financeiro?.planoId) ??
-    planos.find((plano) => plano.nome.toLowerCase() === alunoPlanName.toLowerCase()) ??
-    planos.find((plano) => planNames.some((nome) => nome.toLowerCase() === plano.nome.toLowerCase())) ??
-    null;
+function resolvePlanoFinanceiro(aluno: Aluno): {
+  planoId: string | null;
+  planoNome: string;
+  valorPlano: number;
+  periodicidade: PeriodicidadeCobranca;
+} {
+  try {
+    const alunoPlanName =
+      aluno?.plano_nome ||
+      aluno?.planoNome ||
+      aluno?.plano ||
+      getAlunoPlanos(aluno)?.[0] ||
+      "Plano não informado";
 
-  const existingCharge = latestFinanceSnapshot.find(
-    (transacao) =>
-      transacao.alunoId === aluno.id &&
-      transacao.tipo === "mensalidade" &&
-      transacao.ativo !== false &&
-      calcStatus(transacao) !== "cancelada",
-  );
+    let matchedPlano: Plano | null = null;
 
-  return {
-    planoId: aluno.financeiro?.planoId ?? matchedPlano?.id ?? null,
-    planoNome: matchedPlano?.nome ?? alunoPlanName,
-    valorPlano:
-      sanitizeCurrency(aluno.financeiro?.valorPlano) ||
+    if (aluno?.plano_id) {
+      matchedPlano = planosStore.getById(aluno.plano_id);
+    }
+
+    if (!matchedPlano && aluno?.planoId) {
+      matchedPlano = planosStore.getById(aluno.planoId);
+    }
+
+    if (!matchedPlano) {
+      matchedPlano =
+        planosStore.getSnapshot().find((plano) => String(plano.nome) === String(alunoPlanName)) ??
+        null;
+    }
+
+    const existingCharge = latestFinanceSnapshot.find(
+      (transacao) =>
+        transacao.alunoId === aluno.id &&
+        transacao.tipo === "mensalidade" &&
+        transacao.ativo !== false &&
+        calcStatus(transacao) !== "cancelada",
+    );
+
+    const planoId =
+      aluno?.financeiro?.planoId ?? aluno?.plano_id ?? aluno?.planoId ?? matchedPlano?.id ?? null;
+
+    const planoNome = matchedPlano?.nome ?? aluno?.plano_nome ?? aluno?.planoNome ?? alunoPlanName;
+
+    const valorPlano =
+      sanitizeCurrency(aluno?.financeiro?.valorPlano) ||
+      sanitizeCurrency(matchedPlano?.valor) ||
       sanitizeCurrency(matchedPlano?.precoMensal) ||
-      sanitizeCurrency(existingCharge?.valorOriginal ?? existingCharge?.valorFinal ?? existingCharge?.valor),
-    periodicidade:
-      aluno.financeiro?.periodicidade ?? inferPeriodicidade(matchedPlano?.nome ?? alunoPlanName),
-  };
+      sanitizeCurrency(aluno?.plano_valor) ||
+      sanitizeCurrency(aluno?.planoValor) ||
+      sanitizeCurrency(aluno?.mensalidade) ||
+      sanitizeCurrency(
+        existingCharge?.valorOriginal ?? existingCharge?.valorFinal ?? existingCharge?.valor ?? 0,
+      );
+
+    const periodicidade =
+      aluno?.financeiro?.periodicidade ??
+      inferPeriodicidade(matchedPlano?.frequencia ?? matchedPlano?.nome ?? alunoPlanName);
+
+    return {
+      planoId: planoId ? String(planoId) : null,
+      planoNome,
+      valorPlano,
+      periodicidade,
+    };
+  } catch (error) {
+    console.warn("[financeiro-store] Falha ao resolver plano do aluno:", error);
+
+    return {
+      planoId: aluno?.plano_id || aluno?.planoId ? String(aluno?.plano_id ?? aluno?.planoId) : null,
+      planoNome: aluno?.plano_nome || aluno?.planoNome || aluno?.plano || "Plano não informado",
+      valorPlano: sanitizeCurrency(
+        aluno?.plano_valor || aluno?.planoValor || aluno?.mensalidade || 0,
+      ),
+      periodicidade: "mensal",
+    };
+  }
 }
 
 function buildCompetencia(start: Date, periodicidade: PeriodicidadeCobranca) {
   return `${dateToISO(start).slice(0, 7)}:${periodicidade}`;
 }
 
-function listCompetenciasAte(
-  recurrence: RecorrenciaFinanceiraAluno,
-  referenceDate = todayISO(),
-) {
+function listCompetenciasAte(recurrence: RecorrenciaFinanceiraAluno, referenceDate = todayISO()) {
   const start = firstDayOfMonth(recurrence.dataInicio);
   const end = firstDayOfMonth(referenceDate);
   const output: Array<{ competencia: string; inicio: string; vencimento: string }> = [];
@@ -281,7 +325,9 @@ function computeChargeValues(
     recurrence.descontoValor + valorOriginal * (descontoPercentual / 100),
   );
   const bolsaPercentual = sanitizeCurrency(recurrence.bolsaPercentual);
-  const bolsaValor = sanitizeCurrency(recurrence.bolsaValor + valorOriginal * (bolsaPercentual / 100));
+  const bolsaValor = sanitizeCurrency(
+    recurrence.bolsaValor + valorOriginal * (bolsaPercentual / 100),
+  );
   const valorFinal = Math.max(0, sanitizeCurrency(valorOriginal - descontoValor - bolsaValor));
 
   return {
@@ -353,10 +399,7 @@ function computeNextChargeDate(
   return dateToISO(ensureDueDate(next.getFullYear(), next.getMonth(), recurrence.diaVencimento));
 }
 
-function syncRecorrencias(
-  transacoes: Transacao[],
-  previous: RecorrenciaFinanceiraAluno[] = [],
-) {
+function syncRecorrencias(transacoes: Transacao[], previous: RecorrenciaFinanceiraAluno[] = []) {
   const previousByAluno = new Map(previous.map((item) => [item.alunoId, item]));
   const next: RecorrenciaFinanceiraAluno[] = [];
 
@@ -431,7 +474,7 @@ const seed: Transacao[] = (() => {
 
 const financeiroResource = createMysqlResourceStore<Transacao>({
   endpoint: "/financeiro",
-  initialState: seed,
+  initialState: [],
   normalize: normalizeTransacao,
 });
 
@@ -465,14 +508,17 @@ function replaceTransacoes(nextState: Transacao[]) {
 
 function buildChargeFromInput(data: TransacaoInput, current?: Transacao): Transacao {
   const aluno = alunosStore.getById(data.alunoId);
-  const valorOriginal = sanitizeCurrency(data.valorOriginal ?? data.valor ?? current?.valorOriginal);
+  const valorOriginal = sanitizeCurrency(
+    data.valorOriginal ?? data.valor ?? current?.valorOriginal,
+  );
   const descontoValor = sanitizeCurrency(data.descontoValor ?? current?.descontoValor);
   const descontoPercentual = sanitizeCurrency(
     data.descontoPercentual ?? current?.descontoPercentual,
   );
   const bolsaValor = sanitizeCurrency(data.bolsaValor ?? current?.bolsaValor);
   const bolsaPercentual = sanitizeCurrency(data.bolsaPercentual ?? current?.bolsaPercentual);
-  const periodicidade = data.periodicidade ?? current?.periodicidade ?? inferPeriodicidade(data.planoNome);
+  const periodicidade =
+    data.periodicidade ?? current?.periodicidade ?? inferPeriodicidade(data.planoNome);
   const valorFinal = Math.max(
     0,
     sanitizeCurrency(
@@ -485,7 +531,8 @@ function buildChargeFromInput(data: TransacaoInput, current?: Transacao): Transa
           valorOriginal * (bolsaPercentual / 100),
     ),
   );
-  const planoNome = data.planoNome ?? current?.planoNome ?? (aluno ? resolvePlanoFinanceiro(aluno).planoNome : "");
+  const planoNome =
+    data.planoNome ?? current?.planoNome ?? (aluno ? resolvePlanoFinanceiro(aluno).planoNome : "");
 
   return normalizeTransacao({
     ...(current ?? {}),
@@ -521,11 +568,7 @@ function buildChargeFromInput(data: TransacaoInput, current?: Transacao): Transa
       aluno?.telefoneResponsavel ??
       aluno?.telefone,
     email:
-      data.email ??
-      current?.email ??
-      aluno?.matricula?.responsavel.email ??
-      aluno?.email ??
-      "",
+      data.email ?? current?.email ?? aluno?.matricula?.responsavel.email ?? aluno?.email ?? "",
     unidade: data.unidade ?? current?.unidade ?? (aluno ? getAlunoUnidades(aluno)[0] : ""),
     modalidade:
       data.modalidade ?? current?.modalidade ?? (aluno ? getAlunoModalidades(aluno)[0] : ""),
@@ -533,10 +576,7 @@ function buildChargeFromInput(data: TransacaoInput, current?: Transacao): Transa
     tipoCobranca: data.tipoCobranca ?? current?.tipoCobranca ?? "avulsa",
     origem: data.origem ?? current?.origem ?? "manual",
     ativo: data.ativo ?? current?.ativo ?? true,
-    status:
-      data.status ??
-      current?.status ??
-      (data.pagoEm || current?.pagoEm ? "pago" : undefined),
+    status: data.status ?? current?.status ?? (data.pagoEm || current?.pagoEm ? "pago" : undefined),
   });
 }
 
@@ -597,73 +637,15 @@ export const financeiroStore = {
   getRecorrenciasSnapshot() {
     return recorrenciasState;
   },
-  processarRecorrenciaAutomatica(referenceDate = todayISO()) {
-    const syncedRecorrencias = syncRecorrencias(transacoesState, recorrenciasState);
-    let nextTransacoes = [...transacoesState];
-    const created: Transacao[] = [];
-
-    for (const recurrence of syncedRecorrencias) {
-      const aluno = alunosStore.getById(recurrence.alunoId);
-      if (!aluno) continue;
-      if (aluno.status !== "ativo") continue;
-      if (!recurrence.recorrenciaAtiva || !recurrence.cobrancaAutomatica) continue;
-      if (!recurrence.planoNome || recurrence.valorPlano <= 0) continue;
-
-      for (const competencia of listCompetenciasAte(recurrence, referenceDate)) {
-        if (
-          isDuplicateCharge(nextTransacoes, {
-            alunoId: recurrence.alunoId,
-            competencia: competencia.competencia,
-            tipoCobranca: "recorrente",
-          })
-        ) {
-          continue;
-        }
-
-        const valores = computeChargeValues(recurrence, competencia.inicio, recurrence.dataInicio);
-        const novaTransacao = buildChargeFromInput({
-          alunoId: recurrence.alunoId,
-          tipo: "mensalidade",
-          descricao: `Recorrencia ${recurrence.planoNome} - ${monthLabel(competencia.inicio.slice(0, 7))}`,
-          vencimento: competencia.vencimento,
-          planoId: recurrence.planoId,
-          planoNome: recurrence.planoNome,
-          periodicidade: recurrence.periodicidade,
-          competencia: competencia.competencia,
-          tipoCobranca: "recorrente",
-          origem: "automatica",
-          dataGeracao: todayISO(),
-          valorOriginal: valores.valorOriginal,
-          descontoValor: valores.descontoValor,
-          descontoPercentual: valores.descontoPercentual,
-          bolsaValor: valores.bolsaValor,
-          bolsaPercentual: valores.bolsaPercentual,
-          valorFinal: valores.valorFinal,
-          multaPercentual: recurrence.multaPercentual,
-          jurosDiaPercentual: recurrence.jurosDiaPercentual,
-          observacao: recurrence.observacoes ?? undefined,
-          responsavelFinanceiro:
-            aluno.matricula?.responsavel.nomeCompleto || aluno.responsavel || aluno.nome,
-          responsavelCpf: aluno.matricula?.responsavel.cpf || "",
-          telefoneWhatsapp:
-            aluno.matricula?.responsavel.whatsapp || aluno.telefoneResponsavel || aluno.telefone,
-          email: aluno.matricula?.responsavel.email || aluno.email,
-          unidade: recurrence.unidade,
-          modalidade: recurrence.modalidade,
-          turma: recurrence.turma,
-        });
-
-        nextTransacoes = [novaTransacao, ...nextTransacoes];
-        created.push(novaTransacao);
-      }
-    }
-
-    if (created.length > 0) {
-      replaceTransacoes(nextTransacoes);
-      created.forEach((transacao) => financeiroResource.persistCreate(transacao));
-    }
-
-    return transacoesState;
+  async processarRecorrenciaAutomatica(referenceDate = todayISO()) {
+    const result = await mysqlApi.post<GerarMensalidadesResponse>(
+      "/financeiro/gerar-mensalidades",
+      {
+        referencia: referenceDate.slice(0, 7),
+      },
+    );
+    await financeiroResource.reload();
+    return result;
   },
   create(data: TransacaoInput) {
     const novaTransacao = buildChargeFromInput(data);
@@ -846,6 +828,14 @@ export function useRecorrenciasFinanceiras(): RecorrenciaFinanceiraAluno[] {
     financeiroStore.subscribe,
     financeiroStore.getRecorrenciasSnapshot,
     financeiroStore.getRecorrenciasSnapshot,
+  );
+}
+
+export function useFinanceiroStatus() {
+  return useSyncExternalStore(
+    financeiroStore.subscribe,
+    financeiroResource.getMeta,
+    financeiroResource.getMeta,
   );
 }
 

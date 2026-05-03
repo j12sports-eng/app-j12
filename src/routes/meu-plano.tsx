@@ -3,7 +3,12 @@ import { ClipboardList, MapPin, TimerReset, Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { usePortalAluno } from "@/lib/aluno-portal";
-import { formatAlunoScope, getAlunoHorarios, getAlunoModalidades, getAlunoUnidades } from "@/lib/alunos-store";
+import {
+  formatAlunoScope,
+  getAlunoHorarios,
+  getAlunoModalidades,
+  getAlunoUnidades,
+} from "@/lib/alunos-store";
 
 export const Route = createFileRoute("/meu-plano")({
   component: () => (
@@ -81,10 +86,7 @@ function MeuPlanoPage() {
               label="Cobranca automatica"
               value={aluno.financeiro?.cobrancaAutomatica === false ? "Inativa" : "Ativa"}
             />
-            <InfoRow
-              label="Periodicidade"
-              value={aluno.financeiro?.periodicidade || "Mensal"}
-            />
+            <InfoRow label="Periodicidade" value={aluno.financeiro?.periodicidade || "Mensal"} />
             <InfoRow
               label="Dia de vencimento"
               value={String(aluno.financeiro?.diaVencimento ?? "-")}

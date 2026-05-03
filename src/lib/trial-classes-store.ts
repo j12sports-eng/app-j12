@@ -1,19 +1,11 @@
 import { useSyncExternalStore } from "react";
-import {
-  MODALIDADES,
-  PLANOS,
-  TURMAS,
-  alunosStore,
-  type Aluno,
-  type Modalidade,
-} from "./alunos-store";
-import {
-  trialClassesMock,
-  type TrialClassMockRecord,
-  type TrialClassStatus,
-} from "./trialClassesMock";
+import { MODALIDADES, alunosStore, type Aluno, type Modalidade } from "./alunos-store";
+import { planosStore } from "./planos-store";
+import { type TrialClassMockRecord, type TrialClassStatus } from "./trialClassesMock";
 import { createRemoteCollectionStore } from "./remote-collection";
 import { turmasStore } from "./turmas-store";
+
+export type { TrialClassStatus } from "./trialClassesMock";
 
 export type TrialClassLeadSource =
   | "Instagram"
@@ -54,6 +46,15 @@ export type TrialClass = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type TrialClassConvertResult =
+  | {
+      ok: true;
+      aluno: Aluno;
+      trialClass: TrialClass;
+      turmaWarning?: string;
+    }
+  | { ok: false; reason: string };
 
 export type TrialClassInput = Omit<
   TrialClass,
@@ -144,6 +145,25 @@ function normalizeLeadSource(value: string): TrialClassLeadSource | string {
   return TRIAL_CLASS_LEAD_SOURCES.find((item) => item === value) ?? value ?? "Outro";
 }
 
+function getPlanoCatalog() {
+  const dynamicPlanos = planosStore
+    .getSnapshot()
+    .filter((plano) => plano.status === "ativo")
+    .map((plano) => plano.nome.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(dynamicPlanos));
+}
+
+function getTurmaCatalog() {
+  const dynamicTurmas = turmasStore
+    .getSnapshot()
+    .map((turma) => turma.nome.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(dynamicTurmas.length > 0 ? dynamicTurmas : ["Sub-11 Tarde"]));
+}
+
 function createFromMock(record: TrialClassMockRecord): TrialClass {
   const createdAt = nowIso();
   return {
@@ -194,26 +214,16 @@ function normalizeTrialClass(item: TrialClass): TrialClass {
 }
 
 function seedData() {
-  const seeded = trialClassesMock.map(createFromMock);
-  const converted = seeded.find((item) => item.status === "Convertida");
-
-  if (converted) {
-    converted.history = addHistory(
-      converted,
-      "Lead convertido",
-      "Aula experimental convertida em aluno no fluxo mock inicial.",
-    );
-    converted.convertedAlunoId = "a6";
-  }
-
-  return seeded;
+  return [] as TrialClass[];
 }
 
 function load() {
   return seedData();
 }
 
-const trialClassesCollection = createRemoteCollectionStore<TrialClass[]>("trial-classes", load());
+const trialClassesCollection = createRemoteCollectionStore<TrialClass[]>("trial-classes", [], {
+  emptyState: [],
+});
 let state: TrialClass[] = trialClassesCollection.getSnapshot().map(normalizeTrialClass);
 const listeners = new Set<() => void>();
 
@@ -251,6 +261,9 @@ export const trialClassesStore = {
   },
   getSnapshot() {
     return state;
+  },
+  reload() {
+    return trialClassesCollection.reload();
   },
   getById(id: string) {
     return state.find((item) => item.id === id) ?? null;
@@ -312,15 +325,8 @@ export const trialClassesStore = {
       }),
     );
   },
-  convertToAluno(id: string, plan: string = PLANOS[0]) {
-    let result:
-      | {
-          ok: true;
-          aluno: Aluno;
-          trialClass: TrialClass;
-          turmaWarning?: string;
-        }
-      | { ok: false; reason: string } = {
+  convertToAluno(id: string, plan?: string): TrialClassConvertResult {
+    let result: TrialClassConvertResult = {
       ok: false,
       reason: "Aula experimental nao encontrada.",
     };
@@ -344,6 +350,16 @@ export const trialClassesStore = {
         return item;
       }
 
+      const planoSelecionado = plan?.trim() || getPlanoCatalog()[0] || "";
+      if (!planoSelecionado) {
+        result = {
+          ok: false,
+          reason: "Nenhum plano ativo esta disponivel para concluir a conversao.",
+        };
+        return item;
+      }
+      const turmaPadrao = getTurmaCatalog()[0] || "";
+
       const aluno = alunosStore.create({
         nome: item.studentName,
         email: buildStudentEmail(item),
@@ -352,8 +368,12 @@ export const trialClassesStore = {
         responsavel: item.guardianName,
         telefoneResponsavel: item.whatsapp || item.phone,
         modalidade: item.modality,
-        turma: item.turma || TURMAS[0],
-        plano: plan,
+        unidades: item.unit ? [item.unit] : [],
+        turmas: item.turma || turmaPadrao ? [item.turma || turmaPadrao] : [],
+        planos: planoSelecionado ? [planoSelecionado] : [],
+        horarios: item.time ? [`${item.date} ${item.time}`] : [],
+        turma: item.turma || turmaPadrao,
+        plano: planoSelecionado,
         status: "ativo",
       });
 
@@ -400,6 +420,14 @@ export function useTrialClasses() {
     trialClassesStore.subscribe,
     trialClassesStore.getSnapshot,
     trialClassesStore.getSnapshot,
+  );
+}
+
+export function useTrialClassesStatus() {
+  return useSyncExternalStore(
+    trialClassesStore.subscribe,
+    trialClassesCollection.getMeta,
+    trialClassesCollection.getMeta,
   );
 }
 

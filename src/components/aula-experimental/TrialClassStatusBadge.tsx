@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
+import type { TrialClassStatus } from "@/lib/trial-classes-store";
 import { cn } from "@/lib/utils";
-import type { TrialClassStatus } from "@/lib/trialClassesMock";
 
 const STATUS_STYLES: Record<TrialClassStatus, string> = {
   Agendada: "border-slate-500/30 bg-slate-500/15 text-slate-200",

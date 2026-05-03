@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Blocks, BrushCleaning, Building2, FileText, ShieldCheck, UserCog } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { useSettingsState } from "@/lib/settings/settings-store";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
+import { useSettingsState, useSettingsStatus } from "@/lib/settings/settings-store";
 import type { SettingsSection } from "@/lib/settings/types";
 import { useProfessores } from "@/lib/professores-store";
 import { useTurmas } from "@/lib/turmas-store";
@@ -11,6 +12,7 @@ import { SettingsMetricCard, SettingsSectionSkeleton } from "./shared";
 
 export function SettingsPage() {
   const settings = useSettingsState();
+  const settingsStatus = useSettingsStatus();
   const professores = useProfessores();
   const turmas = useTurmas();
   const [activeSection, setActiveSection] = useState<SettingsSection>("geral");
@@ -71,12 +73,20 @@ export function SettingsPage() {
     ],
   );
 
+  const pageLoading = loading || (settingsStatus.loading && !settingsStatus.initialized);
+
   return (
     <AppShell title="Configuracoes">
-      {loading ? (
+      {pageLoading ? (
         <SettingsSectionSkeleton />
       ) : (
         <div className="space-y-6">
+          <ResourceSyncBanner
+            status={settingsStatus}
+            resourceLabel="as configuracoes"
+            hasData={settings.users.length > 0 || settings.units.length > 0}
+          />
+
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <h2 className="text-2xl font-bold">Configuracoes</h2>

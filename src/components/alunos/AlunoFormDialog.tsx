@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -21,9 +21,12 @@ import {
   type Modalidade,
   type StatusAluno,
 } from "@/lib/alunos-store";
+import { useModalidades } from "@/lib/modalidades-store";
 import { formatDias, type DiaSemana, useTurmas } from "@/lib/turmas-store";
-import { usePlanos } from "@/lib/planos-store";
+import { usePlanos, type Plano } from "@/lib/planos-store";
+import { useResponsaveis } from "@/lib/responsaveis-store";
 import { useSettingsState } from "@/lib/settings/settings-store";
+import { useUnidades } from "@/lib/unidades-store";
 
 interface Props {
   open: boolean;
@@ -61,30 +64,132 @@ function normalizeComparable(value: string) {
   return value
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
+    .replace(/[·|]/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function splitComparableValues(value: string) {
+  return uniqueValues(
+    value
+      .split(/[;,/|]/g)
+      .map((item) => normalizeComparable(item))
+      .filter(Boolean),
+  );
+}
+
+function planoMatchesModalidade(plano: Plano, modalidadeSelecionada: string) {
+  if (!modalidadeSelecionada) return true;
+
+  const modalidadesDoPlano = uniqueValues(
+    (Array.isArray(plano.modalidades) && plano.modalidades.length > 0
+      ? plano.modalidades
+      : [plano.modalidade || ""]
+    ).map((modalidade) => String(modalidade ?? "")),
+  );
+
+  if (modalidadesDoPlano.length === 0) return true;
+
+  return modalidadesDoPlano.some(
+    (modalidade) => normalizeComparable(modalidade) === normalizeComparable(modalidadeSelecionada),
+  );
+}
+
+function planoMatchesUnidade(plano: Plano, unidadeSelecionada: string) {
+  if (!unidadeSelecionada) return true;
+  if (!plano.unidade) return true;
+
+  return normalizeComparable(plano.unidade) === normalizeComparable(unidadeSelecionada);
+}
+
+function planoMatchesHorarios(plano: Plano, horariosSelecionadosLabels: string[]) {
+  if (horariosSelecionadosLabels.length === 0) return true;
+  if (!plano.dias_horarios) return true;
+
+  const normalizedPlano = normalizeComparable(plano.dias_horarios);
+  if (!normalizedPlano) return true;
+
+  const planoSegments = splitComparableValues(plano.dias_horarios);
+  const selectedSegments = horariosSelecionadosLabels.flatMap((horario) =>
+    splitComparableValues(horario),
+  );
+
+  return horariosSelecionadosLabels.some((horario) => {
+    const normalizedHorario = normalizeComparable(horario);
+
+    return (
+      normalizedHorario.includes(normalizedPlano) ||
+      normalizedPlano.includes(normalizedHorario) ||
+      planoSegments.some((segmentoPlano) =>
+        selectedSegments.some(
+          (segmentoSelecionado) =>
+            segmentoSelecionado.includes(segmentoPlano) ||
+            segmentoPlano.includes(segmentoSelecionado),
+        ),
+      )
+    );
+  });
 }
 
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function formatHorarioOptionLabel(
-  turma: {
-    nome: string;
-    diasSemana: string[];
-    horarioInicio: string;
-    horarioFim: string;
-    unidade: string;
-  },
-) {
+function areStringArraysEqual(current: string[], next: string[]) {
+  if (current === next) return true;
+  if (current.length !== next.length) return false;
+  return current.every((value, index) => value === next[index]);
+}
+
+function areFormStatesEqual(current: FormState, next: FormState) {
+  return (
+    current.nome === next.nome &&
+    current.email === next.email &&
+    current.telefone === next.telefone &&
+    current.dataNascimento === next.dataNascimento &&
+    current.responsavel === next.responsavel &&
+    current.telefoneResponsavel === next.telefoneResponsavel &&
+    current.modalidade === next.modalidade &&
+    areStringArraysEqual(current.turmas, next.turmas) &&
+    areStringArraysEqual(current.planos, next.planos) &&
+    current.status === next.status
+  );
+}
+
+function formatHorarioOptionLabel(turma: {
+  nome: string;
+  diasSemana: string[];
+  horarioInicio: string;
+  horarioFim: string;
+  unidade: string;
+}) {
   return `${formatDias(turma.diasSemana as DiaSemana[])} · ${turma.horarioInicio}-${turma.horarioFim}`;
+}
+
+function formatCurrency(value: string | number) {
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) return String(value);
+
+  return numericValue.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function buildPlanoOptionLabel(plano: Plano) {
+  return `${plano.nome} | ${plano.frequencia || "Mensal"} - ${formatCurrency(plano.valor)}`;
 }
 
 export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
   const isEdit = !!aluno;
   const turmas = useTurmas();
-  const planos = usePlanos();
+  const planosCatalogo = usePlanos();
+  const modalidadesCatalogo = useModalidades();
+  const unidadesCatalogo = useUnidades();
+  const responsaveisCatalogo = useResponsaveis();
+
   const settings = useSettingsState();
 
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -95,6 +200,11 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [cascadeLoading, setCascadeLoading] = useState(false);
+  const [responsavelSelecionado, setResponsavelSelecionado] = useState("");
+
+  const unidadeSelecionadaRef = useRef(unidadeSelecionada);
+  const horariosSelecionadosRef = useRef(horariosSelecionados);
+  const planoSelecionadoRef = useRef(planoSelecionado);
 
   const activeTurmas = useMemo(() => turmas.filter((turma) => turma.ativa), [turmas]);
 
@@ -141,29 +251,31 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
   );
 
   const availablePlanos = useMemo(() => {
-    if (!modalidadeSelecionada || !unidadeSelecionada || selectedHorarioTurmas.length === 0) {
+    if (!modalidadeSelecionada) {
       return [];
     }
 
-    return planos
+    return planosCatalogo
       .filter((plano) => plano.status === "ativo")
-      .filter((plano) =>
-        plano.modalidades.some(
-          (modalidade) =>
-            normalizeComparable(modalidade) === normalizeComparable(modalidadeSelecionada),
-        ),
-      )
-      .filter(
-        (plano) =>
-          plano.aulasPorSemana <= 0 || plano.aulasPorSemana <= selectedHorarioTurmas.length,
-      )
+      .filter((plano) => planoMatchesModalidade(plano, modalidadeSelecionada))
+      .filter((plano) => planoMatchesUnidade(plano, unidadeSelecionada))
+      .filter((plano) => planoMatchesHorarios(plano, horariosSelecionadosLabels))
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [modalidadeSelecionada, unidadeSelecionada, planos, selectedHorarioTurmas]);
+  }, [horariosSelecionadosLabels, modalidadeSelecionada, planosCatalogo, unidadeSelecionada]);
 
   const unidadesSelecionadas = useMemo(
     () => (unidadeSelecionada ? [unidadeSelecionada] : []),
     [unidadeSelecionada],
   );
+
+  unidadeSelecionadaRef.current = unidadeSelecionada;
+  horariosSelecionadosRef.current = horariosSelecionados;
+  planoSelecionadoRef.current = planoSelecionado;
+
+  const clearCascadeSelections = useCallback(() => {
+    setHorariosSelecionados((current) => (current.length === 0 ? current : []));
+    setPlanoSelecionado((current) => (current ? "" : current));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -173,9 +285,15 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
       const unidadesAluno = getAlunoUnidades(aluno);
       const turmasAluno = getAlunoTurmas(aluno);
       const matchedTurmas = activeTurmas.filter((turma) => turmasAluno.includes(turma.nome));
-      const planoAluno = getAlunoPlanos(aluno)[0] ?? "";
+      const planoAlunoNome = getAlunoPlanos(aluno)[0] ?? "";
+      const planoAlunoId =
+        aluno.financeiro?.planoId ??
+        aluno.planoId ??
+        aluno.plano_id ??
+        planosCatalogo.find((plano) => plano.nome === planoAlunoNome)?.id ??
+        "";
 
-      setForm({
+      const nextForm: FormState = {
         nome: aluno.nome,
         email: aluno.email,
         telefone: aluno.telefone,
@@ -184,77 +302,109 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
         telefoneResponsavel: aluno.telefoneResponsavel ?? "",
         modalidade: (modalidadesAluno[0] ?? aluno.modalidade ?? "") as Modalidade,
         turmas: turmasAluno,
-        planos: planoAluno ? [planoAluno] : [],
+        planos: planoAlunoNome ? [planoAlunoNome] : [],
         status: aluno.status,
-      });
-      setModalidadeSelecionada((modalidadesAluno[0] ?? aluno.modalidade ?? "") as Modalidade);
-      setUnidadeSelecionada(unidadesAluno[0] ?? "");
-      setHorariosSelecionados(matchedTurmas.map((turma) => turma.id));
-      setPlanoSelecionado(planoAluno);
+      };
+
+      const matchedHorarioIds = matchedTurmas.map((turma) => turma.id);
+      const nextModalidade = (modalidadesAluno[0] ?? aluno.modalidade ?? "") as Modalidade;
+      const nextUnidade = unidadesAluno[0] ?? "";
+      const responsavelExistente =
+        responsaveisCatalogo.find(
+          (item) =>
+            normalizeComparable(item.nome) === normalizeComparable(aluno.responsavel ?? "") ||
+            (item.telefone && item.telefone === (aluno.telefoneResponsavel ?? "")),
+        ) ?? null;
+
+      setForm((current) => (areFormStatesEqual(current, nextForm) ? current : nextForm));
+      setModalidadeSelecionada((current) =>
+        current === nextModalidade ? current : nextModalidade,
+      );
+      setUnidadeSelecionada((current) => (current === nextUnidade ? current : nextUnidade));
+      setHorariosSelecionados((current) =>
+        areStringArraysEqual(current, matchedHorarioIds) ? current : matchedHorarioIds,
+      );
+      setResponsavelSelecionado((current) =>
+        current === String(responsavelExistente?.id ?? "")
+          ? current
+          : String(responsavelExistente?.id ?? ""),
+      );
+      setPlanoSelecionado((current) =>
+        current === String(planoAlunoId || "") ? current : String(planoAlunoId || ""),
+      );
     } else {
-      setForm(emptyForm);
-      setModalidadeSelecionada("" as Modalidade);
-      setUnidadeSelecionada("");
-      setHorariosSelecionados([]);
-      setPlanoSelecionado("");
+      setForm((current) => (areFormStatesEqual(current, emptyForm) ? current : emptyForm));
+      setModalidadeSelecionada((current) => (current ? ("" as Modalidade) : current));
+      setUnidadeSelecionada((current) => (current ? "" : current));
+      setHorariosSelecionados((current) => (current.length === 0 ? current : []));
+      setResponsavelSelecionado((current) => (current ? "" : current));
+      setPlanoSelecionado((current) => (current ? "" : current));
     }
 
-    setErrors({});
-  }, [open, aluno, activeTurmas]);
+    setErrors((current) => (Object.keys(current).length === 0 ? current : {}));
+  }, [open, aluno, activeTurmas, planosCatalogo, responsaveisCatalogo]);
 
   useEffect(() => {
     if (!open) return;
 
     setCascadeLoading(true);
     const timeoutId = window.setTimeout(() => setCascadeLoading(false), 120);
+
     return () => window.clearTimeout(timeoutId);
   }, [modalidadeSelecionada, unidadeSelecionada, horariosSelecionados, open]);
 
   useEffect(() => {
+    const currentUnidade = unidadeSelecionadaRef.current;
+    const currentHorarios = horariosSelecionadosRef.current;
+    const currentPlano = planoSelecionadoRef.current;
+
     if (!modalidadeSelecionada) {
-      if (unidadeSelecionada || horariosSelecionados.length > 0 || planoSelecionado) {
-        setUnidadeSelecionada("");
-        setHorariosSelecionados([]);
-        setPlanoSelecionado("");
-      }
+      if (currentUnidade) setUnidadeSelecionada("");
+      if (currentHorarios.length > 0) setHorariosSelecionados([]);
+      if (currentPlano) setPlanoSelecionado("");
       return;
     }
 
-    if (unidadeSelecionada && !availableUnidades.includes(unidadeSelecionada)) {
+    if (currentUnidade && !availableUnidades.includes(currentUnidade)) {
       setUnidadeSelecionada("");
-      setHorariosSelecionados([]);
-      setPlanoSelecionado("");
+      clearCascadeSelections();
     }
-  }, [
-    modalidadeSelecionada,
-    availableUnidades,
-    unidadeSelecionada,
-    horariosSelecionados.length,
-    planoSelecionado,
-  ]);
+  }, [modalidadeSelecionada, availableUnidades, clearCascadeSelections]);
 
   useEffect(() => {
+    const currentHorarios = horariosSelecionadosRef.current;
+    const currentPlano = planoSelecionadoRef.current;
+
     if (!unidadeSelecionada) {
-      if (horariosSelecionados.length > 0 || planoSelecionado) {
-        setHorariosSelecionados([]);
-        setPlanoSelecionado("");
+      if (currentHorarios.length > 0 || currentPlano) {
+        clearCascadeSelections();
       }
       return;
     }
 
     const availableIds = new Set(availableHorarios.map((turma) => turma.id));
-    if (horariosSelecionados.some((id) => !availableIds.has(id))) {
-      setHorariosSelecionados((current) => current.filter((id) => availableIds.has(id)));
-      setPlanoSelecionado("");
+
+    if (currentHorarios.some((id) => !availableIds.has(id))) {
+      const nextHorarios = currentHorarios.filter((id) => availableIds.has(id));
+
+      setHorariosSelecionados((current) =>
+        areStringArraysEqual(current, nextHorarios) ? current : nextHorarios,
+      );
+
+      if (currentPlano) {
+        setPlanoSelecionado("");
+      }
     }
-  }, [unidadeSelecionada, availableHorarios, horariosSelecionados, planoSelecionado]);
+  }, [unidadeSelecionada, availableHorarios, clearCascadeSelections]);
 
   useEffect(() => {
-    if (!planoSelecionado) return;
-    if (!availablePlanos.some((plano) => plano.nome === planoSelecionado)) {
+    const currentPlano = planoSelecionadoRef.current;
+    if (!currentPlano) return;
+
+    if (!availablePlanos.some((plano) => String(plano.id) === currentPlano)) {
       setPlanoSelecionado("");
     }
-  }, [availablePlanos, planoSelecionado]);
+  }, [availablePlanos]);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -263,8 +413,10 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
   function clearFieldError(field: string) {
     setErrors((current) => {
       if (!current[field]) return current;
+
       const next = { ...current };
       delete next[field];
+
       return next;
     });
   }
@@ -274,7 +426,12 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
     setUnidadeSelecionada("");
     setHorariosSelecionados([]);
     setPlanoSelecionado("");
-    setForm((current) => ({ ...current, modalidade: value as Modalidade, turmas: [], planos: [] }));
+    setForm((current) => ({
+      ...current,
+      modalidade: value as Modalidade,
+      turmas: [],
+      planos: [],
+    }));
     clearFieldError("modalidade");
     clearFieldError("unidade");
     clearFieldError("horarios");
@@ -295,6 +452,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
     setHorariosSelecionados((current) =>
       current.includes(turmaId) ? current.filter((id) => id !== turmaId) : [...current, turmaId],
     );
+
     setPlanoSelecionado("");
     setForm((current) => ({ ...current, planos: [] }));
     clearFieldError("horarios");
@@ -302,7 +460,9 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
   }
 
   function handlePlanoChange(value: string) {
+    const plano = availablePlanos.find((item) => String(item.id) === value);
     setPlanoSelecionado(value);
+    setForm((current) => ({ ...current, planos: plano ? [plano.nome] : [] }));
     clearFieldError("plano");
   }
 
@@ -344,6 +504,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
     e.preventDefault();
 
     const validation = validate();
+
     if (!validation.ok) {
       const message =
         Object.values(validation.errors)[0] ?? "Revise os campos obrigatórios do cadastro.";
@@ -352,36 +513,91 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
     }
 
     const turmasSelecionadas = selectedHorarioTurmas.map((turma) => turma.nome);
+    const planoEscolhido = availablePlanos.find(
+      (plano) => String(plano.id) === String(planoSelecionado),
+    );
+
+    if (!planoEscolhido) {
+      toast.error("Selecione um plano ativo e valido do catalogo oficial.");
+      return;
+    }
+
+    const diasHorarios = horariosSelecionadosLabels;
+    const turmaPrincipal = selectedHorarioTurmas[0] ?? null;
+    const unidadeCatalogo = unidadesCatalogo.find(
+      (item) =>
+        normalizeComparable(item.nome) ===
+        normalizeComparable(planoEscolhido.unidade || unidadeSelecionada),
+    );
+    const modalidadeCatalogo = modalidadesCatalogo.find(
+      (item) => normalizeComparable(item.nome) === normalizeComparable(modalidadeSelecionada),
+    );
+    const responsavelCatalogo =
+      responsaveisCatalogo.find((item) => String(item.id) === responsavelSelecionado) ?? null;
+
     const payload = {
       ...form,
       modalidade: modalidadeSelecionada,
       turmas: turmasSelecionadas,
-      planos: [planoSelecionado],
+      planos: [planoEscolhido.nome],
       unidades: unidadesSelecionadas,
-      horarios: horariosSelecionadosLabels,
+      horarios: diasHorarios,
       turma: turmasSelecionadas[0],
-      plano: planoSelecionado,
+      turmaId: turmaPrincipal?.id,
+      turma_id: turmaPrincipal?.id,
+      plano: planoEscolhido.nome,
+      planoId: planoEscolhido.id,
+      planoNome: planoEscolhido.nome,
+      planoValor: planoEscolhido.valor,
+      plano_id: planoEscolhido.id,
+      plano_nome: planoEscolhido.nome,
+      plano_valor: planoEscolhido.valor,
+      modalidadeId: modalidadeCatalogo?.id,
+      modalidade_id: modalidadeCatalogo?.id,
+      unidadeId: unidadeCatalogo?.id,
+      unidade_id: unidadeCatalogo?.id,
+      responsavelId: responsavelCatalogo?.id,
+      responsavel_id: responsavelCatalogo?.id,
+      responsavelCpf: responsavelCatalogo?.cpf ?? "",
+      responsavelEmail: responsavelCatalogo?.email || form.email,
+      parentesco: responsavelCatalogo?.parentesco ?? "",
+      unidade: planoEscolhido.unidade ?? unidadeSelecionada,
+      dias_horarios: diasHorarios,
+      financeiro: {
+        ...(aluno?.financeiro ?? {}),
+        planoId: planoEscolhido.id,
+        planoNome: planoEscolhido.nome,
+        valorPlano: planoEscolhido.valor,
+        periodicidade: aluno?.financeiro?.periodicidade ?? "mensal",
+        modalidade: planoEscolhido.modalidade ?? modalidadeSelecionada,
+        unidade: planoEscolhido.unidade ?? unidadeSelecionada,
+        diasHorarios,
+      },
       matricula: aluno?.matricula
         ? {
             ...aluno.matricula,
             responsavel: {
               ...aluno.matricula.responsavel,
+              id: responsavelCatalogo?.id,
               nomeCompleto: form.responsavel,
               whatsapp: form.telefoneResponsavel,
-              email: form.email,
+              email: responsavelCatalogo?.email || form.email,
+              cpf: responsavelCatalogo?.cpf || aluno.matricula.responsavel.cpf,
+              parentesco: responsavelCatalogo?.parentesco || aluno.matricula.responsavel.parentesco,
             },
             esportivas: {
               ...aluno.matricula.esportivas,
               modalidades: [modalidadeSelecionada],
               unidades: unidadesSelecionadas,
               turmas: turmasSelecionadas,
-              horarios: horariosSelecionadosLabels,
+              horarios: diasHorarios,
             },
           }
         : undefined,
     };
 
     setSaving(true);
+
     try {
       if (isEdit && aluno) {
         alunosStore.update(aluno.id, payload);
@@ -390,6 +606,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
         alunosStore.create(payload);
         toast.success("Aluno cadastrado com sucesso.");
       }
+
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao salvar o aluno.");
@@ -444,7 +661,9 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
                   clearFieldError("email");
                 }}
               />
-              {errors.email ? <p className="mt-1 text-xs text-destructive">{errors.email}</p> : null}
+              {errors.email ? (
+                <p className="mt-1 text-xs text-destructive">{errors.email}</p>
+              ) : null}
             </div>
 
             <div>
@@ -577,15 +796,17 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
                       ? "Carregando horários disponíveis..."
                       : "Selecione os horários desejados"}
               </div>
+
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {availableHorarios.map((turma) => {
                   const checked = horariosSelecionados.includes(turma.id);
+
                   return (
                     <label
                       key={turma.id}
-                      className={`${cardCls} ${
-                        checked ? "border-primary bg-primary/10" : ""
-                      } ${!unidadeSelecionada ? "pointer-events-none opacity-50" : ""}`}
+                      className={`${cardCls} ${checked ? "border-primary bg-primary/10" : ""} ${
+                        !unidadeSelecionada ? "pointer-events-none opacity-50" : ""
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <input
@@ -609,6 +830,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
                   );
                 })}
               </div>
+
               {unidadeSelecionada && !cascadeLoading && availableHorarios.length === 0 ? (
                 <p className="mt-2 text-xs text-muted-foreground">Nenhum horário encontrado.</p>
               ) : null}
@@ -620,10 +842,10 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div className="sm:col-span-2">
               <label className={labelCls}>Plano *</label>
               <select
-                className={horariosSelecionados.length > 0 ? inputCls : disabledCls}
+                className={modalidadeSelecionada && unidadeSelecionada ? inputCls : disabledCls}
                 value={planoSelecionado}
                 onChange={(e) => handlePlanoChange(e.target.value)}
-                disabled={horariosSelecionados.length === 0}
+                disabled={!modalidadeSelecionada || !unidadeSelecionada}
               >
                 <option value="">
                   {horariosSelecionados.length > 0
@@ -631,30 +853,34 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
                     : "Escolha os dias e horários primeiro"}
                 </option>
                 {availablePlanos.map((plano) => (
-                  <option key={plano.id} value={plano.nome}>
-                    {plano.nome}
+                  <option key={plano.id} value={plano.id}>
+                    {buildPlanoOptionLabel(plano)}
                   </option>
                 ))}
               </select>
+
               <div className="mt-2 flex flex-wrap gap-2">
                 {availablePlanos.map((plano) => (
                   <Badge
                     key={plano.id}
                     variant="outline"
                     className={
-                      planoSelecionado === plano.nome
+                      planoSelecionado === String(plano.id)
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border"
                     }
                   >
-                    {plano.nome} · {plano.aulasPorSemana || 0}x/sem
+                    {buildPlanoOptionLabel(plano)}
                   </Badge>
                 ))}
               </div>
+
               {horariosSelecionados.length > 0 && availablePlanos.length === 0 ? (
                 <p className="mt-2 text-xs text-muted-foreground">Nenhum plano disponível.</p>
               ) : null}
-              {errors.plano ? <p className="mt-2 text-xs text-destructive">{errors.plano}</p> : null}
+              {errors.plano ? (
+                <p className="mt-2 text-xs text-destructive">{errors.plano}</p>
+              ) : null}
             </div>
 
             <div className="sm:col-span-2">
@@ -662,7 +888,9 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
                 <div className="font-semibold text-foreground">Fluxo guiado</div>
                 <div className="mt-1">
                   Modalidade {modalidadeSelecionada || "—"} · Unidade {unidadeSelecionada || "—"} ·
-                  Horários {horariosSelecionados.length} · Plano {planoSelecionado || "—"}
+                  Horários {horariosSelecionados.length} · Plano{" "}
+                  {availablePlanos.find((plano) => String(plano.id) === planoSelecionado)?.nome ||
+                    "—"}
                 </div>
               </div>
             </div>
@@ -676,6 +904,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             >
               Cancelar
             </button>
+
             <button
               type="submit"
               disabled={saving}

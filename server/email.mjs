@@ -1,6 +1,5 @@
 const EMAIL_PROVIDER = (
-  process.env.EMAIL_PROVIDER ||
-  (process.env.RESEND_API_KEY ? "resend" : "disabled")
+  process.env.EMAIL_PROVIDER || (process.env.RESEND_API_KEY ? "resend" : "disabled")
 ).toLowerCase();
 
 const RESEND_API_URL = "https://api.resend.com/emails";

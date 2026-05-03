@@ -49,13 +49,13 @@ export function ContractsSettings() {
 
   function openEdit(template: ContractTemplateSetting) {
     setEditingTemplate(template);
-      setForm({
-        nome: template.nome,
-        titulo: template.titulo,
-        conteudo: template.conteudo,
-        ativo: template.ativo,
-        documentType: template.documentType,
-      });
+    setForm({
+      nome: template.nome,
+      titulo: template.titulo,
+      conteudo: template.conteudo,
+      ativo: template.ativo,
+      documentType: template.documentType,
+    });
     setDialogOpen(true);
   }
 
@@ -217,7 +217,10 @@ export function ContractsSettings() {
                 value={form.documentType}
                 as="select"
                 onChange={(value) =>
-                  setForm((current) => ({ ...current, documentType: value as ContractDocumentType }))
+                  setForm((current) => ({
+                    ...current,
+                    documentType: value as ContractDocumentType,
+                  }))
                 }
                 options={[
                   { value: "contrato_principal", label: "Contrato" },
@@ -313,10 +316,18 @@ function ToggleCard({
   return (
     <label className="flex items-center justify-between rounded-3xl border border-white/10 bg-black/20 p-4 text-sm text-slate-200">
       <span className="flex items-center gap-2">
-        {title.includes("imagem") ? <Image className="h-4 w-4 text-primary" /> : <FileSignature className="h-4 w-4 text-primary" />}
+        {title.includes("imagem") ? (
+          <Image className="h-4 w-4 text-primary" />
+        ) : (
+          <FileSignature className="h-4 w-4 text-primary" />
+        )}
         {title}
       </span>
-      <input type="checkbox" checked={checked} onChange={(event) => onToggle(event.target.checked)} />
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onToggle(event.target.checked)}
+      />
     </label>
   );
 }

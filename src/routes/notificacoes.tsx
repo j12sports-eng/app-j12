@@ -59,7 +59,11 @@ function NotificacoesPage() {
                     <div className="mt-1 text-sm text-muted-foreground">{notificacao.mensagem}</div>
                   </div>
                   <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                    {notificacao.lida ? <Bell className="h-4 w-4" /> : <MessageSquareMore className="h-4 w-4" />}
+                    {notificacao.lida ? (
+                      <Bell className="h-4 w-4" />
+                    ) : (
+                      <MessageSquareMore className="h-4 w-4" />
+                    )}
                   </div>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">

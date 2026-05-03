@@ -1,4 +1,4 @@
-import { settingsMock } from "./mocks/settingsMock";
+import { defaultSettingsState } from "./defaults";
 import type {
   AppearanceSettingsData,
   ContractSettingsData,
@@ -22,56 +22,65 @@ function cloneState<T>(value: T): T {
 
 function mergeWithDefaults(partial?: Partial<SettingsState> | null): SettingsState {
   return {
-    ...cloneState(settingsMock),
+    ...cloneState(defaultSettingsState),
     ...partial,
     general: {
-      ...settingsMock.general,
+      ...defaultSettingsState.general,
       ...(partial?.general ?? {}),
     },
     appearance: {
-      ...settingsMock.appearance,
+      ...defaultSettingsState.appearance,
       ...(partial?.appearance ?? {}),
     },
-    permissions: Array.isArray(partial?.permissions) && partial.permissions.length > 0
-      ? partial.permissions.map((item) => ({
-          accessLevel: item.accessLevel || "restrito",
-          profileScope: item.profileScope || "global",
-          canViewSelfOnly: Boolean(item.canViewSelfOnly),
-          canEditSelfOnly: Boolean(item.canEditSelfOnly),
-          role: item.role,
-        }))
-      : cloneState(settingsMock.permissions),
-    users: Array.isArray(partial?.users) ? partial.users : cloneState(settingsMock.users),
-    units: Array.isArray(partial?.units) ? partial.units : cloneState(settingsMock.units),
+    permissions:
+      Array.isArray(partial?.permissions) && partial.permissions.length > 0
+        ? partial.permissions.map((item) => ({
+            accessLevel: item.accessLevel || "restrito",
+            profileScope: item.profileScope || "global",
+            canViewSelfOnly: Boolean(item.canViewSelfOnly),
+            canEditSelfOnly: Boolean(item.canEditSelfOnly),
+            role: item.role,
+          }))
+        : cloneState(defaultSettingsState.permissions),
+    users: Array.isArray(partial?.users) ? partial.users : cloneState(defaultSettingsState.users),
+    units: Array.isArray(partial?.units) ? partial.units : cloneState(defaultSettingsState.units),
     modalities: Array.isArray(partial?.modalities)
       ? partial.modalities
-      : cloneState(settingsMock.modalities),
+      : cloneState(defaultSettingsState.modalities),
     contracts: Array.isArray(partial?.contracts)
       ? partial.contracts.map((item, index) => ({
-          ...settingsMock.contracts[0],
+          ...defaultSettingsState.contracts[0],
           ...item,
-          documentType: item.documentType || (index === 1 ? "aditivo_contrato" : index === 2 ? "direito_uso_imagem" : "contrato_principal"),
+          documentType:
+            item.documentType ||
+            (index === 1
+              ? "aditivo_contrato"
+              : index === 2
+                ? "direito_uso_imagem"
+                : "contrato_principal"),
         }))
-      : cloneState(settingsMock.contracts),
+      : cloneState(defaultSettingsState.contracts),
     contractSettings: {
-      ...settingsMock.contractSettings,
+      ...defaultSettingsState.contractSettings,
       ...(partial?.contractSettings ?? {}),
     },
     notifications: {
-      ...settingsMock.notifications,
+      ...defaultSettingsState.notifications,
       ...(partial?.notifications ?? {}),
     },
     integrations: {
-      ...settingsMock.integrations,
+      ...defaultSettingsState.integrations,
       ...(partial?.integrations ?? {}),
     },
     teacherAssets: Array.isArray(partial?.teacherAssets)
       ? partial.teacherAssets
-      : cloneState(settingsMock.teacherAssets),
+      : cloneState(defaultSettingsState.teacherAssets),
   };
 }
 
-function withTimestamps<T extends { createdAt?: string; updatedAt?: string }>(value: T): T {
+function withTimestamps<T extends object>(
+  value: T & { createdAt?: string; updatedAt?: string },
+): Omit<T, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string } {
   const now = new Date().toISOString();
   return {
     ...value,
@@ -80,7 +89,9 @@ function withTimestamps<T extends { createdAt?: string; updatedAt?: string }>(va
   };
 }
 
-function withUpdatedAt<T extends { updatedAt?: string }>(value: T): T {
+function withUpdatedAt<T extends object>(
+  value: T & { updatedAt?: string },
+): Omit<T, "updatedAt"> & { updatedAt: string } {
   return {
     ...value,
     updatedAt: new Date().toISOString(),
@@ -89,7 +100,7 @@ function withUpdatedAt<T extends { updatedAt?: string }>(value: T): T {
 
 export const settingsService = {
   load(): SettingsState {
-    return mergeWithDefaults(settingsMock);
+    return mergeWithDefaults(defaultSettingsState);
   },
 
   normalize(partial?: Partial<SettingsState> | null): SettingsState {
@@ -210,6 +221,6 @@ export const settingsService = {
   },
 
   reset(): SettingsState {
-    return mergeWithDefaults(settingsMock);
+    return mergeWithDefaults(defaultSettingsState);
   },
 };

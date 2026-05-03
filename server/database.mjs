@@ -127,6 +127,34 @@ const findUserByEmailStatement = db.prepare(`
   WHERE lower(email) = lower(?)
   LIMIT 1
 `);
+const findUserByIdStatement = db.prepare(`
+  SELECT
+    id,
+    nome,
+    email,
+    role,
+    teacher_id,
+    student_id,
+    password_hash,
+    password_salt
+  FROM users
+  WHERE id = ?
+  LIMIT 1
+`);
+const findUserByStudentIdStatement = db.prepare(`
+  SELECT
+    id,
+    nome,
+    email,
+    role,
+    teacher_id,
+    student_id,
+    password_hash,
+    password_salt
+  FROM users
+  WHERE student_id = ?
+  LIMIT 1
+`);
 const insertSessionStatement = db.prepare(`
   INSERT INTO sessions (token, user_id, created_at, expires_at)
   VALUES (?, ?, ?, ?)
@@ -147,12 +175,15 @@ const findSessionUserStatement = db.prepare(`
   LIMIT 1
 `);
 const deleteSessionStatement = db.prepare("DELETE FROM sessions WHERE token = ?");
-const deleteExpiredSessionsStatement = db.prepare(
-  "DELETE FROM sessions WHERE expires_at <= ?",
-);
+const deleteExpiredSessionsStatement = db.prepare("DELETE FROM sessions WHERE expires_at <= ?");
 const updateUserPasswordStatement = db.prepare(`
   UPDATE users
   SET password_hash = ?, password_salt = ?
+  WHERE id = ?
+`);
+const updateUserFirstAccessStatement = db.prepare(`
+  UPDATE users
+  SET nome = ?, email = ?, role = ?, student_id = ?, password_hash = ?, password_salt = ?
   WHERE id = ?
 `);
 const insertPasswordResetTokenStatement = db.prepare(`
@@ -294,6 +325,21 @@ function verifyPassword(password, salt, expectedHash) {
   return timingSafeEqual(candidate, expected);
 }
 
+function assertStrongPassword(password) {
+  const normalized = String(password ?? "");
+  const valid =
+    normalized.length >= 8 &&
+    /[A-Z]/.test(normalized) &&
+    /[a-z]/.test(normalized) &&
+    /\d/.test(normalized);
+
+  if (!valid) {
+    throw new Error(
+      "A senha deve ter no minimo 8 caracteres, incluindo letra maiuscula, minuscula e numero.",
+    );
+  }
+}
+
 function sanitizeUser(row) {
   return {
     id: row.id,
@@ -301,8 +347,9 @@ function sanitizeUser(row) {
     email: row.email,
     role: row.role,
     teacherId: row.teacher_id ?? null,
-    studentId: row.student_id ?? (String(row.email ?? "").toLowerCase() === "aluno@j12.com" ? "a1" : null),
-    responsavelId: row.role === "responsavel" ? row.student_id ?? null : null,
+    studentId:
+      row.student_id ?? (String(row.email ?? "").toLowerCase() === "aluno@j12.com" ? "a1" : null),
+    responsavelId: row.role === "responsavel" ? (row.student_id ?? null) : null,
   };
 }
 
@@ -394,14 +441,13 @@ function putCollectionWithTimestamp(name, data, updatedAt) {
 
 function mapPublicModality(rawValue, turmas) {
   const normalized = normalizeComparable(rawValue);
-  const key =
-    normalized.includes("futsal")
-      ? "futsal"
-      : normalized.includes("society") || normalized.includes("ambos")
-        ? "futebol"
-        : normalized.includes("volei")
-          ? "volei"
-          : "futebol";
+  const key = normalized.includes("futsal")
+    ? "futsal"
+    : normalized.includes("society") || normalized.includes("ambos")
+      ? "futebol"
+      : normalized.includes("volei")
+        ? "volei"
+        : "futebol";
 
   const match = turmas.find((turma) => normalizeComparable(turma?.modalidade) === key);
   const fallback = MODALITY_SUGGESTIONS[key] ?? MODALITY_SUGGESTIONS.futebol;
@@ -418,7 +464,14 @@ function mapPublicModality(rawValue, turmas) {
 
 function normalizeStringList(values) {
   if (!Array.isArray(values)) return [];
-  return [...new Set(values.filter((value) => typeof value === "string").map((value) => value.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      values
+        .filter((value) => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function normalizeAlunoCascadeData(aluno) {
@@ -461,8 +514,12 @@ function validateAlunoCascadeRelationships(alunos) {
   );
 
   for (const aluno of Array.isArray(alunos) ? alunos : []) {
-    const { modalidades, unidades, turmas: turmasAluno, planos: planosAluno } =
-      normalizeAlunoCascadeData(aluno);
+    const {
+      modalidades,
+      unidades,
+      turmas: turmasAluno,
+      planos: planosAluno,
+    } = normalizeAlunoCascadeData(aluno);
 
     const modalidadesNormalizadas = new Set(modalidades.map((item) => normalizeComparable(item)));
     const unidadesNormalizadas = new Set(unidades.map((item) => normalizeComparable(item)));
@@ -471,7 +528,9 @@ function validateAlunoCascadeRelationships(alunos) {
     for (const turmaNome of turmasAluno) {
       const turma = turmaByName.get(normalizeComparable(turmaNome));
       if (!turma) {
-        throw new Error(`A turma "${turmaNome}" do aluno "${aluno?.nome ?? "sem nome"}" não está disponível.`);
+        throw new Error(
+          `A turma "${turmaNome}" do aluno "${aluno?.nome ?? "sem nome"}" não está disponível.`,
+        );
       }
 
       turmasResolvidas.push(turma);
@@ -555,7 +614,9 @@ function getAlunoEnrollmentEntry(aluno) {
     numero,
     alunoId: normalizeText(aluno?.id) || null,
     studentName:
-      normalizeText(aluno?.matricula?.dadosAluno?.nomeCompleto) || normalizeText(aluno?.nome) || null,
+      normalizeText(aluno?.matricula?.dadosAluno?.nomeCompleto) ||
+      normalizeText(aluno?.nome) ||
+      null,
     status: getAlunoEnrollmentStatus(aluno),
   };
 }
@@ -593,7 +654,7 @@ function syncEnrollmentNumberRegistry(alunos, updatedAt = new Date().toISOString
       reusableOnly ? "inativo" : winner.status,
       registryRow?.created_at ?? updatedAt,
       updatedAt,
-      reusableOnly ? registryRow?.last_assigned_at ?? updatedAt : updatedAt,
+      reusableOnly ? (registryRow?.last_assigned_at ?? updatedAt) : updatedAt,
       reusableOnly ? updatedAt : null,
     );
   }
@@ -689,7 +750,10 @@ function mapEnrollmentSports(payload, turmas) {
   );
   const primaryTurma =
     matchedTurmas[0] ??
-    turmas.find((turma) => normalizeComparable(turma?.modalidade) === normalizeComparable(fallback.modalidade)) ??
+    turmas.find(
+      (turma) =>
+        normalizeComparable(turma?.modalidade) === normalizeComparable(fallback.modalidade),
+    ) ??
     null;
 
   const modalidades = normalizeStringList(payload?.esportivas?.modalidades);
@@ -730,8 +794,7 @@ function mapEnrollmentSports(payload, turmas) {
       ]),
     ].filter(Boolean),
     primary: {
-      modalidade:
-        modalidades[0] || normalizeText(primaryTurma?.modalidade) || fallback.modalidade,
+      modalidade: modalidades[0] || normalizeText(primaryTurma?.modalidade) || fallback.modalidade,
       unidade: unidades[0] || normalizeText(primaryTurma?.unidade) || fallback.unidade,
       turma: normalizeText(primaryTurma?.nome) || fallback.turma,
       professor: normalizeText(primaryTurma?.professor) || fallback.professor,
@@ -755,7 +818,8 @@ function createMatriculaSnapshot(payload, sports) {
       payload?.documentos?.documentoResponsavelCpf,
   );
   const comprovanteEndereco = normalizeEnrollmentDocument(
-    payload?.documentos?.comprovanteEndereco || payload?.documentos?.documentoResponsavelComprovante,
+    payload?.documentos?.comprovanteEndereco ||
+      payload?.documentos?.documentoResponsavelComprovante,
   );
   const atestadoMedico = normalizeEnrollmentDocument(
     payload?.documentos?.atestadoMedico || payload?.documentos?.documentoAlunoExame,
@@ -779,7 +843,8 @@ function createMatriculaSnapshot(payload, sports) {
       rg: normalizeText(payload?.responsavel?.rg),
       whatsapp: normalizeText(payload?.responsavel?.whatsapp),
       email:
-        normalizeText(payload?.responsavel?.email) || normalizeText(payload?.contato?.emailResponsavel),
+        normalizeText(payload?.responsavel?.email) ||
+        normalizeText(payload?.contato?.emailResponsavel),
       parentesco: normalizeText(payload?.responsavel?.parentesco),
     },
     endereco: {
@@ -911,7 +976,8 @@ function createInternalTrialClassFromEnrollment(payload, protocol, createdAt) {
       normalizeText(payload?.contato?.whatsappDiferente) ||
       normalizeText(payload?.responsavel?.whatsapp),
     email:
-      normalizeText(payload?.responsavel?.email) || normalizeText(payload?.contato?.emailResponsavel),
+      normalizeText(payload?.responsavel?.email) ||
+      normalizeText(payload?.contato?.emailResponsavel),
     modality: sports.primary.modalidade,
     unit: sports.primary.unidade || "A definir",
     turma: sports.primary.turma || "A definir",
@@ -1052,6 +1118,25 @@ export function findUserByEmail(email) {
   return row ? sanitizeUser(row) : null;
 }
 
+export function changeUserPassword(userId, currentPassword, nextPassword) {
+  assertStrongPassword(nextPassword);
+
+  const row = findUserByIdStatement.get(String(userId));
+  if (!row) {
+    throw new Error("Usuario nao encontrado.");
+  }
+
+  if (!verifyPassword(currentPassword, row.password_salt, row.password_hash)) {
+    throw new Error("A senha atual esta incorreta.");
+  }
+
+  const salt = randomBytes(16).toString("hex");
+  const passwordHash = hashPassword(nextPassword, salt);
+  updateUserPasswordStatement.run(passwordHash, salt, String(userId));
+
+  return sanitizeUser(row);
+}
+
 export function createSession(userId) {
   purgeExpiredSessions();
 
@@ -1093,13 +1178,7 @@ export function createPasswordResetToken(email) {
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 1000 * 60 * 30).toISOString();
 
-  insertPasswordResetTokenStatement.run(
-    token,
-    row.id,
-    row.email,
-    createdAt,
-    expiresAt,
-  );
+  insertPasswordResetTokenStatement.run(token, row.id, row.email, createdAt, expiresAt);
 
   return {
     token,
@@ -1159,12 +1238,98 @@ export function resetUserPassword(token, password) {
   };
 }
 
+export function completeStudentFirstAccess(payload) {
+  const numeroMatricula = normalizeEnrollmentNumber(payload?.numeroMatricula);
+  const dataNascimento = normalizeText(payload?.dataNascimento);
+  const email = normalizeText(payload?.email).toLowerCase();
+  const password = String(payload?.senha ?? "");
+  const confirmPassword = String(payload?.confirmarSenha ?? "");
+
+  if (!numeroMatricula || !dataNascimento) {
+    throw new Error("Informe numero de matricula e data de nascimento.");
+  }
+
+  if (!email) {
+    throw new Error("Informe um e-mail para concluir o primeiro acesso.");
+  }
+
+  if (!isValidEmail(email)) {
+    throw new Error("Informe um e-mail valido.");
+  }
+
+  if (password !== confirmPassword) {
+    throw new Error("A confirmacao da senha nao confere.");
+  }
+
+  assertStrongPassword(password);
+
+  const alunos = getCollectionArray("alunos");
+  const aluno = alunos.find((item) => {
+    const itemEnrollmentNumber = normalizeEnrollmentNumber(
+      item?.numeroMatricula ?? item?.matricula?.dadosAluno?.numeroMatricula,
+    );
+    const itemBirthDate = normalizeText(
+      item?.dataNascimento ?? item?.matricula?.dadosAluno?.dataNascimento,
+    );
+
+    return itemEnrollmentNumber === numeroMatricula && itemBirthDate === dataNascimento;
+  });
+
+  if (!aluno?.id) {
+    throw new Error("Nao encontramos um aluno com esses dados para primeiro acesso.");
+  }
+
+  const existingByEmail = findUserByEmailStatement.get(email);
+  if (existingByEmail && String(existingByEmail.student_id ?? "") !== String(aluno.id)) {
+    throw new Error("Este e-mail ja esta vinculado a outro usuario.");
+  }
+
+  const existingByStudent =
+    findUserByStudentIdStatement.get(String(aluno.id)) ?? existingByEmail ?? null;
+  const salt = randomBytes(16).toString("hex");
+  const passwordHash = hashPassword(password, salt);
+  const nomeAluno =
+    normalizeText(aluno?.nome) ||
+    normalizeText(aluno?.matricula?.dadosAluno?.nomeCompleto) ||
+    "Aluno J12";
+  const createdAt = new Date().toISOString();
+
+  if (existingByStudent) {
+    updateUserFirstAccessStatement.run(
+      nomeAluno,
+      email,
+      "aluno",
+      String(aluno.id),
+      passwordHash,
+      salt,
+      String(existingByStudent.id),
+    );
+  } else {
+    insertUserStatement.run(
+      `usr-${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+      nomeAluno,
+      email,
+      "aluno",
+      null,
+      String(aluno.id),
+      passwordHash,
+      salt,
+      createdAt,
+    );
+  }
+
+  const storedUser = findUserByEmailStatement.get(email);
+  return storedUser ? sanitizeUser(storedUser) : null;
+}
+
 export function createPublicEnrollment(payload) {
   const id = randomUUID();
   const protocol = `MAT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(
     Math.floor(Math.random() * 9000) + 1000,
   )}`;
   const createdAt = new Date().toISOString();
+  let aluno;
+  let trialClass;
   db.exec("BEGIN IMMEDIATE");
 
   try {
@@ -1182,8 +1347,8 @@ export function createPublicEnrollment(payload) {
       },
     };
 
-    const aluno = createInternalAlunoFromEnrollment(payloadWithAssignedNumber, protocol, createdAt);
-    const trialClass = createInternalTrialClassFromEnrollment(
+    aluno = createInternalAlunoFromEnrollment(payloadWithAssignedNumber, protocol, createdAt);
+    trialClass = createInternalTrialClassFromEnrollment(
       payloadWithAssignedNumber,
       protocol,
       createdAt,

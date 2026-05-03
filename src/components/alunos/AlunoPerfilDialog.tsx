@@ -96,16 +96,13 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
   const recorrencias = useRecorrenciasFinanceiras();
   const turmas = useTurmas();
 
-  const minhasTurmas = useMemo(
-    () => {
-      if (!aluno) return [];
-      const turmasRelacionadas = new Set(getAlunoTurmas(aluno));
-      return turmas.filter(
-        (turma) => turma.alunoIds.includes(aluno.id) || turmasRelacionadas.has(turma.nome),
-      );
-    },
-    [turmas, aluno],
-  );
+  const minhasTurmas = useMemo(() => {
+    if (!aluno) return [];
+    const turmasRelacionadas = new Set(getAlunoTurmas(aluno));
+    return turmas.filter(
+      (turma) => turma.alunoIds.includes(aluno.id) || turmasRelacionadas.has(turma.nome),
+    );
+  }, [turmas, aluno]);
 
   const meusContratos = useMemo(
     () => (aluno ? contratos.filter((c) => c.alunoId === aluno.id) : []),
@@ -155,7 +152,7 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
   );
 
   const recorrenciaFinanceira = useMemo(
-    () => (aluno ? recorrencias.find((item) => item.alunoId === aluno.id) ?? null : null),
+    () => (aluno ? (recorrencias.find((item) => item.alunoId === aluno.id) ?? null) : null),
     [recorrencias, aluno],
   );
 
@@ -270,21 +267,36 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
 
         <div className="grid gap-4 md:grid-cols-2">
           <ProfileSection title="Dados pessoais">
-            <ProfileRow label="Nome completo" value={matricula?.dadosAluno.nomeCompleto || aluno.nome} />
-            <ProfileRow label="Data de nascimento" value={fmtBRDate(matricula?.dadosAluno.dataNascimento || aluno.dataNascimento)} />
+            <ProfileRow
+              label="Nome completo"
+              value={matricula?.dadosAluno.nomeCompleto || aluno.nome}
+            />
+            <ProfileRow
+              label="Data de nascimento"
+              value={fmtBRDate(matricula?.dadosAluno.dataNascimento || aluno.dataNascimento)}
+            />
             <ProfileRow label="Idade" value={matricula?.dadosAluno.idade || "—"} />
             <ProfileRow label="CPF" value={matricula?.dadosAluno.cpf || "—"} />
             <ProfileRow label="RG" value={matricula?.dadosAluno.rg || "—"} />
             <ProfileRow label="Sexo" value={matricula?.dadosAluno.sexo || "—"} />
             <ProfileRow label="Colégio" value={matricula?.dadosAluno.colegio || "—"} />
-            <ProfileRow label="Período escolar" value={matricula?.dadosAluno.periodoEscolar || "—"} />
+            <ProfileRow
+              label="Período escolar"
+              value={matricula?.dadosAluno.periodoEscolar || "—"}
+            />
           </ProfileSection>
 
           <ProfileSection title="Responsável">
-            <ProfileRow label="Nome completo" value={matricula?.responsavel.nomeCompleto || aluno.responsavel || "—"} />
+            <ProfileRow
+              label="Nome completo"
+              value={matricula?.responsavel.nomeCompleto || aluno.responsavel || "—"}
+            />
             <ProfileRow label="CPF" value={matricula?.responsavel.cpf || "—"} />
             <ProfileRow label="RG" value={matricula?.responsavel.rg || "—"} />
-            <ProfileRow label="WhatsApp" value={matricula?.responsavel.whatsapp || aluno.telefoneResponsavel || "—"} />
+            <ProfileRow
+              label="WhatsApp"
+              value={matricula?.responsavel.whatsapp || aluno.telefoneResponsavel || "—"}
+            />
             <ProfileRow label="E-mail" value={matricula?.responsavel.email || aluno.email} />
             <ProfileRow label="Parentesco" value={matricula?.responsavel.parentesco || "—"} />
           </ProfileSection>
@@ -305,8 +317,14 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
             <ProfileRow label="Horários" value={formatAlunoScope(horariosAluno)} />
             <ProfileRow label="Turmas" value={formatAlunoScope(turmasAluno)} />
             <ProfileRow label="Nível" value={matricula?.esportivas.nivel || "—"} />
-            <ProfileRow label="Já treinou antes?" value={matricula?.esportivas.treinouAntes || "—"} />
-            <ProfileRow label="Característica" value={matricula?.esportivas.caracteristica || "—"} />
+            <ProfileRow
+              label="Já treinou antes?"
+              value={matricula?.esportivas.treinouAntes || "—"}
+            />
+            <ProfileRow
+              label="Característica"
+              value={matricula?.esportivas.caracteristica || "—"}
+            />
             <ProfileRow label="Objetivo" value={matricula?.esportivas.objetivo || "—"} />
           </ProfileSection>
         </div>
@@ -336,11 +354,15 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
           />
           <ProfileRow
             label="Valor base"
-            value={formatBRL(recorrenciaFinanceira?.valorPlano || proximasParcelas[0]?.valorOriginal || 0)}
+            value={formatBRL(
+              recorrenciaFinanceira?.valorPlano || proximasParcelas[0]?.valorOriginal || 0,
+            )}
           />
           <ProfileRow
             label="Dia de vencimento"
-            value={recorrenciaFinanceira ? `Dia ${recorrenciaFinanceira.diaVencimento}` : "Nao definido"}
+            value={
+              recorrenciaFinanceira ? `Dia ${recorrenciaFinanceira.diaVencimento}` : "Nao definido"
+            }
           />
           <ProfileRow
             label="Recorrencia"
@@ -362,7 +384,10 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
           />
           <ProfileRow
             label="Desconto / bolsa"
-            value={formatBRL((recorrenciaFinanceira?.descontoValor || 0) + (recorrenciaFinanceira?.bolsaValor || 0))}
+            value={formatBRL(
+              (recorrenciaFinanceira?.descontoValor || 0) +
+                (recorrenciaFinanceira?.bolsaValor || 0),
+            )}
           />
         </ProfileSection>
 
@@ -371,9 +396,7 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
           <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
             <div className="flex-1">
-              <div className="text-sm font-semibold text-destructive">
-                Aluno inadimplente
-              </div>
+              <div className="text-sm font-semibold text-destructive">Aluno inadimplente</div>
               <div className="text-xs text-destructive/80">
                 {inadimplencia.vencidas.length} parcela(s) em atraso Â· Total devido:{" "}
                 <span className="font-semibold">{formatBRL(inadimplencia.total)}</span>
@@ -487,7 +510,10 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="truncate font-medium">{t.nome}</span>
-                            <Badge variant={t.ativa ? "default" : "outline"} className="text-[10px]">
+                            <Badge
+                              variant={t.ativa ? "default" : "outline"}
+                              className="text-[10px]"
+                            >
                               {t.ativa ? "Ativa" : "Inativa"}
                             </Badge>
                           </div>
@@ -503,7 +529,9 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
                             {stats.total > 0 ? `${stats.taxa}%` : "—"}
                           </div>
                           <div className="text-muted-foreground">
-                            {stats.total > 0 ? `${stats.presentes}/${stats.total} aulas` : "Sem registros"}
+                            {stats.total > 0
+                              ? `${stats.presentes}/${stats.total} aulas`
+                              : "Sem registros"}
                           </div>
                         </div>
                       </div>
@@ -531,7 +559,10 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
                   const s = calcStatus(p);
                   const lbl = parcelaLabel(s);
                   return (
-                    <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                    <li
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                    >
                       <div className="flex min-w-0 items-center gap-3">
                         {parcelaIcon(s)}
                         <div className="min-w-0">
@@ -587,7 +618,9 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-success">{formatBRL(getValorAtualizado(p))}</div>
+                      <div className="font-semibold text-success">
+                        {formatBRL(getValorAtualizado(p))}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         Venc. {fmtBRDate(p.vencimento)}
                       </div>
@@ -603,13 +636,7 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
   );
 }
 
-function ProfileSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function ProfileSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-border bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold">{title}</h3>
@@ -626,4 +653,3 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

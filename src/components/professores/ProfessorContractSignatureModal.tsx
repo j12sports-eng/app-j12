@@ -54,6 +54,7 @@ export function ProfessorContractSignatureModal({ open, onOpenChange, professor 
   }, [aceite, canvasValue, cpfAssinante, digitadaValue, method, nomeAssinante]);
 
   if (!professor || professor.contrato.status === "Não gerado") return null;
+  const currentProfessor = professor;
 
   function confirmSignature() {
     if (!readyToSign) {
@@ -73,7 +74,7 @@ export function ProfessorContractSignatureModal({ open, onOpenChange, professor 
             : "Aceite eletronico",
     } as const;
 
-    const result = professoresStore.signContract(professor.id, signaturePayload);
+    const result = professoresStore.signContract(currentProfessor.id, signaturePayload);
 
     if (!result.ok) {
       toast.error(result.reason);
@@ -105,23 +106,27 @@ export function ProfessorContractSignatureModal({ open, onOpenChange, professor 
                 Resumo do contrato
               </div>
               <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
-                <div className="font-semibold text-white">{professor.nome}</div>
-                <div className="mt-1 text-slate-400">#{professor.contrato.numeroContrato}</div>
+                <div className="font-semibold text-white">{currentProfessor.nome}</div>
+                <div className="mt-1 text-slate-400">
+                  #{currentProfessor.contrato.numeroContrato}
+                </div>
                 <div className="mt-3 space-y-2 text-slate-300">
-                  <div>Tipo: {professor.tipoContrato}</div>
-                  <div>Modalidades: {getProfessorModalidadesLabel(professor) || "A definir"}</div>
-                  <div>Unidades: {getProfessorUnidadesLabel(professor) || "A definir"}</div>
+                  <div>Tipo: {currentProfessor.tipoContrato}</div>
+                  <div>
+                    Modalidades: {getProfessorModalidadesLabel(currentProfessor) || "A definir"}
+                  </div>
+                  <div>Unidades: {getProfessorUnidadesLabel(currentProfessor) || "A definir"}</div>
                   <div>
                     Valor:{" "}
-                    {professor.valorContrato.toLocaleString("pt-BR", {
+                    {currentProfessor.valorContrato.toLocaleString("pt-BR", {
                       style: "currency",
                       currency: "BRL",
                     })}
                   </div>
-                  <div>Pagamento: {professor.formaPagamentoProfessor}</div>
+                  <div>Pagamento: {currentProfessor.formaPagamentoProfessor}</div>
                   <div>
                     Inicio:{" "}
-                    {new Date(`${professor.dataInicioContrato}T00:00:00`).toLocaleDateString(
+                    {new Date(`${currentProfessor.dataInicioContrato}T00:00:00`).toLocaleDateString(
                       "pt-BR",
                     )}
                   </div>

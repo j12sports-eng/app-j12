@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ import {
   contratosStore,
   STATUS_LABEL,
   useContratos,
+  useContratosStatus,
   type Contrato,
   type StatusContrato,
 } from "@/lib/contratos-store";
@@ -80,13 +82,18 @@ function statusVariant(s: StatusContrato): "default" | "secondary" | "outline" |
 
 function ContratosPage() {
   const { hasRole, isSelfService } = useAuth();
+  const canManage = hasRole("admin", "coordenador");
 
   if (isSelfService) {
     return <ContratosSelfServicePage />;
   }
 
+  return <ContratosStaffPage canManage={canManage} />;
+}
+
+function ContratosStaffPage({ canManage }: { canManage: boolean }) {
   const contratos = useContratos();
-  const canManage = hasRole("admin", "coordenador");
+  const contratosStatus = useContratosStatus();
 
   const [busca, setBusca] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusContrato | "todos">("todos");
@@ -163,6 +170,12 @@ function ContratosPage() {
 
   return (
     <div className="space-y-6">
+      <ResourceSyncBanner
+        status={contratosStatus}
+        resourceLabel="os contratos"
+        hasData={contratos.length > 0}
+      />
+
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h2 className="text-2xl font-bold">Contratos</h2>

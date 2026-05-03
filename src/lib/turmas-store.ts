@@ -1,16 +1,17 @@
 import { useSyncExternalStore } from "react";
-import { alunosStore, type Modalidade } from "./alunos-store";
-import { createRemoteCollectionStore } from "./remote-collection";
+import { type Modalidade } from "./alunos-store";
+import { api } from "./api";
+import { createMysqlResourceStore } from "./mysql-resource-store";
 
 export type DiaSemana = "seg" | "ter" | "qua" | "qui" | "sex" | "sab" | "dom";
 
 export const DIAS_SEMANA: { value: DiaSemana; label: string; short: string }[] = [
   { value: "seg", label: "Segunda", short: "Seg" },
-  { value: "ter", label: "Terça", short: "Ter" },
+  { value: "ter", label: "Terca", short: "Ter" },
   { value: "qua", label: "Quarta", short: "Qua" },
   { value: "qui", label: "Quinta", short: "Qui" },
   { value: "sex", label: "Sexta", short: "Sex" },
-  { value: "sab", label: "Sábado", short: "Sáb" },
+  { value: "sab", label: "Sabado", short: "Sab" },
   { value: "dom", label: "Domingo", short: "Dom" },
 ];
 
@@ -21,7 +22,7 @@ export interface PresencaRegistro {
 
 export interface SessaoPresenca {
   id: string;
-  data: string; // YYYY-MM-DD
+  data: string;
   registros: PresencaRegistro[];
 }
 
@@ -33,115 +34,128 @@ export interface Turma {
   professorId?: string | null;
   professor: string;
   diasSemana: DiaSemana[];
-  horarioInicio: string; // HH:MM
+  horarioInicio: string;
   horarioFim: string;
   capacidadeMaxima: number;
   ativa: boolean;
   alunoIds: string[];
   presencas: SessaoPresenca[];
-  criadaEm: string;
+  criadaEm: string | null;
 }
 
-const STORAGE_KEY = "j12.turmas.v1";
+type TurmaInput = Omit<Turma, "id" | "alunoIds" | "presencas" | "criadaEm">;
+type RawTurma = Partial<Turma> & Record<string, unknown>;
 
-const seed: Turma[] = [
-  {
-    id: "tu1",
-    nome: "Sub-11 Tarde",
-    modalidade: "Futebol",
-    unidade: "Unidade Centro",
-    professorId: "pr1",
-    professor: "Prof. Ricardo Mendes",
-    diasSemana: ["seg", "qua", "sex"],
-    horarioInicio: "14:00",
-    horarioFim: "15:30",
-    capacidadeMaxima: 20,
-    ativa: true,
-    alunoIds: ["a1", "a8"],
-    presencas: [],
-    criadaEm: "2024-02-01",
-  },
-  {
-    id: "tu2",
-    nome: "Sub-13 Tarde",
-    modalidade: "Vôlei",
-    unidade: "Unidade Centro",
-    professorId: "pr2",
-    professor: "Profa. Camila Rocha",
-    diasSemana: ["ter", "qui"],
-    horarioInicio: "15:00",
-    horarioFim: "16:30",
-    capacidadeMaxima: 18,
-    ativa: true,
-    alunoIds: ["a2", "a6"],
-    presencas: [],
-    criadaEm: "2024-02-01",
-  },
-  {
-    id: "tu3",
-    nome: "Sub-15 Noite",
-    modalidade: "Futsal",
-    unidade: "Unidade Zona Sul",
-    professorId: "pr4",
-    professor: "Prof. André Silva",
-    diasSemana: ["seg", "qua"],
-    horarioInicio: "19:00",
-    horarioFim: "20:30",
-    capacidadeMaxima: 16,
-    ativa: true,
-    alunoIds: ["a3"],
-    presencas: [],
-    criadaEm: "2024-02-01",
-  },
-  {
-    id: "tu4",
-    nome: "Adulto Noite",
-    modalidade: "Basquete",
-    unidade: "Unidade Centro",
-    professorId: "pr3",
-    professor: "Prof. Bruno Lima",
-    diasSemana: ["ter", "qui"],
-    horarioInicio: "20:00",
-    horarioFim: "21:30",
-    capacidadeMaxima: 24,
-    ativa: true,
-    alunoIds: ["a4"],
-    presencas: [],
-    criadaEm: "2024-02-01",
-  },
-  {
-    id: "tu5",
-    nome: "Sub-9 Manhã",
-    modalidade: "Futebol",
-    unidade: "Unidade Zona Norte",
-    professorId: "pr1",
-    professor: "Prof. Ricardo Mendes",
-    diasSemana: ["sab"],
-    horarioInicio: "09:00",
-    horarioFim: "10:30",
-    capacidadeMaxima: 15,
-    ativa: true,
-    alunoIds: ["a5"],
-    presencas: [],
-    criadaEm: "2024-02-01",
-  },
-];
-
-function load(): Turma[] {
-  return [...seed];
+function text(value: unknown, max = 191) {
+  return String(value ?? "")
+    .trim()
+    .slice(0, max);
 }
 
-const turmasCollection = createRemoteCollectionStore<Turma[]>("turmas", load());
-let state: Turma[] = turmasCollection.getSnapshot();
+function integer(value: unknown, fallback = 0) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;
+}
+
+function safeJsonParse<T>(value: unknown, fallback: T): T {
+  if (value == null || value === "") return fallback;
+  if (typeof value === "object") return (value ?? fallback) as T;
+
+  try {
+    const parsed = JSON.parse(String(value)) as T;
+    return parsed == null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function uniqueValues(values: unknown[]) {
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function parseDiasSemana(value: unknown): DiaSemana[] {
+  const direct = Array.isArray(value) ? value : safeJsonParse<string[]>(value, []);
+  if (Array.isArray(direct) && direct.length > 0) {
+    return uniqueValues(direct) as DiaSemana[];
+  }
+
+  const raw = text(value, 191).toLowerCase();
+  if (!raw) return [];
+  return uniqueValues(raw.split(/[/,;|]/g)) as DiaSemana[];
+}
+
+function normalizeTurma(raw: RawTurma): Turma {
+  return {
+    id: text(raw.id, 64) || `turma-${Date.now()}`,
+    nome: text(raw.nome, 191),
+    modalidade: (text(raw.modalidade, 191) || "Futebol") as Modalidade,
+    unidade: text(raw.unidade, 191),
+    professorId: text(raw.professorId ?? raw.professor_id, 64) || null,
+    professor: text(raw.professor, 191),
+    diasSemana: parseDiasSemana(raw.diasSemana ?? raw.dias_semana ?? raw.dias_semana_json),
+    horarioInicio: text(raw.horarioInicio ?? raw.horario_inicio ?? raw.horario, 20) || "19:00",
+    horarioFim: text(raw.horarioFim ?? raw.horario_fim, 20) || "20:30",
+    capacidadeMaxima: integer(raw.capacidadeMaxima ?? raw.capacidade, 0),
+    ativa: Boolean(raw.ativa ?? text(raw.status, 30).toLowerCase() !== "inativa"),
+    alunoIds: uniqueValues(
+      safeJsonParse<string[]>(raw.alunoIds ?? raw.aluno_ids_json, []).map((item) => item),
+    ),
+    presencas: safeJsonParse<SessaoPresenca[]>(raw.presencas ?? raw.presencas_json, []),
+    criadaEm: text(raw.criadaEm ?? raw.created_at, 32) || null,
+  };
+}
+
+function serializeTurma(turma: Turma | TurmaInput) {
+  return {
+    nome: text(turma.nome, 191),
+    modalidade: text(turma.modalidade, 191),
+    unidade: text(turma.unidade, 191),
+    professorId: text(turma.professorId, 64) || null,
+    professor: text(turma.professor, 191),
+    diasSemana: turma.diasSemana,
+    horarioInicio: text(turma.horarioInicio, 20),
+    horarioFim: text(turma.horarioFim, 20),
+    capacidadeMaxima: integer(turma.capacidadeMaxima, 0),
+    ativa: Boolean(turma.ativa),
+    alunoIds: "alunoIds" in turma ? turma.alunoIds : [],
+    presencas: "presencas" in turma ? turma.presencas : [],
+  };
+}
+
+const resource = createMysqlResourceStore<Turma>({
+  endpoint: "/turmas",
+  initialState: [],
+  normalize: (item) => normalizeTurma(item as RawTurma),
+  loadAll: () => api.get<Turma[]>("/turmas"),
+  createEntity: (entity) => api.post<Turma>("/turmas", serializeTurma(entity)),
+  updateEntity: (entity) => api.put<Turma>(`/turmas/${entity.id}`, serializeTurma(entity)),
+  deleteEntity: (id) => api.del(`/turmas/${id}`),
+});
+
+let state: Turma[] = resource.getSnapshot();
 const listeners = new Set<() => void>();
 
-turmasCollection.subscribe(() => {
-  state = turmasCollection.getSnapshot();
+resource.subscribe(() => {
+  state = resource.getSnapshot().map((item) => normalizeTurma(item as RawTurma));
   listeners.forEach((listener) => listener());
 });
 
-function emit() {
-  turmasCollection.replaceState(state);
+function replaceState(nextState: Turma[]) {
+  resource.replaceState(nextState.map((item) => normalizeTurma(item as RawTurma)));
+}
+
+function replaceById(targetId: string, nextItem: Turma) {
+  replaceState(resource.getSnapshot().map((item) => (item.id === targetId ? nextItem : item)));
+}
+
+function persistUpdate(next: Turma) {
+  void api.put<Turma>(`/turmas/${next.id}`, serializeTurma(next)).then(
+    (saved) => replaceById(next.id, normalizeTurma(saved as RawTurma)),
+    async (error) => {
+      console.error("[turmas-store] Falha ao salvar turma.", error);
+      await resource.reload();
+    },
+  );
 }
 
 export const turmasStore = {
@@ -152,67 +166,104 @@ export const turmasStore = {
   getSnapshot(): Turma[] {
     return state;
   },
-  getById(id: string): Turma | undefined {
-    return state.find((t) => t.id === id);
+  load() {
+    return resource.reload();
   },
-  create(data: Omit<Turma, "id" | "alunoIds" | "presencas" | "criadaEm">) {
-    const nova: Turma = {
+  reload() {
+    return resource.reload();
+  },
+  getById(id: string): Turma | undefined {
+    return state.find((turma) => turma.id === String(id));
+  },
+  create(data: TurmaInput) {
+    const optimisticId = `tmp-turma-${Date.now()}`;
+    const nova = normalizeTurma({
       ...data,
-      id: `tu${Date.now()}`,
+      id: optimisticId,
       alunoIds: [],
       presencas: [],
-      criadaEm: new Date().toISOString().slice(0, 10),
-    };
-    state = [nova, ...state];
-    emit();
+      created_at: new Date().toISOString(),
+    });
+    replaceState([nova, ...resource.getSnapshot()]);
+    void api
+      .post<Turma>("/turmas", serializeTurma(nova))
+      .then((saved) => replaceById(optimisticId, normalizeTurma(saved as RawTurma)))
+      .catch(async (error) => {
+        console.error("[turmas-store] Falha ao criar turma.", error);
+        await resource.reload();
+      });
     return nova;
   },
   update(id: string, data: Partial<Omit<Turma, "id" | "alunoIds" | "presencas">>) {
-    state = state.map((t) => (t.id === id ? { ...t, ...data } : t));
-    emit();
+    const current = state.find((turma) => turma.id === String(id));
+    if (!current) return null;
+    const next = normalizeTurma({ ...current, ...data, id });
+    replaceState(resource.getSnapshot().map((turma) => (turma.id === id ? next : turma)));
+    persistUpdate(next);
+    return next;
   },
   toggleAtiva(id: string) {
-    state = state.map((t) => (t.id === id ? { ...t, ativa: !t.ativa } : t));
-    emit();
+    const current = state.find((turma) => turma.id === String(id));
+    if (!current) return null;
+    const next = normalizeTurma({ ...current, ativa: !current.ativa, id });
+    replaceState(resource.getSnapshot().map((turma) => (turma.id === id ? next : turma)));
+    persistUpdate(next);
+    return next;
   },
   remove(id: string) {
-    state = state.filter((t) => t.id !== id);
-    emit();
+    replaceState(resource.getSnapshot().filter((turma) => turma.id !== String(id)));
+    void api.del(`/turmas/${id}`).catch(async (error) => {
+      console.error("[turmas-store] Falha ao remover turma.", error);
+      await resource.reload();
+    });
   },
   adicionarAluno(turmaId: string, alunoId: string): { ok: boolean; reason?: string } {
-    const t = state.find((x) => x.id === turmaId);
-    if (!t) return { ok: false, reason: "Turma não encontrada" };
-    if (t.alunoIds.includes(alunoId)) return { ok: false, reason: "Aluno já está nesta turma" };
-    if (t.alunoIds.length >= t.capacidadeMaxima)
-      return { ok: false, reason: "Capacidade máxima atingida" };
-    state = state.map((x) => (x.id === turmaId ? { ...x, alunoIds: [...x.alunoIds, alunoId] } : x));
-    emit();
+    const turma = state.find((item) => item.id === String(turmaId));
+    if (!turma) return { ok: false, reason: "Turma nao encontrada" };
+    if (turma.alunoIds.includes(alunoId)) return { ok: false, reason: "Aluno ja esta nesta turma" };
+    if (turma.capacidadeMaxima > 0 && turma.alunoIds.length >= turma.capacidadeMaxima) {
+      return { ok: false, reason: "Capacidade maxima atingida" };
+    }
+    const next = normalizeTurma({ ...turma, alunoIds: [...turma.alunoIds, alunoId] });
+    replaceState(resource.getSnapshot().map((item) => (item.id === turmaId ? next : item)));
+    persistUpdate(next);
     return { ok: true };
   },
   removerAluno(turmaId: string, alunoId: string) {
-    state = state.map((x) =>
-      x.id === turmaId ? { ...x, alunoIds: x.alunoIds.filter((id) => id !== alunoId) } : x,
-    );
-    emit();
+    const turma = state.find((item) => item.id === String(turmaId));
+    if (!turma) return;
+    const next = normalizeTurma({
+      ...turma,
+      alunoIds: turma.alunoIds.filter((id) => id !== alunoId),
+    });
+    replaceState(resource.getSnapshot().map((item) => (item.id === turmaId ? next : item)));
+    persistUpdate(next);
   },
   registrarPresenca(turmaId: string, data: string, registros: PresencaRegistro[]) {
-    state = state.map((t) => {
-      if (t.id !== turmaId) return t;
-      const outras = t.presencas.filter((p) => p.data !== data);
-      const sessao: SessaoPresenca = {
-        id: `s${Date.now()}`,
-        data,
-        registros,
-      };
-      return { ...t, presencas: [...outras, sessao].sort((a, b) => b.data.localeCompare(a.data)) };
+    const turma = state.find((item) => item.id === String(turmaId));
+    if (!turma) return;
+    const outras = turma.presencas.filter((sessao) => sessao.data !== data);
+    const sessao: SessaoPresenca = {
+      id: `sessao-${Date.now()}`,
+      data,
+      registros,
+    };
+    const next = normalizeTurma({
+      ...turma,
+      presencas: [...outras, sessao].sort((left, right) => right.data.localeCompare(left.data)),
     });
-    emit();
+    replaceState(resource.getSnapshot().map((item) => (item.id === turmaId ? next : item)));
+    persistUpdate(next);
   },
   removerSessao(turmaId: string, sessaoId: string) {
-    state = state.map((t) =>
-      t.id === turmaId ? { ...t, presencas: t.presencas.filter((p) => p.id !== sessaoId) } : t,
-    );
-    emit();
+    const turma = state.find((item) => item.id === String(turmaId));
+    if (!turma) return;
+    const next = normalizeTurma({
+      ...turma,
+      presencas: turma.presencas.filter((sessao) => sessao.id !== sessaoId),
+    });
+    replaceState(resource.getSnapshot().map((item) => (item.id === turmaId ? next : item)));
+    persistUpdate(next);
   },
 };
 
@@ -224,52 +275,36 @@ export function useTurmas(): Turma[] {
   );
 }
 
-/** Retorna turmas em que o aluno está matriculado. */
-export function turmasDoAluno(alunoId: string): Turma[] {
-  return state.filter((t) => t.alunoIds.includes(alunoId));
+export function useTurmasStatus() {
+  return useSyncExternalStore(turmasStore.subscribe, resource.getMeta, resource.getMeta);
 }
 
-/** Estatísticas de presença de um aluno em uma turma. */
+export function turmasDoAluno(alunoId: string): Turma[] {
+  return state.filter((turma) => turma.alunoIds.includes(alunoId));
+}
+
 export function statsPresencaAluno(turma: Turma, alunoId: string) {
   let total = 0;
   let presentes = 0;
   for (const sessao of turma.presencas) {
-    const reg = sessao.registros.find((r) => r.alunoId === alunoId);
-    if (!reg) continue;
+    const registro = sessao.registros.find((item) => item.alunoId === alunoId);
+    if (!registro) continue;
     total += 1;
-    if (reg.presente) presentes += 1;
+    if (registro.presente) presentes += 1;
   }
   const taxa = total > 0 ? Math.round((presentes / total) * 100) : 0;
   return { total, presentes, faltas: total - presentes, taxa };
 }
 
 export function formatDias(dias: DiaSemana[]): string {
-  const map: Record<DiaSemana, string> = {
+  const labels: Record<DiaSemana, string> = {
     seg: "Seg",
     ter: "Ter",
     qua: "Qua",
     qui: "Qui",
     sex: "Sex",
-    sab: "Sáb",
+    sab: "Sab",
     dom: "Dom",
   };
-  return dias.map((d) => map[d]).join(" · ");
+  return dias.map((dia) => labels[dia]).join(" · ");
 }
-
-// Mantém referência usada para auto-limpeza quando aluno é removido
-alunosStore.subscribe(() => {
-  const validos = new Set(alunosStore.getSnapshot().map((a) => a.id));
-  let mudou = false;
-  const novo = state.map((t) => {
-    const filtered = t.alunoIds.filter((id) => validos.has(id));
-    if (filtered.length !== t.alunoIds.length) {
-      mudou = true;
-      return { ...t, alunoIds: filtered };
-    }
-    return t;
-  });
-  if (mudou) {
-    state = novo;
-    emit();
-  }
-});

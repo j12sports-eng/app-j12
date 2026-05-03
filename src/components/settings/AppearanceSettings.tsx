@@ -3,7 +3,7 @@ import { MonitorCog, Palette, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { appearanceSettingsMock } from "@/lib/settings/mocks/settingsMock";
+import { defaultAppearanceSettings } from "@/lib/settings/defaults";
 import { settingsStore } from "@/lib/settings/settings-store";
 import { useThemeSettings } from "@/lib/settings/theme-context";
 import type { AppearanceSettingsData } from "@/lib/settings/types";
@@ -60,8 +60,8 @@ export function AppearanceSettings() {
   }
 
   function handleReset() {
-    setDraft(appearanceSettingsMock);
-    settingsStore.saveAppearance(appearanceSettingsMock);
+    setDraft(defaultAppearanceSettings);
+    settingsStore.saveAppearance(defaultAppearanceSettings);
     toast.success("Tema premium J12 restaurado.");
   }
 
@@ -112,7 +112,10 @@ export function AppearanceSettings() {
               Preview em tempo real
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-[28px] border shadow-[var(--shadow-elegant)]" style={previewStyle}>
+            <div
+              className="mt-4 overflow-hidden rounded-[28px] border shadow-[var(--shadow-elegant)]"
+              style={previewStyle}
+            >
               <div
                 className="flex items-center justify-between px-4 py-3"
                 style={{ backgroundColor: draft.headerColor, color: draft.headerTextColor }}
@@ -129,12 +132,18 @@ export function AppearanceSettings() {
                 </div>
               </div>
 
-              <div className="grid min-h-[180px] grid-cols-[92px_1fr]" style={{ backgroundColor: draft.pageBackgroundColor }}>
+              <div
+                className="grid min-h-[180px] grid-cols-[92px_1fr]"
+                style={{ backgroundColor: draft.pageBackgroundColor }}
+              >
                 <div
                   className="flex flex-col gap-2 px-3 py-4"
                   style={{ backgroundColor: draft.menuBackgroundColor, color: draft.menuTextColor }}
                 >
-                  <div className="rounded-xl px-2 py-2 text-xs font-medium" style={{ backgroundColor: draft.menuColor }}>
+                  <div
+                    className="rounded-xl px-2 py-2 text-xs font-medium"
+                    style={{ backgroundColor: draft.menuColor }}
+                  >
                     Menu
                   </div>
                   <div className="text-[11px] opacity-80">Dashboard</div>

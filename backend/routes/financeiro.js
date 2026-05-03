@@ -9,56 +9,88 @@ const {
   sanitizeString,
   createId,
 } = require("./helpers");
+const {
+  generateMonthlyChargeForStudent,
+  generateMonthlyCharges,
+  listCharges,
+  mapChargeRow,
+  markOverdueCharges,
+  normalizeDatabaseStatus,
+  parseCompetencia,
+  removeChargeCompatibility,
+  syncAllChargeCompatibilityTables,
+  syncChargeCompatibility,
+} = require("../services/student-finance");
 
 const router = express.Router();
 
-function mapRowToTransacao(row) {
+function normalizeCompetencia(value, fallbackDate) {
+  return parseCompetencia(value, fallbackDate.slice(0, 7));
+}
+
+function normalizeOrigem(value) {
+  const normalized = sanitizeString(value, 50).toLowerCase();
+  if (normalized === "automatico" || normalized === "automatica") return "automatico";
+  return "manual";
+}
+
+function mapTipoToChargeKind(value) {
+  const normalized = sanitizeString(value, 30).toLowerCase();
+  return normalized === "recorrente" ? "recorrente" : "avulsa";
+}
+
+function calcResumo(charges, activeStudentsCount) {
+  const summary = {
+    totalAReceber: 0,
+    totalRecebido: 0,
+    totalAtrasado: 0,
+    cobrancasPendentes: 0,
+    alunosAtivos: activeStudentsCount,
+  };
+
+  for (const charge of charges) {
+    const valor = Number(charge.valorFinal ?? charge.valor ?? 0) || 0;
+
+    if (charge.status === "pago") {
+      summary.totalRecebido += valor;
+      continue;
+    }
+
+    if (charge.status === "cancelada") {
+      continue;
+    }
+
+    summary.totalAReceber += valor;
+    summary.cobrancasPendentes += 1;
+
+    if (charge.status === "vencido") {
+      summary.totalAtrasado += valor;
+    }
+  }
+
   return {
-    id: row.id,
-    alunoId: row.aluno_id,
-    alunoNome: row.aluno_nome,
-    descricao: row.descricao,
-    tipo: row.tipo,
-    valor: Number(row.valor ?? 0),
-    vencimento: row.vencimento,
-    pagoEm: row.pago_em,
-    formaPagamento: row.forma_pagamento ?? undefined,
-    observacao: row.observacao ?? undefined,
-    responsavelFinanceiro: row.responsavel_financeiro ?? undefined,
-    responsavelCpf: row.responsavel_cpf ?? undefined,
-    telefoneWhatsapp: row.telefone_whatsapp ?? undefined,
-    email: row.email ?? undefined,
-    unidade: row.unidade ?? undefined,
-    modalidade: row.modalidade ?? undefined,
-    turma: row.turma ?? undefined,
-    planoId: row.plano_id ?? null,
-    planoNome: row.plano_nome ?? undefined,
-    periodicidade: row.periodicidade ?? undefined,
-    competencia: row.competencia ?? undefined,
-    valorOriginal: Number(row.valor_original ?? 0),
-    descontoValor: Number(row.desconto_valor ?? 0),
-    descontoPercentual: Number(row.desconto_percentual ?? 0),
-    bolsaValor: Number(row.bolsa_valor ?? 0),
-    bolsaPercentual: Number(row.bolsa_percentual ?? 0),
-    multaPercentual: Number(row.multa_percentual ?? 0),
-    jurosDiaPercentual: Number(row.juros_dia_percentual ?? 0),
-    valorFinal: Number(row.valor_final ?? row.valor ?? 0),
-    dataGeracao: row.data_geracao ?? undefined,
-    dataPagamento: row.data_pagamento ?? null,
-    status: row.status ?? undefined,
-    tipoCobranca: row.tipo_cobranca ?? undefined,
-    origem: row.origem ?? undefined,
-    ativo: Boolean(row.ativo),
-    alteradoEm: row.alterado_em ?? null,
-    alteradoPor: row.alterado_por ?? null,
-    cancelamentoMotivo: row.cancelamento_motivo ?? null,
-    descontoMotivo: row.desconto_motivo ?? null,
+    ...summary,
+    total_a_receber: Number(summary.totalAReceber.toFixed(2)),
+    total_recebido: Number(summary.totalRecebido.toFixed(2)),
+    total_atrasado: Number(summary.totalAtrasado.toFixed(2)),
+    cobrancas_pendentes: summary.cobrancasPendentes,
+    alunos_ativos: summary.alunosAtivos,
+    totalAReceber: Number(summary.totalAReceber.toFixed(2)),
+    totalRecebido: Number(summary.totalRecebido.toFixed(2)),
+    totalAtrasado: Number(summary.totalAtrasado.toFixed(2)),
   };
 }
 
+async function getChargeById(id) {
+  const rows = await query("SELECT * FROM j12_financeiro_cobrancas WHERE id = ? LIMIT 1", [
+    sanitizeString(id, 64),
+  ]);
+  return Array.isArray(rows) && rows.length > 0 ? mapChargeRow(rows[0]) : null;
+}
+
 function normalizeTransacaoPayload(payload, existingId) {
-  const alunoId = sanitizeString(payload.alunoId, 64);
-  const descricao = sanitizeString(payload.descricao);
+  const alunoId = sanitizeString(payload.alunoId ?? payload.aluno_id, 64);
+  const descricao = sanitizeString(payload.descricao, 191);
 
   if (!alunoId || !descricao) {
     const error = new Error("Aluno, descricao e vencimento sao obrigatorios.");
@@ -76,65 +108,301 @@ function normalizeTransacaoPayload(payload, existingId) {
   return {
     id: sanitizeString(existingId || payload.id, 64) || createId("f"),
     alunoId,
-    alunoNome: sanitizeString(payload.alunoNome, 191) || "Aluno",
+    alunoNome: sanitizeString(payload.alunoNome ?? payload.nome_aluno, 191) || "Aluno",
+    numeroMatricula: sanitizeNullableString(
+      payload.numeroMatricula ?? payload.numero_matricula,
+      50,
+    ),
     descricao,
     tipo: sanitizeString(payload.tipo || "mensalidade", 50) || "mensalidade",
     valor: sanitizeNumber(payload.valorFinal ?? payload.valor),
     vencimento,
-    pagoEm: sanitizeIsoDate(payload.pagoEm),
-    formaPagamento: sanitizeNullableString(payload.formaPagamento, 50),
-    observacao: sanitizeNullableString(payload.observacao, 65535),
-    responsavelFinanceiro: sanitizeNullableString(payload.responsavelFinanceiro, 191),
-    responsavelCpf: sanitizeNullableString(payload.responsavelCpf, 20),
-    telefoneWhatsapp: sanitizeNullableString(payload.telefoneWhatsapp, 50),
-    email: sanitizeNullableString(payload.email, 191),
-    unidade: sanitizeNullableString(payload.unidade, 191),
+    status:
+      sanitizeIsoDate(payload.pagoEm ?? payload.dataPagamento) != null
+        ? "pago"
+        : normalizeDatabaseStatus(payload.status, vencimento),
+    origem: normalizeOrigem(payload.origem),
+    periodicidade: sanitizeNullableString(payload.periodicidade, 30) || "mensal",
+    planoId: sanitizeNullableString(payload.planoId ?? payload.plano_id, 64),
+    planoNome: sanitizeNullableString(payload.planoNome ?? payload.plano_nome, 191),
     modalidade: sanitizeNullableString(payload.modalidade, 191),
     turma: sanitizeNullableString(payload.turma, 191),
-    planoId: sanitizeNullableString(payload.planoId, 64),
-    planoNome: sanitizeNullableString(payload.planoNome, 191),
-    periodicidade: sanitizeNullableString(payload.periodicidade, 30),
-    competencia: sanitizeNullableString(payload.competencia, 32),
-    valorOriginal: sanitizeNumber(payload.valorOriginal ?? payload.valor),
-    descontoValor: sanitizeNumber(payload.descontoValor),
-    descontoPercentual: sanitizeNumber(payload.descontoPercentual),
-    bolsaValor: sanitizeNumber(payload.bolsaValor),
-    bolsaPercentual: sanitizeNumber(payload.bolsaPercentual),
-    multaPercentual: sanitizeNumber(payload.multaPercentual),
-    jurosDiaPercentual: sanitizeNumber(payload.jurosDiaPercentual),
-    valorFinal: sanitizeNumber(payload.valorFinal ?? payload.valor),
-    dataGeracao: sanitizeIsoDate(payload.dataGeracao) || new Date().toISOString().slice(0, 10),
+    unidade: sanitizeNullableString(payload.unidade, 191),
+    responsavelFinanceiro: sanitizeNullableString(
+      payload.responsavelFinanceiro ?? payload.responsavel_financeiro,
+      191,
+    ),
+    responsavelCpf: sanitizeNullableString(payload.responsavelCpf ?? payload.responsavel_cpf, 20),
+    telefoneWhatsapp: sanitizeNullableString(
+      payload.telefoneWhatsapp ?? payload.telefone_whatsapp,
+      50,
+    ),
+    email: sanitizeNullableString(payload.email, 191),
+    observacao: sanitizeNullableString(payload.observacao, 65535),
+    pagoEm: sanitizeIsoDate(payload.pagoEm),
+    formaPagamento: sanitizeNullableString(payload.formaPagamento ?? payload.forma_pagamento, 50),
+    dataGeracao:
+      sanitizeIsoDate(payload.dataGeracao ?? payload.data_geracao) ||
+      new Date().toISOString().slice(0, 10),
     dataPagamento: sanitizeIsoDate(payload.dataPagamento ?? payload.pagoEm),
-    status: sanitizeNullableString(payload.status, 30),
-    tipoCobranca: sanitizeNullableString(payload.tipoCobranca, 30),
-    origem: sanitizeNullableString(payload.origem, 30),
+    competencia: normalizeCompetencia(
+      payload.competencia,
+      sanitizeIsoDate(payload.vencimento) || new Date().toISOString().slice(0, 10),
+    ),
+    valorOriginal: sanitizeNumber(payload.valorOriginal ?? payload.valor_original ?? payload.valor),
+    descontoValor: sanitizeNumber(payload.descontoValor ?? payload.desconto_valor),
+    descontoPercentual: sanitizeNumber(payload.descontoPercentual ?? payload.desconto_percentual),
+    bolsaValor: sanitizeNumber(payload.bolsaValor ?? payload.bolsa_valor),
+    bolsaPercentual: sanitizeNumber(payload.bolsaPercentual ?? payload.bolsa_percentual),
+    multaPercentual: sanitizeNumber(payload.multaPercentual ?? payload.multa_percentual),
+    jurosDiaPercentual: sanitizeNumber(payload.jurosDiaPercentual ?? payload.juros_dia_percentual),
+    valorFinal: sanitizeNumber(payload.valorFinal ?? payload.valor_final ?? payload.valor),
+    tipoCobranca: mapTipoToChargeKind(payload.tipoCobranca ?? payload.tipo_cobranca),
     ativo: sanitizeBoolean(payload.ativo, true),
-    alteradoEm: sanitizeNullableString(payload.alteradoEm, 32),
-    alteradoPor: sanitizeNullableString(payload.alteradoPor, 191),
-    cancelamentoMotivo: sanitizeNullableString(payload.cancelamentoMotivo, 65535),
-    descontoMotivo: sanitizeNullableString(payload.descontoMotivo, 65535),
+    alteradoEm: sanitizeNullableString(payload.alteradoEm ?? payload.alterado_em, 32),
+    alteradoPor: sanitizeNullableString(payload.alteradoPor ?? payload.alterado_por, 191),
+    cancelamentoMotivo: sanitizeNullableString(
+      payload.cancelamentoMotivo ?? payload.cancelamento_motivo,
+      65535,
+    ),
+    descontoMotivo: sanitizeNullableString(
+      payload.descontoMotivo ?? payload.desconto_motivo,
+      65535,
+    ),
   };
+}
+
+async function createCharge(transacao) {
+  const insertValues = [
+    transacao.id,
+    transacao.alunoId,
+    transacao.numeroMatricula,
+    transacao.alunoNome,
+    transacao.competencia,
+    transacao.descricao,
+    transacao.tipo,
+    transacao.valor,
+    transacao.vencimento,
+    transacao.status,
+    transacao.origem,
+    transacao.periodicidade,
+    transacao.planoId,
+    transacao.planoNome,
+    transacao.modalidade,
+    transacao.turma,
+    transacao.unidade,
+    transacao.responsavelFinanceiro,
+    transacao.responsavelCpf,
+    transacao.telefoneWhatsapp,
+    transacao.email,
+    transacao.observacao,
+    transacao.pagoEm,
+    transacao.formaPagamento,
+    transacao.dataGeracao,
+    transacao.dataPagamento,
+    transacao.valorOriginal,
+    transacao.descontoValor,
+    transacao.descontoPercentual,
+    transacao.bolsaValor,
+    transacao.bolsaPercentual,
+    transacao.multaPercentual,
+    transacao.jurosDiaPercentual,
+    transacao.valorFinal,
+    transacao.tipoCobranca,
+    transacao.ativo ? 1 : 0,
+    transacao.alteradoEm,
+    transacao.alteradoPor,
+    transacao.cancelamentoMotivo,
+    transacao.descontoMotivo,
+  ];
+
+  await query(
+    `
+      INSERT INTO j12_financeiro_cobrancas (
+        id, aluno_id, numero_matricula, nome_aluno, competencia, descricao, tipo, valor, vencimento,
+        status, origem, periodicidade, plano_id, plano_nome, modalidade, turma, unidade,
+        responsavel_financeiro, responsavel_cpf, telefone_whatsapp, email, observacao,
+        pago_em, forma_pagamento, data_geracao, data_pagamento, valor_original,
+        desconto_valor, desconto_percentual, bolsa_valor, bolsa_percentual, multa_percentual,
+        juros_dia_percentual, valor_final, tipo_cobranca, ativo, alterado_em, alterado_por,
+        cancelamento_motivo, desconto_motivo
+      ) VALUES (${insertValues.map(() => "?").join(", ")})
+    `,
+    insertValues,
+  );
+
+  await syncChargeCompatibility(transacao.id);
+  return getChargeById(transacao.id);
+}
+
+async function updateChargeRecord(transacao) {
+  await query(
+    `
+      UPDATE j12_financeiro_cobrancas
+      SET
+        aluno_id = ?,
+        numero_matricula = ?,
+        nome_aluno = ?,
+        competencia = ?,
+        descricao = ?,
+        tipo = ?,
+        valor = ?,
+        vencimento = ?,
+        status = ?,
+        origem = ?,
+        periodicidade = ?,
+        plano_id = ?,
+        plano_nome = ?,
+        modalidade = ?,
+        turma = ?,
+        unidade = ?,
+        responsavel_financeiro = ?,
+        responsavel_cpf = ?,
+        telefone_whatsapp = ?,
+        email = ?,
+        observacao = ?,
+        pago_em = ?,
+        forma_pagamento = ?,
+        data_geracao = ?,
+        data_pagamento = ?,
+        valor_original = ?,
+        desconto_valor = ?,
+        desconto_percentual = ?,
+        bolsa_valor = ?,
+        bolsa_percentual = ?,
+        multa_percentual = ?,
+        juros_dia_percentual = ?,
+        valor_final = ?,
+        tipo_cobranca = ?,
+        ativo = ?,
+        alterado_em = ?,
+        alterado_por = ?,
+        cancelamento_motivo = ?,
+        desconto_motivo = ?
+      WHERE id = ?
+    `,
+    [
+      transacao.alunoId,
+      transacao.numeroMatricula,
+      transacao.alunoNome,
+      transacao.competencia,
+      transacao.descricao,
+      transacao.tipo,
+      transacao.valor,
+      transacao.vencimento,
+      transacao.status,
+      transacao.origem,
+      transacao.periodicidade,
+      transacao.planoId,
+      transacao.planoNome,
+      transacao.modalidade,
+      transacao.turma,
+      transacao.unidade,
+      transacao.responsavelFinanceiro,
+      transacao.responsavelCpf,
+      transacao.telefoneWhatsapp,
+      transacao.email,
+      transacao.observacao,
+      transacao.pagoEm,
+      transacao.formaPagamento,
+      transacao.dataGeracao,
+      transacao.dataPagamento,
+      transacao.valorOriginal,
+      transacao.descontoValor,
+      transacao.descontoPercentual,
+      transacao.bolsaValor,
+      transacao.bolsaPercentual,
+      transacao.multaPercentual,
+      transacao.jurosDiaPercentual,
+      transacao.valorFinal,
+      transacao.tipoCobranca,
+      transacao.ativo ? 1 : 0,
+      transacao.alteradoEm,
+      transacao.alteradoPor,
+      transacao.cancelamentoMotivo,
+      transacao.descontoMotivo,
+      transacao.id,
+    ],
+  );
+
+  await syncChargeCompatibility(transacao.id);
+  return getChargeById(transacao.id);
+}
+
+async function resolveScopedCharges(req) {
+  if (canManageSystem(req.auth)) {
+    return listCharges();
+  }
+
+  const studentId = resolveScopedStudentId(req.auth);
+  if (studentId) {
+    return listCharges({ studentId });
+  }
+
+  const error = new Error("Seu perfil nao possui acesso ao financeiro geral.");
+  error.statusCode = 403;
+  throw error;
+}
+
+async function resolveActiveStudentCount(req) {
+  if (canManageSystem(req.auth)) {
+    const rows = await query(
+      "SELECT COUNT(*) AS total FROM j12_alunos WHERE LOWER(status) = 'ativo'",
+    );
+    return Number(rows?.[0]?.total || 0);
+  }
+
+  const studentId = resolveScopedStudentId(req.auth);
+  if (!studentId) return 0;
+
+  const rows = await query(
+    "SELECT COUNT(*) AS total FROM j12_alunos WHERE id = ? AND LOWER(status) = 'ativo'",
+    [String(studentId)],
+  );
+  return Number(rows?.[0]?.total || 0);
 }
 
 router.use(requireAuth);
 
+router.get("/resumo", async (req, res, next) => {
+  try {
+    const [charges, activeStudentsCount] = await Promise.all([
+      resolveScopedCharges(req),
+      resolveActiveStudentCount(req),
+    ]);
+    res.json(calcResumo(charges, activeStudentsCount));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/cobrancas", async (req, res, next) => {
+  try {
+    res.json(await resolveScopedCharges(req));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/", async (req, res, next) => {
   try {
-    if (canManageSystem(req.auth)) {
-      const rows = await query("SELECT * FROM financeiro ORDER BY vencimento DESC, updated_at DESC");
-      return res.json((Array.isArray(rows) ? rows : []).map(mapRowToTransacao));
+    res.json(await resolveScopedCharges(req));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/cobrancas", async (req, res, next) => {
+  try {
+    if (!canManageSystem(req.auth)) {
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem criar cobrancas." });
     }
 
-    const studentId = resolveScopedStudentId(req.auth);
-    if (studentId) {
-      const rows = await query(
-        "SELECT * FROM financeiro WHERE aluno_id = ? ORDER BY vencimento DESC, updated_at DESC",
-        [studentId],
-      );
-      return res.json((Array.isArray(rows) ? rows : []).map(mapRowToTransacao));
-    }
-
-    return res.status(403).json({ message: "Seu perfil nao possui acesso ao financeiro geral." });
+    const transacao = normalizeTransacaoPayload(req.body);
+    const saved = await createCharge(transacao);
+    res.status(201).json(saved ?? transacao);
   } catch (error) {
     next(error);
   }
@@ -143,66 +411,14 @@ router.get("/", async (req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     if (!canManageSystem(req.auth)) {
-      return res.status(403).json({ message: "Apenas administradores e coordenadores podem criar cobrancas." });
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem criar cobrancas." });
     }
 
     const transacao = normalizeTransacaoPayload(req.body);
-
-    await query(
-      `
-        INSERT INTO financeiro (
-          id, aluno_id, aluno_nome, descricao, tipo, valor, vencimento, pago_em, forma_pagamento,
-          observacao, responsavel_financeiro, responsavel_cpf, telefone_whatsapp, email, unidade,
-          modalidade, turma, plano_id, plano_nome, periodicidade, competencia, valor_original,
-          desconto_valor, desconto_percentual, bolsa_valor, bolsa_percentual, multa_percentual,
-          juros_dia_percentual, valor_final, data_geracao, data_pagamento, status, tipo_cobranca,
-          origem, ativo, alterado_em, alterado_por, cancelamento_motivo, desconto_motivo
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        transacao.id,
-        transacao.alunoId,
-        transacao.alunoNome,
-        transacao.descricao,
-        transacao.tipo,
-        transacao.valor,
-        transacao.vencimento,
-        transacao.pagoEm,
-        transacao.formaPagamento,
-        transacao.observacao,
-        transacao.responsavelFinanceiro,
-        transacao.responsavelCpf,
-        transacao.telefoneWhatsapp,
-        transacao.email,
-        transacao.unidade,
-        transacao.modalidade,
-        transacao.turma,
-        transacao.planoId,
-        transacao.planoNome,
-        transacao.periodicidade,
-        transacao.competencia,
-        transacao.valorOriginal,
-        transacao.descontoValor,
-        transacao.descontoPercentual,
-        transacao.bolsaValor,
-        transacao.bolsaPercentual,
-        transacao.multaPercentual,
-        transacao.jurosDiaPercentual,
-        transacao.valorFinal,
-        transacao.dataGeracao,
-        transacao.dataPagamento,
-        transacao.status,
-        transacao.tipoCobranca,
-        transacao.origem,
-        transacao.ativo ? 1 : 0,
-        transacao.alteradoEm,
-        transacao.alteradoPor,
-        transacao.cancelamentoMotivo,
-        transacao.descontoMotivo,
-      ],
-    );
-
-    res.status(201).json(transacao);
+    const saved = await createCharge(transacao);
+    res.status(201).json(saved ?? transacao);
   } catch (error) {
     next(error);
   }
@@ -211,68 +427,14 @@ router.post("/", async (req, res, next) => {
 router.put("/:id", async (req, res, next) => {
   try {
     if (!canManageSystem(req.auth)) {
-      return res.status(403).json({ message: "Apenas administradores e coordenadores podem editar cobrancas." });
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem editar cobrancas." });
     }
 
     const transacao = normalizeTransacaoPayload(req.body, req.params.id);
-
-    await query(
-      `
-        UPDATE financeiro SET
-          aluno_id = ?, aluno_nome = ?, descricao = ?, tipo = ?, valor = ?, vencimento = ?, pago_em = ?,
-          forma_pagamento = ?, observacao = ?, responsavel_financeiro = ?, responsavel_cpf = ?,
-          telefone_whatsapp = ?, email = ?, unidade = ?, modalidade = ?, turma = ?, plano_id = ?,
-          plano_nome = ?, periodicidade = ?, competencia = ?, valor_original = ?, desconto_valor = ?,
-          desconto_percentual = ?, bolsa_valor = ?, bolsa_percentual = ?, multa_percentual = ?,
-          juros_dia_percentual = ?, valor_final = ?, data_geracao = ?, data_pagamento = ?, status = ?,
-          tipo_cobranca = ?, origem = ?, ativo = ?, alterado_em = ?, alterado_por = ?,
-          cancelamento_motivo = ?, desconto_motivo = ?
-        WHERE id = ?
-      `,
-      [
-        transacao.alunoId,
-        transacao.alunoNome,
-        transacao.descricao,
-        transacao.tipo,
-        transacao.valor,
-        transacao.vencimento,
-        transacao.pagoEm,
-        transacao.formaPagamento,
-        transacao.observacao,
-        transacao.responsavelFinanceiro,
-        transacao.responsavelCpf,
-        transacao.telefoneWhatsapp,
-        transacao.email,
-        transacao.unidade,
-        transacao.modalidade,
-        transacao.turma,
-        transacao.planoId,
-        transacao.planoNome,
-        transacao.periodicidade,
-        transacao.competencia,
-        transacao.valorOriginal,
-        transacao.descontoValor,
-        transacao.descontoPercentual,
-        transacao.bolsaValor,
-        transacao.bolsaPercentual,
-        transacao.multaPercentual,
-        transacao.jurosDiaPercentual,
-        transacao.valorFinal,
-        transacao.dataGeracao,
-        transacao.dataPagamento,
-        transacao.status,
-        transacao.tipoCobranca,
-        transacao.origem,
-        transacao.ativo ? 1 : 0,
-        transacao.alteradoEm,
-        transacao.alteradoPor,
-        transacao.cancelamentoMotivo,
-        transacao.descontoMotivo,
-        transacao.id,
-      ],
-    );
-
-    res.json(transacao);
+    const saved = await updateChargeRecord(transacao);
+    res.json(saved ?? transacao);
   } catch (error) {
     next(error);
   }
@@ -281,11 +443,170 @@ router.put("/:id", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
   try {
     if (!canManageSystem(req.auth)) {
-      return res.status(403).json({ message: "Apenas administradores e coordenadores podem excluir cobrancas." });
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem excluir cobrancas." });
     }
 
-    await query("DELETE FROM financeiro WHERE id = ?", [sanitizeString(req.params.id, 64)]);
+    await query("DELETE FROM j12_financeiro_cobrancas WHERE id = ?", [
+      sanitizeString(req.params.id, 64),
+    ]);
+    await removeChargeCompatibility(req.params.id);
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/cobrancas/:id/pagar", async (req, res, next) => {
+  try {
+    if (!canManageSystem(req.auth)) {
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem baixar cobrancas." });
+    }
+
+    await query(
+      `
+        UPDATE j12_financeiro_cobrancas
+        SET
+          status = 'pago',
+          pago_em = ?,
+          data_pagamento = ?,
+          forma_pagamento = ?,
+          alterado_em = NOW(),
+          alterado_por = ?
+        WHERE id = ?
+      `,
+      [
+        sanitizeIsoDate(req.body?.pagoEm) || new Date().toISOString().slice(0, 10),
+        sanitizeIsoDate(req.body?.dataPagamento) ||
+          sanitizeIsoDate(req.body?.pagoEm) ||
+          new Date().toISOString().slice(0, 10),
+        sanitizeNullableString(req.body?.formaPagamento ?? req.body?.forma_pagamento, 50) || null,
+        req.auth?.nome || req.auth?.email || "admin",
+        sanitizeString(req.params.id, 64),
+      ],
+    );
+
+    await syncChargeCompatibility(req.params.id);
+    const saved = await getChargeById(req.params.id);
+    if (!saved) {
+      return res.status(404).json({ message: "Cobranca nao encontrada." });
+    }
+
+    res.json(saved);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/cobrancas/:id/cancelar", async (req, res, next) => {
+  try {
+    if (!canManageSystem(req.auth)) {
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem cancelar cobrancas." });
+    }
+
+    await query(
+      `
+        UPDATE j12_financeiro_cobrancas
+        SET
+          status = 'cancelado',
+          ativo = 0,
+          cancelamento_motivo = ?,
+          alterado_em = NOW(),
+          alterado_por = ?
+        WHERE id = ?
+      `,
+      [
+        sanitizeNullableString(req.body?.motivo ?? req.body?.cancelamentoMotivo, 65535) ||
+          "Cancelada manualmente.",
+        req.auth?.nome || req.auth?.email || "admin",
+        sanitizeString(req.params.id, 64),
+      ],
+    );
+
+    await syncChargeCompatibility(req.params.id);
+    const saved = await getChargeById(req.params.id);
+    if (!saved) {
+      return res.status(404).json({ message: "Cobranca nao encontrada." });
+    }
+
+    res.json(saved);
+  } catch (error) {
+    next(error);
+  }
+});
+
+async function handleGenerateMonth(req, res, next) {
+  try {
+    if (!canManageSystem(req.auth)) {
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem gerar mensalidades." });
+    }
+
+    const summary = await generateMonthlyCharges({
+      referenceCompetencia:
+        req.body?.competencia ?? req.body?.referencia ?? req.body?.competency ?? undefined,
+      actorName: req.auth?.nome || req.auth?.email || "admin",
+    });
+    await syncAllChargeCompatibilityTables();
+
+    return res.json({
+      competencia: summary.competencia,
+      createdCount: summary.created,
+      skippedCount: summary.skipped,
+      message:
+        summary.created > 0
+          ? `${summary.created} mensalidade(s) gerada(s) e ${summary.skipped} ignorada(s).`
+          : `Nenhuma nova mensalidade foi criada. ${summary.skipped} registro(s) ja existiam ou estavam sem valor configurado.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+router.post("/gerar-mensalidade/:alunoId", async (req, res, next) => {
+  try {
+    if (!canManageSystem(req.auth)) {
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem gerar mensalidades." });
+    }
+
+    const result = await generateMonthlyChargeForStudent(req.params.alunoId, {
+      referenceCompetencia: req.body?.competencia ?? req.body?.referencia ?? undefined,
+      actorName: req.auth?.nome || req.auth?.email || "admin",
+    });
+    await syncChargeCompatibility(result.chargeId ?? "");
+
+    res.json({
+      competencia: result.competencia,
+      created: result.created,
+      skippedReason: result.skippedReason,
+      chargeId: result.chargeId ?? null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/gerar-mensalidades-mes", handleGenerateMonth);
+router.post("/gerar-mensalidades", handleGenerateMonth);
+
+router.post("/atualizar-atrasadas", async (req, res, next) => {
+  try {
+    if (!canManageSystem(req.auth)) {
+      return res
+        .status(403)
+        .json({ message: "Apenas administradores e coordenadores podem atualizar cobrancas." });
+    }
+
+    const updatedCount = await markOverdueCharges(req.auth?.nome || req.auth?.email || "admin");
+    res.json({ ok: true, updatedCount });
   } catch (error) {
     next(error);
   }

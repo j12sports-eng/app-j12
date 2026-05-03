@@ -683,6 +683,25 @@ async function ensureIndex(tableName, indexName, definition) {
   await query(`ALTER TABLE \`${safeTable}\` ADD ${definition}`);
 }
 
+async function ensureForeignKeyDropped(tableName, constraintName) {
+  const safeTable = sanitizeIdentifier(tableName);
+  const safeConstraint = sanitizeIdentifier(constraintName);
+  const rows = await query(
+    `
+      SELECT CONSTRAINT_NAME
+      FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+        AND CONSTRAINT_NAME = ?
+    `,
+    [safeTable, safeConstraint],
+  );
+
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  await query(`ALTER TABLE \`${safeTable}\` DROP FOREIGN KEY \`${safeConstraint}\``);
+}
+
 async function transaction(work) {
   const connection = await pool.getConnection();
 
@@ -764,9 +783,269 @@ async function ensureSchema() {
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
-  await ensureIndex("j12_alunos", "idx_j12_alunos_nome", "INDEX `idx_j12_alunos_nome` (`nome_completo`)");
-  await ensureIndex("j12_alunos", "idx_j12_alunos_numero", "INDEX `idx_j12_alunos_numero` (`numero_matricula`)");
-  await ensureIndex("j12_alunos", "idx_j12_alunos_status", "INDEX `idx_j12_alunos_status` (`status`)");
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_nome",
+    "INDEX `idx_j12_alunos_nome` (`nome_completo`)",
+  );
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_numero",
+    "INDEX `idx_j12_alunos_numero` (`numero_matricula`)",
+  );
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_status",
+    "INDEX `idx_j12_alunos_status` (`status`)",
+  );
+  await ensureColumn("j12_alunos", "responsavel", "VARCHAR(191) NULL");
+  await ensureColumn("j12_alunos", "telefone_responsavel", "VARCHAR(50) NULL");
+  await ensureColumn("j12_alunos", "plano_id", "VARCHAR(64) NULL");
+  await ensureColumn("j12_alunos", "plano_valor", "DECIMAL(12,2) NULL");
+  await ensureColumn("j12_alunos", "unidade_principal", "VARCHAR(191) NULL");
+  await ensureColumn("j12_alunos", "dias_horarios_json", "LONGTEXT NULL");
+  await ensureColumn("j12_alunos", "turma_id", "INT NULL");
+  await ensureColumn("j12_alunos", "unidade_id", "INT NULL");
+  await ensureColumn("j12_alunos", "modalidade_id", "INT NULL");
+  await ensureColumn("j12_alunos", "responsavel_id", "INT NULL");
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_plano_id",
+    "INDEX `idx_j12_alunos_plano_id` (`plano_id`)",
+  );
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_turma_id",
+    "INDEX `idx_j12_alunos_turma_id` (`turma_id`)",
+  );
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_unidade_id",
+    "INDEX `idx_j12_alunos_unidade_id` (`unidade_id`)",
+  );
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_modalidade_id",
+    "INDEX `idx_j12_alunos_modalidade_id` (`modalidade_id`)",
+  );
+  await ensureIndex(
+    "j12_alunos",
+    "idx_j12_alunos_responsavel_id",
+    "INDEX `idx_j12_alunos_responsavel_id` (`responsavel_id`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_planos (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      nome VARCHAR(191) NOT NULL,
+      valor DECIMAL(12,2) NOT NULL DEFAULT 0,
+      modalidade VARCHAR(191) NULL,
+      unidade VARCHAR(191) NULL,
+      dias_horarios VARCHAR(255) NULL,
+      frequencia VARCHAR(100) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+      categoria VARCHAR(50) NULL,
+      descricao TEXT NULL,
+      preco_mensal DECIMAL(12,2) NULL,
+      taxa_matricula DECIMAL(12,2) NULL,
+      fidelidade_meses INT NULL,
+      aulas_por_semana INT NULL,
+      modalidades_json LONGTEXT NULL,
+      tags_json LONGTEXT NULL,
+      contrato_vinculado TINYINT(1) NOT NULL DEFAULT 1,
+      aceita_upgrade TINYINT(1) NOT NULL DEFAULT 1,
+      destaque_comercial TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn("j12_planos", "dias_horarios", "VARCHAR(255) NULL");
+  await ensureColumn("j12_planos", "frequencia", "VARCHAR(100) NULL");
+  await ensureColumn("j12_planos", "categoria", "VARCHAR(50) NULL");
+  await ensureColumn("j12_planos", "descricao", "TEXT NULL");
+  await ensureColumn("j12_planos", "preco_mensal", "DECIMAL(12,2) NULL");
+  await ensureColumn("j12_planos", "taxa_matricula", "DECIMAL(12,2) NULL");
+  await ensureColumn("j12_planos", "fidelidade_meses", "INT NULL");
+  await ensureColumn("j12_planos", "aulas_por_semana", "INT NULL");
+  await ensureColumn("j12_planos", "modalidades_json", "LONGTEXT NULL");
+  await ensureColumn("j12_planos", "tags_json", "LONGTEXT NULL");
+  await ensureColumn("j12_planos", "contrato_vinculado", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("j12_planos", "aceita_upgrade", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("j12_planos", "destaque_comercial", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureIndex("j12_planos", "idx_j12_planos_nome", "INDEX `idx_j12_planos_nome` (`nome`)");
+  await ensureIndex(
+    "j12_planos",
+    "idx_j12_planos_status",
+    "INDEX `idx_j12_planos_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_modalidades (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      nome VARCHAR(191) NOT NULL,
+      descricao TEXT NULL,
+      destaque VARCHAR(191) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn("j12_modalidades", "descricao", "TEXT NULL");
+  await ensureColumn("j12_modalidades", "destaque", "VARCHAR(191) NULL");
+  await ensureIndex(
+    "j12_modalidades",
+    "idx_j12_modalidades_nome",
+    "INDEX `idx_j12_modalidades_nome` (`nome`)",
+  );
+  await ensureIndex(
+    "j12_modalidades",
+    "idx_j12_modalidades_status",
+    "INDEX `idx_j12_modalidades_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_unidades (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      nome VARCHAR(191) NOT NULL,
+      endereco VARCHAR(255) NULL,
+      cidade VARCHAR(191) NULL,
+      estado VARCHAR(50) NULL,
+      telefone VARCHAR(50) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn("j12_unidades", "telefone", "VARCHAR(50) NULL");
+  await ensureIndex(
+    "j12_unidades",
+    "idx_j12_unidades_nome",
+    "INDEX `idx_j12_unidades_nome` (`nome`)",
+  );
+  await ensureIndex(
+    "j12_unidades",
+    "idx_j12_unidades_status",
+    "INDEX `idx_j12_unidades_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_responsaveis (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      nome VARCHAR(191) NOT NULL,
+      cpf VARCHAR(20) NULL,
+      telefone VARCHAR(50) NULL,
+      email VARCHAR(191) NULL,
+      endereco VARCHAR(255) NULL,
+      rg VARCHAR(30) NULL,
+      parentesco VARCHAR(100) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn("j12_responsaveis", "rg", "VARCHAR(30) NULL");
+  await ensureColumn("j12_responsaveis", "parentesco", "VARCHAR(100) NULL");
+  await ensureIndex(
+    "j12_responsaveis",
+    "idx_j12_responsaveis_nome",
+    "INDEX `idx_j12_responsaveis_nome` (`nome`)",
+  );
+  await ensureIndex(
+    "j12_responsaveis",
+    "idx_j12_responsaveis_cpf",
+    "INDEX `idx_j12_responsaveis_cpf` (`cpf`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_professores (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      nome VARCHAR(191) NOT NULL,
+      telefone VARCHAR(50) NULL,
+      email VARCHAR(191) NULL,
+      valor_hora DECIMAL(12,2) NULL,
+      cpf VARCHAR(20) NULL,
+      cref VARCHAR(50) NULL,
+      modalidades_json LONGTEXT NULL,
+      unidades_json LONGTEXT NULL,
+      turmas_json LONGTEXT NULL,
+      jornada_professor VARCHAR(191) NULL,
+      tipo_contrato VARCHAR(100) NULL,
+      valor_contrato DECIMAL(12,2) NULL,
+      forma_pagamento_professor VARCHAR(50) NULL,
+      data_inicio_contrato DATE NULL,
+      observacoes_contrato TEXT NULL,
+      contrato_json LONGTEXT NULL,
+      historico_contratos_json LONGTEXT NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn("j12_professores", "cpf", "VARCHAR(20) NULL");
+  await ensureColumn("j12_professores", "cref", "VARCHAR(50) NULL");
+  await ensureColumn("j12_professores", "modalidades_json", "LONGTEXT NULL");
+  await ensureColumn("j12_professores", "unidades_json", "LONGTEXT NULL");
+  await ensureColumn("j12_professores", "turmas_json", "LONGTEXT NULL");
+  await ensureColumn("j12_professores", "jornada_professor", "VARCHAR(191) NULL");
+  await ensureColumn("j12_professores", "tipo_contrato", "VARCHAR(100) NULL");
+  await ensureColumn("j12_professores", "valor_contrato", "DECIMAL(12,2) NULL");
+  await ensureColumn("j12_professores", "forma_pagamento_professor", "VARCHAR(50) NULL");
+  await ensureColumn("j12_professores", "data_inicio_contrato", "DATE NULL");
+  await ensureColumn("j12_professores", "observacoes_contrato", "TEXT NULL");
+  await ensureColumn("j12_professores", "contrato_json", "LONGTEXT NULL");
+  await ensureColumn("j12_professores", "historico_contratos_json", "LONGTEXT NULL");
+  await ensureIndex(
+    "j12_professores",
+    "idx_j12_professores_nome",
+    "INDEX `idx_j12_professores_nome` (`nome`)",
+  );
+  await ensureIndex(
+    "j12_professores",
+    "idx_j12_professores_status",
+    "INDEX `idx_j12_professores_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_turmas (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      nome VARCHAR(191) NOT NULL,
+      modalidade VARCHAR(191) NULL,
+      unidade VARCHAR(191) NULL,
+      professor_id BIGINT NULL,
+      professor_nome VARCHAR(191) NULL,
+      modalidade_id BIGINT NULL,
+      unidade_id BIGINT NULL,
+      dias_semana VARCHAR(191) NULL,
+      dias_semana_json LONGTEXT NULL,
+      horario VARCHAR(50) NULL,
+      horario_inicio VARCHAR(20) NULL,
+      horario_fim VARCHAR(20) NULL,
+      capacidade INT NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'ativa',
+      aluno_ids_json LONGTEXT NULL,
+      presencas_json LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn("j12_turmas", "professor_nome", "VARCHAR(191) NULL");
+  await ensureColumn("j12_turmas", "modalidade_id", "INT NULL");
+  await ensureColumn("j12_turmas", "unidade_id", "INT NULL");
+  await ensureColumn("j12_turmas", "dias_semana_json", "LONGTEXT NULL");
+  await ensureColumn("j12_turmas", "horario_inicio", "VARCHAR(20) NULL");
+  await ensureColumn("j12_turmas", "horario_fim", "VARCHAR(20) NULL");
+  await ensureColumn("j12_turmas", "aluno_ids_json", "LONGTEXT NULL");
+  await ensureColumn("j12_turmas", "presencas_json", "LONGTEXT NULL");
+  await ensureIndex("j12_turmas", "idx_j12_turmas_nome", "INDEX `idx_j12_turmas_nome` (`nome`)");
+  await ensureIndex(
+    "j12_turmas",
+    "idx_j12_turmas_status",
+    "INDEX `idx_j12_turmas_status` (`status`)",
+  );
+  await ensureIndex(
+    "j12_turmas",
+    "idx_j12_turmas_professor_id",
+    "INDEX `idx_j12_turmas_professor_id` (`professor_id`)",
+  );
 
   await query(`
     CREATE TABLE IF NOT EXISTS j12_alunos_responsaveis (
@@ -955,6 +1234,173 @@ async function ensureSchema() {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS j12_financeiro_cobrancas (
+      id VARCHAR(64) PRIMARY KEY,
+      aluno_id VARCHAR(64) NOT NULL,
+      numero_matricula VARCHAR(50) NULL,
+      nome_aluno VARCHAR(191) NOT NULL,
+      competencia VARCHAR(7) NOT NULL,
+      descricao VARCHAR(191) NOT NULL,
+      tipo VARCHAR(50) NOT NULL DEFAULT 'mensalidade',
+      valor DECIMAL(10,2) NOT NULL,
+      vencimento DATE NOT NULL,
+      status ENUM('pendente', 'pago', 'atrasado', 'cancelado') NOT NULL DEFAULT 'pendente',
+      origem VARCHAR(50) NOT NULL DEFAULT 'automatico',
+      periodicidade VARCHAR(30) NULL,
+      plano_id VARCHAR(64) NULL,
+      plano_nome VARCHAR(191) NULL,
+      modalidade VARCHAR(191) NULL,
+      turma VARCHAR(191) NULL,
+      unidade VARCHAR(191) NULL,
+      responsavel_financeiro VARCHAR(191) NULL,
+      responsavel_cpf VARCHAR(20) NULL,
+      telefone_whatsapp VARCHAR(50) NULL,
+      email VARCHAR(191) NULL,
+      observacao TEXT NULL,
+      pago_em DATE NULL,
+      forma_pagamento VARCHAR(50) NULL,
+      data_geracao DATE NULL,
+      data_pagamento DATE NULL,
+      valor_original DECIMAL(10,2) NULL,
+      desconto_valor DECIMAL(10,2) NULL,
+      desconto_percentual DECIMAL(10,2) NULL,
+      bolsa_valor DECIMAL(10,2) NULL,
+      bolsa_percentual DECIMAL(10,2) NULL,
+      multa_percentual DECIMAL(10,2) NULL,
+      juros_dia_percentual DECIMAL(10,2) NULL,
+      valor_final DECIMAL(10,2) NULL,
+      tipo_cobranca VARCHAR(30) NOT NULL DEFAULT 'recorrente',
+      ativo TINYINT(1) NOT NULL DEFAULT 1,
+      alterado_em DATETIME NULL,
+      alterado_por VARCHAR(191) NULL,
+      cancelamento_motivo TEXT NULL,
+      desconto_motivo TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureColumn(
+    "j12_financeiro_cobrancas",
+    "tipo",
+    "VARCHAR(50) NOT NULL DEFAULT 'mensalidade'",
+  );
+  await ensureIndex(
+    "j12_financeiro_cobrancas",
+    "idx_j12_financeiro_aluno",
+    "INDEX `idx_j12_financeiro_aluno` (`aluno_id`)",
+  );
+  await ensureIndex(
+    "j12_financeiro_cobrancas",
+    "idx_j12_financeiro_competencia",
+    "INDEX `idx_j12_financeiro_competencia` (`competencia`)",
+  );
+  await ensureIndex(
+    "j12_financeiro_cobrancas",
+    "idx_j12_financeiro_status",
+    "INDEX `idx_j12_financeiro_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_mensalidades (
+      id VARCHAR(64) PRIMARY KEY,
+      cobranca_id VARCHAR(64) NOT NULL,
+      aluno_id VARCHAR(64) NOT NULL,
+      plano_id VARCHAR(64) NULL,
+      turma VARCHAR(191) NULL,
+      referencia VARCHAR(7) NOT NULL,
+      valor DECIMAL(10,2) NOT NULL,
+      data_vencimento DATE NOT NULL,
+      data_pagamento DATE NULL,
+      forma_pagamento VARCHAR(50) NULL,
+      status ENUM('pendente', 'pago', 'atrasado', 'cancelado') NOT NULL DEFAULT 'pendente',
+      observacao TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureForeignKeyDropped("j12_mensalidades", "j12_mensalidades_ibfk_1");
+  await ensureForeignKeyDropped("j12_mensalidades", "j12_mensalidades_ibfk_2");
+  await ensureColumn("j12_mensalidades", "cobranca_id", "VARCHAR(64) NOT NULL");
+  await ensureColumn("j12_mensalidades", "aluno_id", "VARCHAR(64) NOT NULL");
+  await ensureColumn("j12_mensalidades", "plano_id", "VARCHAR(64) NULL");
+  await ensureColumn("j12_mensalidades", "turma", "VARCHAR(191) NULL");
+  await ensureColumn("j12_mensalidades", "referencia", "VARCHAR(7) NOT NULL");
+  await ensureColumn("j12_mensalidades", "valor", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+  await ensureColumn("j12_mensalidades", "data_vencimento", "DATE NOT NULL");
+  await ensureColumn("j12_mensalidades", "data_pagamento", "DATE NULL");
+  await ensureColumn("j12_mensalidades", "forma_pagamento", "VARCHAR(50) NULL");
+  await ensureColumn(
+    "j12_mensalidades",
+    "status",
+    "ENUM('pendente', 'pago', 'atrasado', 'cancelado') NOT NULL DEFAULT 'pendente'",
+  );
+  await ensureColumn("j12_mensalidades", "observacao", "TEXT NULL");
+  await ensureIndex(
+    "j12_mensalidades",
+    "idx_j12_mensalidades_cobranca",
+    "UNIQUE INDEX `idx_j12_mensalidades_cobranca` (`cobranca_id`)",
+  );
+  await ensureIndex(
+    "j12_mensalidades",
+    "idx_j12_mensalidades_aluno",
+    "INDEX `idx_j12_mensalidades_aluno` (`aluno_id`)",
+  );
+  await ensureIndex(
+    "j12_mensalidades",
+    "idx_j12_mensalidades_referencia",
+    "INDEX `idx_j12_mensalidades_referencia` (`referencia`)",
+  );
+  await ensureIndex(
+    "j12_mensalidades",
+    "idx_j12_mensalidades_status",
+    "INDEX `idx_j12_mensalidades_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_pagamentos (
+      id VARCHAR(64) PRIMARY KEY,
+      mensalidade_id VARCHAR(64) NOT NULL,
+      cobranca_id VARCHAR(64) NOT NULL,
+      aluno_id VARCHAR(64) NOT NULL,
+      valor DECIMAL(10,2) NOT NULL,
+      forma_pagamento VARCHAR(50) NULL,
+      data_pagamento DATE NOT NULL,
+      observacao TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureForeignKeyDropped("j12_pagamentos", "j12_pagamentos_ibfk_1");
+  await ensureForeignKeyDropped("j12_pagamentos", "j12_pagamentos_ibfk_2");
+  await ensureColumn("j12_pagamentos", "mensalidade_id", "VARCHAR(64) NOT NULL");
+  await ensureColumn("j12_pagamentos", "cobranca_id", "VARCHAR(64) NOT NULL");
+  await ensureColumn("j12_pagamentos", "aluno_id", "VARCHAR(64) NOT NULL");
+  await ensureColumn("j12_pagamentos", "valor", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+  await ensureColumn("j12_pagamentos", "forma_pagamento", "VARCHAR(50) NULL");
+  await ensureColumn("j12_pagamentos", "data_pagamento", "DATE NOT NULL");
+  await ensureColumn("j12_pagamentos", "observacao", "TEXT NULL");
+  await ensureIndex(
+    "j12_pagamentos",
+    "idx_j12_pagamentos_mensalidade",
+    "UNIQUE INDEX `idx_j12_pagamentos_mensalidade` (`mensalidade_id`)",
+  );
+  await ensureIndex(
+    "j12_pagamentos",
+    "idx_j12_pagamentos_cobranca",
+    "UNIQUE INDEX `idx_j12_pagamentos_cobranca` (`cobranca_id`)",
+  );
+  await ensureIndex(
+    "j12_pagamentos",
+    "idx_j12_pagamentos_aluno",
+    "INDEX `idx_j12_pagamentos_aluno` (`aluno_id`)",
+  );
+  await ensureIndex(
+    "j12_pagamentos",
+    "idx_j12_pagamentos_data",
+    "INDEX `idx_j12_pagamentos_data` (`data_pagamento`)",
+  );
+
+  await query(`
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(191) NOT NULL,
@@ -974,15 +1420,18 @@ async function ensureSchema() {
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+  await ensureColumn("users", "aluno_id", "VARCHAR(64) NULL");
+  await ensureColumn("users", "professor_id", "VARCHAR(64) NULL");
+  await ensureColumn("users", "responsavel_id", "VARCHAR(64) NULL");
+  await ensureColumn("users", "linked_aluno_id", "VARCHAR(64) NULL");
+  await ensureColumn("users", "class_scope_json", "LONGTEXT NULL");
+  await ensureColumn("users", "phone_whatsapp", "VARCHAR(50) NULL");
+  await ensureColumn("users", "status", "VARCHAR(30) NOT NULL DEFAULT 'ativo'");
   await ensureIndex("users", "uniq_users_email", "UNIQUE INDEX `uniq_users_email` (`email`)");
   await ensureIndex("users", "uniq_users_login", "UNIQUE INDEX `uniq_users_login` (`login`)");
   await ensureIndex("users", "idx_users_role", "INDEX `idx_users_role` (`role`)");
   await ensureIndex("users", "idx_users_aluno", "INDEX `idx_users_aluno` (`aluno_id`)");
-  await ensureIndex(
-    "users",
-    "idx_users_professor",
-    "INDEX `idx_users_professor` (`professor_id`)",
-  );
+  await ensureIndex("users", "idx_users_professor", "INDEX `idx_users_professor` (`professor_id`)");
   await ensureIndex(
     "users",
     "idx_users_responsavel",
@@ -1064,6 +1513,56 @@ async function ensureSchema() {
       INDEX idx_student_notifications_created (created_at)
     )
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS j12_collection_snapshots (
+      collection_name VARCHAR(80) PRIMARY KEY,
+      data_json LONGTEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+}
+
+async function getCollectionSnapshot(collectionName) {
+  const rows = await query(
+    `
+      SELECT collection_name, data_json, updated_at
+      FROM j12_collection_snapshots
+      WHERE collection_name = ?
+      LIMIT 1
+    `,
+    [text(collectionName, 80)],
+  );
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+
+  return {
+    name: String(rows[0].collection_name),
+    data: safeJsonParse(rows[0].data_json, null),
+    updatedAt: rows[0].updated_at,
+  };
+}
+
+async function upsertCollectionSnapshot(collectionName, data) {
+  const name = text(collectionName, 80);
+  const payload = stringifyJson(data);
+
+  await query(
+    `
+      INSERT INTO j12_collection_snapshots (collection_name, data_json)
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE
+        data_json = VALUES(data_json),
+        updated_at = CURRENT_TIMESTAMP
+    `,
+    [name, payload],
+  );
+
+  const snapshot = await getCollectionSnapshot(name);
+  return snapshot ?? { name, data, updatedAt: null };
 }
 
 async function syncJ12TablesFromLegacy() {
@@ -1100,6 +1599,138 @@ async function syncJ12TablesFromLegacy() {
   );
 
   return { synced: legacyTotal, skipped: false, reason: null };
+}
+
+async function syncJ12FinanceFromLegacy() {
+  const hasLegacyTable = await tableExists("financeiro");
+  const hasJ12Table = await tableExists("j12_financeiro_cobrancas");
+
+  if (!hasLegacyTable || !hasJ12Table) {
+    return { synced: 0, skipped: true, reason: "missing-table" };
+  }
+
+  const j12CountRows = await query("SELECT COUNT(*) AS total FROM j12_financeiro_cobrancas");
+  const legacyCountRows = await query("SELECT COUNT(*) AS total FROM financeiro");
+  const j12Total = Number(j12CountRows?.[0]?.total || 0);
+  const legacyTotal = Number(legacyCountRows?.[0]?.total || 0);
+
+  if (j12Total > 0) {
+    return { synced: 0, skipped: true, reason: "already-synced" };
+  }
+
+  if (legacyTotal === 0) {
+    return { synced: 0, skipped: true, reason: "legacy-empty" };
+  }
+
+  const result = await query(
+    `
+      INSERT INTO j12_financeiro_cobrancas (
+        id,
+        aluno_id,
+        numero_matricula,
+        nome_aluno,
+        competencia,
+        descricao,
+        tipo,
+        valor,
+        vencimento,
+        status,
+        origem,
+        periodicidade,
+        plano_id,
+        plano_nome,
+        modalidade,
+        turma,
+        unidade,
+        responsavel_financeiro,
+        responsavel_cpf,
+        telefone_whatsapp,
+        email,
+        observacao,
+        pago_em,
+        forma_pagamento,
+        data_geracao,
+        data_pagamento,
+        valor_original,
+        desconto_valor,
+        desconto_percentual,
+        bolsa_valor,
+        bolsa_percentual,
+        multa_percentual,
+        juros_dia_percentual,
+        valor_final,
+        tipo_cobranca,
+        ativo,
+        alterado_em,
+        alterado_por,
+        cancelamento_motivo,
+        desconto_motivo,
+        created_at,
+        updated_at
+      )
+      SELECT
+        financeiro.id,
+        financeiro.aluno_id,
+        alunos.numero_matricula,
+        COALESCE(financeiro.aluno_nome, alunos.nome, 'Aluno'),
+        CASE
+          WHEN financeiro.competencia REGEXP '^[0-9]{4}-[0-9]{2}$'
+            THEN financeiro.competencia
+          WHEN financeiro.competencia REGEXP '^[0-9]{4}-[0-9]{2}:'
+            THEN SUBSTRING(financeiro.competencia, 1, 7)
+          ELSE DATE_FORMAT(financeiro.vencimento, '%Y-%m')
+        END,
+        LEFT(financeiro.descricao, 191),
+        COALESCE(financeiro.tipo, 'mensalidade'),
+        COALESCE(financeiro.valor_final, financeiro.valor, 0),
+        financeiro.vencimento,
+        CASE
+          WHEN LOWER(COALESCE(financeiro.status, 'pendente')) = 'pago' THEN 'pago'
+          WHEN LOWER(COALESCE(financeiro.status, 'pendente')) IN ('cancelada', 'cancelado') THEN 'cancelado'
+          WHEN LOWER(COALESCE(financeiro.status, 'pendente')) IN ('vencido', 'atrasado') THEN 'atrasado'
+          ELSE 'pendente'
+        END,
+        CASE
+          WHEN LOWER(COALESCE(financeiro.origem, 'manual')) = 'automatica' THEN 'automatico'
+          ELSE COALESCE(financeiro.origem, 'manual')
+        END,
+        financeiro.periodicidade,
+        financeiro.plano_id,
+        financeiro.plano_nome,
+        financeiro.modalidade,
+        financeiro.turma,
+        financeiro.unidade,
+        financeiro.responsavel_financeiro,
+        financeiro.responsavel_cpf,
+        financeiro.telefone_whatsapp,
+        financeiro.email,
+        financeiro.observacao,
+        financeiro.pago_em,
+        financeiro.forma_pagamento,
+        financeiro.data_geracao,
+        financeiro.data_pagamento,
+        financeiro.valor_original,
+        financeiro.desconto_valor,
+        financeiro.desconto_percentual,
+        financeiro.bolsa_valor,
+        financeiro.bolsa_percentual,
+        financeiro.multa_percentual,
+        financeiro.juros_dia_percentual,
+        financeiro.valor_final,
+        COALESCE(financeiro.tipo_cobranca, 'avulsa'),
+        COALESCE(financeiro.ativo, 1),
+        financeiro.alterado_em,
+        financeiro.alterado_por,
+        financeiro.cancelamento_motivo,
+        financeiro.desconto_motivo,
+        financeiro.created_at,
+        financeiro.updated_at
+      FROM financeiro
+      LEFT JOIN alunos ON alunos.id = financeiro.aluno_id
+    `,
+  );
+
+  return { synced: Number(result?.affectedRows || legacyTotal), skipped: false, reason: null };
 }
 
 async function syncEnrollmentNumberRegistry() {
@@ -1149,9 +1780,7 @@ async function syncEnrollmentNumberRegistry() {
     }
   });
 
-  console.log(
-    `[mysql] Registro de matriculas sincronizado com ${registryEntries.size} numero(s).`,
-  );
+  console.log(`[mysql] Registro de matriculas sincronizado com ${registryEntries.size} numero(s).`);
 
   return { synced: registryEntries.size, skipped: false, reason: null };
 }
@@ -1165,8 +1794,11 @@ module.exports = {
   ensureSchema,
   testConnection,
   syncJ12TablesFromLegacy,
+  syncJ12FinanceFromLegacy,
   syncEnrollmentNumberRegistry,
   getNextEnrollmentNumberPreview,
   allocateEnrollmentNumber,
   upsertEnrollmentNumberRegistry,
+  getCollectionSnapshot,
+  upsertCollectionSnapshot,
 };

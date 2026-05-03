@@ -1,152 +1,97 @@
 const { canManageSystem, resolveScopedStudentId } = require("../../auth");
+const { deactivateStudentUsers, syncStudentUsers } = require("../../services/student-users");
 const {
-  parseJson,
+  deactivateResponsavelUsersByStudent,
+  syncResponsavelUsers,
+} = require("../../services/linked-users");
+const { generateMonthlyChargeForStudent } = require("../../services/student-finance");
+const {
+  createId,
   sanitizeIsoDate,
   sanitizeNullableString,
   sanitizeString,
   stringifyJson,
-  createId,
 } = require("../../routes/helpers");
 const {
+  allocateEnrollmentNumber,
   query,
   transaction,
-  tableExists,
   upsertEnrollmentNumberRegistry,
 } = require("../config/db");
 
-function uniqueValues(values) {
-  if (!Array.isArray(values)) return [];
-  return Array.from(
-    new Set(
-      values
-        .filter((value) => typeof value === "string")
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
-  );
-}
-
 function text(value, max = 65535) {
-  return String(value ?? "")
-    .trim()
-    .slice(0, max);
+  return sanitizeString(value, max);
 }
 
 function nullableText(value, max = 65535) {
-  const normalized = text(value, max);
-  return normalized || null;
+  return sanitizeNullableString(value, max);
 }
 
-function normalizeDocument(value) {
-  if (!value || typeof value !== "object") return null;
-
-  const candidate = value;
-  const name = text(candidate.name, 255);
-  if (!name) return null;
-
-  const size = Number(candidate.size ?? 0);
-
-  return {
-    name,
-    size: Number.isFinite(size) ? size : 0,
-    type: text(candidate.type, 191),
-    uploadedAt: nullableText(candidate.uploadedAt, 40),
-    expiresAt: nullableText(candidate.expiresAt, 10),
-  };
+function numeric(value, fallback = 0) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : fallback;
 }
 
-function buildEmptyMatricula() {
-  return {
-    dadosAluno: {
-      numeroMatricula: "",
-      nomeCompleto: "",
-      dataNascimento: "",
-      idade: "",
-      cpf: "",
-      rg: "",
-      sexo: "",
-      colegio: "",
-      periodoEscolar: "",
-    },
-    responsavel: {
-      nomeCompleto: "",
-      cpf: "",
-      rg: "",
-      whatsapp: "",
-      email: "",
-      parentesco: "",
-    },
-    endereco: {
-      cep: "",
-      rua: "",
-      numero: "",
-      complemento: "",
-      bairro: "",
-      cidade: "",
-      estado: "",
-    },
-    documentos: {
-      fotoPerfilAluno: null,
-      rgCpfAluno: null,
-      rgCpfResponsavel: null,
-      comprovanteEndereco: null,
-      atestadoMedico: null,
-    },
-    esportivas: {
-      modalidades: [],
-      unidades: [],
-      horarios: [],
-      turmas: [],
-      nivel: "",
-      treinouAntes: "",
-      caracteristica: "",
-      objetivo: "",
-    },
-    saude: {
-      restricaoMedica: "",
-      medicamentos: "",
-      alergias: "",
-      lesoes: "",
-      planoSaude: "",
-      observacoesImportantes: "",
-    },
-    estrategicas: {
-      comoConheceu: "",
-      indicacaoQuem: "",
-      observacoesGerais: "",
-    },
-  };
+function safeJsonParse(value, fallback) {
+  if (!value) return fallback;
+  if (typeof value === "object") return value ?? fallback;
+
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed == null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
 }
 
-function normalizeComparable(value) {
-  return String(value ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase();
+function uniqueValues(values) {
+  if (!Array.isArray(values)) return [];
+
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
 }
 
-function getProfessorScopedStudents(rows, user) {
-  const classScope = Array.isArray(user?.classScope) ? user.classScope : [];
-  const normalizedScope = new Set(
-    classScope.map((item) => normalizeComparable(item)).filter(Boolean),
-  );
-
-  if (normalizedScope.size === 0 && !user?.teacherId) {
-    return [];
+function normalizeArrayField(value) {
+  if (Array.isArray(value)) {
+    return uniqueValues(value);
   }
 
-  return rows.filter((row) => {
-    const turmaNames = [...(row.turmas ?? []), row.turma]
-      .map((item) => normalizeComparable(item))
-      .filter(Boolean);
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return [];
 
-    return normalizedScope.size > 0 && turmaNames.some((item) => normalizedScope.has(item));
-  });
+    if (
+      (normalized.startsWith("[") && normalized.endsWith("]")) ||
+      (normalized.startsWith("{") && normalized.endsWith("}"))
+    ) {
+      try {
+        const parsed = JSON.parse(normalized);
+        return Array.isArray(parsed) ? uniqueValues(parsed) : [];
+      } catch {
+        return uniqueValues(normalized.split(/[;,|]/g));
+      }
+    }
+
+    return uniqueValues(normalized.split(/[;,|]/g));
+  }
+
+  return value == null ? [] : [String(value)];
 }
 
-function normalizeAlunoPayload(payload, existingId) {
-  const nome = sanitizeString(payload.nome, 191);
+function normalizeStudentStatus(value) {
+  const normalized = text(value, 30).toLowerCase();
+  if (normalized === "inativo") return "inativo";
+  if (normalized === "experimental") return "experimental";
+  return "ativo";
+}
+
+function ensureAlunoName(payload = {}) {
+  const nome = text(
+    payload.nome ||
+      payload.nome_completo ||
+      payload.nomeCompleto ||
+      payload.matricula?.dadosAluno?.nomeCompleto,
+    191,
+  );
 
   if (!nome) {
     const error = new Error("Nome do aluno e obrigatorio.");
@@ -154,296 +99,367 @@ function normalizeAlunoPayload(payload, existingId) {
     throw error;
   }
 
-  return {
-    id: sanitizeString(existingId || payload.id, 64) || createId("a"),
-    nome,
-    email: sanitizeNullableString(payload.email, 191),
-    telefone: sanitizeNullableString(payload.telefone, 50),
-    dataNascimento: sanitizeIsoDate(payload.dataNascimento),
-    responsavel: sanitizeNullableString(payload.responsavel, 191),
-    telefoneResponsavel: sanitizeNullableString(payload.telefoneResponsavel, 50),
-    modalidade: sanitizeNullableString(payload.modalidade, 191),
-    unidades: uniqueValues(payload.unidades),
-    turmas: uniqueValues(payload.turmas),
-    planos: uniqueValues(payload.planos),
-    horarios: uniqueValues(payload.horarios),
-    turma: sanitizeNullableString(payload.turma, 191),
-    plano: sanitizeNullableString(payload.plano, 191),
-    status: sanitizeString(payload.status || "ativo", 50) || "ativo",
-    matriculaEm: sanitizeIsoDate(payload.matriculaEm) || new Date().toISOString().slice(0, 10),
-    numeroMatricula: sanitizeNullableString(payload.numeroMatricula, 50),
-    cpf: sanitizeNullableString(payload.cpf, 20),
-    rg: sanitizeNullableString(payload.rg, 30),
-    sexo: sanitizeNullableString(payload.sexo, 30),
-    matricula: payload.matricula ?? null,
-    financeiro: payload.financeiro ?? null,
-    origemCadastro: sanitizeNullableString(payload.origemCadastro, 100),
-    matriculaPublicaProtocolo: sanitizeNullableString(payload.matriculaPublicaProtocolo, 100),
-  };
+  return nome;
 }
 
-function buildMatriculaSnapshotFromAluno(aluno) {
-  const fallback = buildEmptyMatricula();
-  const raw = aluno?.matricula ?? {};
+function buildMatriculaSnapshot(payload = {}) {
+  const matricula = safeJsonParse(
+    payload.matricula ?? payload.matricula_snapshot_json ?? payload.matricula_json,
+    {},
+  );
+  const dadosAluno = matricula?.dadosAluno ?? {};
+  const responsavel = matricula?.responsavel ?? {};
+  const endereco = matricula?.endereco ?? {};
+  const documentos = matricula?.documentos ?? {};
+  const esportivas = matricula?.esportivas ?? {};
+  const saude = matricula?.saude ?? {};
+  const estrategicas = matricula?.estrategicas ?? {};
+
+  const modalidades = uniqueValues([
+    ...normalizeArrayField(esportivas.modalidades),
+    ...normalizeArrayField(payload.modalidades ?? payload.modalidades_json),
+    payload.modalidade,
+    payload.modalidade_principal,
+  ]);
+  const turmas = uniqueValues([
+    ...normalizeArrayField(esportivas.turmas),
+    ...normalizeArrayField(payload.turmas ?? payload.turmas_json),
+    payload.turma,
+    payload.turma_principal,
+  ]);
+  const unidades = uniqueValues([
+    ...normalizeArrayField(esportivas.unidades),
+    ...normalizeArrayField(payload.unidades ?? payload.unidades_json),
+    payload.unidade,
+    payload.unidade_principal,
+  ]);
+  const horarios = uniqueValues([
+    ...normalizeArrayField(esportivas.horarios),
+    ...normalizeArrayField(payload.horarios ?? payload.horarios_json),
+    ...normalizeArrayField(payload.dias_horarios ?? payload.dias_horarios_json),
+  ]);
 
   return {
     dadosAluno: {
-      ...fallback.dadosAluno,
-      numeroMatricula: text(raw?.dadosAluno?.numeroMatricula || aluno.numeroMatricula, 50),
-      nomeCompleto: text(raw?.dadosAluno?.nomeCompleto || aluno.nome, 191),
-      dataNascimento: text(raw?.dadosAluno?.dataNascimento || aluno.dataNascimento, 10),
-      idade: text(raw?.dadosAluno?.idade, 10),
-      cpf: text(raw?.dadosAluno?.cpf || aluno.cpf, 20),
-      rg: text(raw?.dadosAluno?.rg || aluno.rg, 30),
-      sexo: text(raw?.dadosAluno?.sexo || aluno.sexo, 30),
-      colegio: text(raw?.dadosAluno?.colegio, 191),
-      periodoEscolar: text(raw?.dadosAluno?.periodoEscolar, 50),
+      numeroMatricula: text(
+        payload.numeroMatricula ?? payload.numero_matricula ?? dadosAluno.numeroMatricula,
+        50,
+      ),
+      nomeCompleto:
+        text(
+          payload.nome ?? payload.nome_completo ?? payload.nomeCompleto ?? dadosAluno.nomeCompleto,
+          191,
+        ) || ensureAlunoName(payload),
+      dataNascimento:
+        sanitizeIsoDate(
+          payload.dataNascimento ?? payload.data_nascimento ?? dadosAluno.dataNascimento,
+        ) || "",
+      idade: text(payload.idade ?? dadosAluno.idade, 10),
+      cpf: text(payload.cpf ?? dadosAluno.cpf, 20),
+      rg: text(payload.rg ?? dadosAluno.rg, 30),
+      sexo: text(payload.sexo ?? dadosAluno.sexo, 30),
+      colegio: text(payload.colegio ?? dadosAluno.colegio, 191),
+      periodoEscolar: text(
+        payload.periodoEscolar ?? payload.periodo_escolar ?? dadosAluno.periodoEscolar,
+        50,
+      ),
     },
     responsavel: {
-      ...fallback.responsavel,
-      nomeCompleto: text(raw?.responsavel?.nomeCompleto || aluno.responsavel, 191),
-      cpf: text(raw?.responsavel?.cpf, 20),
-      rg: text(raw?.responsavel?.rg, 30),
-      whatsapp: text(raw?.responsavel?.whatsapp || aluno.telefoneResponsavel, 50),
-      email: text(raw?.responsavel?.email || aluno.email, 191),
-      parentesco: text(raw?.responsavel?.parentesco, 100),
+      nomeCompleto: text(
+        payload.responsavel ?? payload.responsavel_nome ?? responsavel.nomeCompleto,
+        191,
+      ),
+      cpf: text(payload.responsavelCpf ?? payload.responsavel_cpf ?? responsavel.cpf, 20),
+      rg: text(payload.responsavelRg ?? responsavel.rg, 30),
+      whatsapp: text(
+        payload.telefoneResponsavel ??
+          payload.telefone_responsavel ??
+          payload.responsavel_whatsapp ??
+          responsavel.whatsapp,
+        50,
+      ),
+      email: text(
+        payload.responsavelEmail ??
+          payload.responsavel_email ??
+          responsavel.email ??
+          payload.email ??
+          payload.email_contato,
+        191,
+      ),
+      parentesco: text(payload.parentesco ?? responsavel.parentesco, 100),
     },
     endereco: {
-      ...fallback.endereco,
-      cep: text(raw?.endereco?.cep, 20),
-      rua: text(raw?.endereco?.rua, 191),
-      numero: text(raw?.endereco?.numero, 30),
-      complemento: text(raw?.endereco?.complemento, 191),
-      bairro: text(raw?.endereco?.bairro, 191),
-      cidade: text(raw?.endereco?.cidade, 191),
-      estado: text(raw?.endereco?.estado, 50),
+      cep: text(payload.cep ?? endereco.cep, 20),
+      rua: text(payload.rua ?? endereco.rua, 191),
+      numero: text(payload.numero ?? endereco.numero, 30),
+      complemento: text(payload.complemento ?? endereco.complemento, 191),
+      bairro: text(payload.bairro ?? endereco.bairro, 191),
+      cidade: text(payload.cidade ?? endereco.cidade, 191),
+      estado: text(payload.estado ?? endereco.estado, 50),
     },
     documentos: {
-      fotoPerfilAluno: normalizeDocument(raw?.documentos?.fotoPerfilAluno),
-      rgCpfAluno: normalizeDocument(raw?.documentos?.rgCpfAluno),
-      rgCpfResponsavel: normalizeDocument(raw?.documentos?.rgCpfResponsavel),
-      comprovanteEndereco: normalizeDocument(raw?.documentos?.comprovanteEndereco),
-      atestadoMedico: normalizeDocument(raw?.documentos?.atestadoMedico),
-    },
-    esportivas: {
-      ...fallback.esportivas,
-      modalidades: uniqueValues(
-        raw?.esportivas?.modalidades?.length ? raw.esportivas.modalidades : [aluno.modalidade],
-      ),
-      unidades: uniqueValues(
-        raw?.esportivas?.unidades?.length ? raw.esportivas.unidades : aluno.unidades,
-      ),
-      horarios: uniqueValues(
-        raw?.esportivas?.horarios?.length ? raw.esportivas.horarios : aluno.horarios,
-      ),
-      turmas: uniqueValues(raw?.esportivas?.turmas?.length ? raw.esportivas.turmas : aluno.turmas),
-      nivel: text(raw?.esportivas?.nivel, 100),
-      treinouAntes: text(raw?.esportivas?.treinouAntes, 100),
-      caracteristica: text(raw?.esportivas?.caracteristica, 191),
-      objetivo: text(raw?.esportivas?.objetivo, 191),
-    },
-    saude: {
-      ...fallback.saude,
-      restricaoMedica: text(raw?.saude?.restricaoMedica, 191),
-      medicamentos: text(raw?.saude?.medicamentos, 191),
-      alergias: text(raw?.saude?.alergias, 191),
-      lesoes: text(raw?.saude?.lesoes, 191),
-      planoSaude: text(raw?.saude?.planoSaude, 191),
-      observacoesImportantes: text(raw?.saude?.observacoesImportantes, 1000),
-    },
-    estrategicas: {
-      ...fallback.estrategicas,
-      comoConheceu: text(raw?.estrategicas?.comoConheceu || aluno.origemCadastro, 191),
-      indicacaoQuem: text(raw?.estrategicas?.indicacaoQuem, 191),
-      observacoesGerais: text(raw?.estrategicas?.observacoesGerais, 1000),
-    },
-  };
-}
-
-function mapJoinedRowsToAluno(base, related) {
-  const responsavel = related.responsaveis.get(base.id);
-  const endereco = related.enderecos.get(base.id);
-  const documentos = related.documentos.get(base.id);
-  const esportes = related.esportes.get(base.id);
-  const saude = related.saude.get(base.id);
-  const estrategico = related.estrategico.get(base.id);
-  const planos = uniqueValues(parseJson(base.planos_json, base.plano_principal ? [base.plano_principal] : []));
-  const modalidades = uniqueValues(parseJson(esportes?.modalidades_json, base.modalidade_principal ? [base.modalidade_principal] : []));
-  const unidades = uniqueValues(parseJson(esportes?.unidades_json, []));
-  const horarios = uniqueValues(parseJson(esportes?.horarios_json, []));
-  const turmas = uniqueValues(parseJson(esportes?.turmas_json, base.turma_principal ? [base.turma_principal] : []));
-
-  const matricula = {
-    dadosAluno: {
-      numeroMatricula: base.numero_matricula ?? "",
-      nomeCompleto: base.nome_completo ?? "",
-      dataNascimento: base.data_nascimento ?? "",
-      idade: base.idade ?? "",
-      cpf: base.cpf ?? "",
-      rg: base.rg ?? "",
-      sexo: base.sexo ?? "",
-      colegio: base.colegio ?? "",
-      periodoEscolar: base.periodo_escolar ?? "",
-    },
-    responsavel: {
-      nomeCompleto: responsavel?.nome_completo ?? "",
-      cpf: responsavel?.cpf ?? "",
-      rg: responsavel?.rg ?? "",
-      whatsapp: responsavel?.whatsapp ?? "",
-      email: responsavel?.email ?? "",
-      parentesco: responsavel?.parentesco ?? "",
-    },
-    endereco: {
-      cep: endereco?.cep ?? "",
-      rua: endereco?.rua ?? "",
-      numero: endereco?.numero ?? "",
-      complemento: endereco?.complemento ?? "",
-      bairro: endereco?.bairro ?? "",
-      cidade: endereco?.cidade ?? "",
-      estado: endereco?.estado ?? "",
-    },
-    documentos: {
-      fotoPerfilAluno: parseJson(documentos?.foto_perfil_aluno_json, null),
-      rgCpfAluno: parseJson(documentos?.rg_cpf_aluno_json, null),
-      rgCpfResponsavel: parseJson(documentos?.rg_cpf_responsavel_json, null),
-      comprovanteEndereco: parseJson(documentos?.comprovante_endereco_json, null),
-      atestadoMedico: parseJson(documentos?.atestado_medico_json, null),
+      fotoPerfilAluno: documentos.fotoPerfilAluno ?? null,
+      rgCpfAluno: documentos.rgCpfAluno ?? null,
+      rgCpfResponsavel: documentos.rgCpfResponsavel ?? null,
+      comprovanteEndereco: documentos.comprovanteEndereco ?? null,
+      atestadoMedico: documentos.atestadoMedico ?? null,
     },
     esportivas: {
       modalidades,
       unidades,
       horarios,
       turmas,
-      nivel: esportes?.nivel ?? "",
-      treinouAntes: esportes?.treinou_antes ?? "",
-      caracteristica: esportes?.caracteristica ?? "",
-      objetivo: esportes?.objetivo ?? "",
+      nivel: text(payload.nivel ?? esportivas.nivel, 100),
+      treinouAntes: text(
+        payload.treinouAntes ?? payload.treinou_antes ?? esportivas.treinouAntes,
+        100,
+      ),
+      caracteristica: text(payload.caracteristica ?? esportivas.caracteristica, 191),
+      objetivo: text(payload.objetivo ?? esportivas.objetivo, 191),
     },
     saude: {
-      restricaoMedica: saude?.restricao_medica ?? "",
-      medicamentos: saude?.medicamentos ?? "",
-      alergias: saude?.alergias ?? "",
-      lesoes: saude?.lesoes ?? "",
-      planoSaude: saude?.plano_saude ?? "",
-      observacoesImportantes: saude?.observacoes_importantes ?? "",
+      restricaoMedica: text(
+        payload.restricaoMedica ?? payload.restricao_medica ?? saude.restricaoMedica,
+        191,
+      ),
+      medicamentos: text(payload.medicamentos ?? saude.medicamentos, 191),
+      alergias: text(payload.alergias ?? saude.alergias, 191),
+      lesoes: text(payload.lesoes ?? saude.lesoes, 191),
+      planoSaude: text(payload.planoSaude ?? payload.plano_saude ?? saude.planoSaude, 191),
+      observacoesImportantes: text(
+        payload.observacoesImportantes ??
+          payload.observacoes_importantes ??
+          saude.observacoesImportantes,
+        1000,
+      ),
     },
     estrategicas: {
-      comoConheceu: estrategico?.como_conheceu ?? "",
-      indicacaoQuem: estrategico?.indicacao_quem ?? "",
-      observacoesGerais: estrategico?.observacoes_gerais ?? "",
+      comoConheceu: text(
+        payload.comoConheceu ??
+          payload.como_conheceu ??
+          payload.origemCadastro ??
+          payload.origem_cadastro ??
+          estrategicas.comoConheceu,
+        191,
+      ),
+      indicacaoQuem: text(
+        payload.indicacaoQuem ?? payload.indicacao_quem ?? estrategicas.indicacaoQuem,
+        191,
+      ),
+      observacoesGerais: text(
+        payload.observacoesGerais ?? payload.observacoes_gerais ?? estrategicas.observacoesGerais,
+        1000,
+      ),
     },
-  };
-
-  return {
-    id: base.id,
-    nome: base.nome_completo ?? "",
-    email: base.email_contato ?? responsavel?.email ?? "",
-    telefone: base.telefone_contato ?? responsavel?.whatsapp ?? "",
-    dataNascimento: base.data_nascimento ?? "",
-    responsavel: responsavel?.nome_completo ?? "",
-    telefoneResponsavel: responsavel?.whatsapp ?? "",
-    modalidade: base.modalidade_principal ?? modalidades[0] ?? "",
-    unidades,
-    turmas,
-    planos,
-    horarios,
-    turma: base.turma_principal ?? turmas[0] ?? "",
-    plano: base.plano_principal ?? planos[0] ?? "",
-    status: base.status ?? "ativo",
-    matriculaEm: base.matricula_em ?? "",
-    numeroMatricula: base.numero_matricula ?? "",
-    cpf: base.cpf ?? "",
-    rg: base.rg ?? "",
-    sexo: base.sexo ?? "",
-    matricula,
-    financeiro: parseJson(base.financeiro_json, null),
-    origemCadastro: base.origem_cadastro ?? "",
-    matriculaPublicaProtocolo: base.matricula_publica_protocolo ?? "",
   };
 }
 
-async function loadStudentRows() {
-  const hasJ12Tables = await tableExists("j12_alunos");
+function normalizeAlunoPayload(payload = {}, existingId = null) {
+  const matricula = buildMatriculaSnapshot(payload);
 
-  if (hasJ12Tables) {
-    const baseRows = await query(
-      "SELECT * FROM j12_alunos ORDER BY updated_at DESC, nome_completo ASC",
+  return {
+    id: existingId || text(payload.id, 64) || createId("a"),
+    nome: ensureAlunoName(payload),
+    dataNascimento:
+      sanitizeIsoDate(
+        payload.dataNascimento ?? payload.data_nascimento ?? matricula.dadosAluno.dataNascimento,
+      ) || null,
+    idade: nullableText(payload.idade ?? matricula.dadosAluno.idade, 10),
+    cpf: nullableText(payload.cpf ?? matricula.dadosAluno.cpf, 20),
+    rg: nullableText(payload.rg ?? matricula.dadosAluno.rg, 30),
+    sexo: nullableText(payload.sexo ?? matricula.dadosAluno.sexo, 30),
+    colegio: nullableText(payload.colegio ?? matricula.dadosAluno.colegio, 191),
+    periodoEscolar: nullableText(
+      payload.periodoEscolar ?? payload.periodo_escolar ?? matricula.dadosAluno.periodoEscolar,
+      50,
+    ),
+    email: nullableText(payload.email ?? payload.email_contato ?? matricula.responsavel.email, 191),
+    telefone: nullableText(
+      payload.telefone ?? payload.telefone_contato ?? matricula.responsavel.whatsapp,
+      50,
+    ),
+    responsavel: nullableText(
+      payload.responsavel ?? payload.responsavel_nome ?? matricula.responsavel.nomeCompleto,
+      191,
+    ),
+    telefoneResponsavel: nullableText(
+      payload.telefoneResponsavel ??
+        payload.telefone_responsavel ??
+        payload.responsavel_whatsapp ??
+        matricula.responsavel.whatsapp,
+      50,
+    ),
+    modalidade: nullableText(
+      payload.modalidade ?? payload.modalidade_principal ?? matricula.esportivas.modalidades[0],
+      191,
+    ),
+    turma: nullableText(
+      payload.turma ?? payload.turma_principal ?? matricula.esportivas.turmas[0],
+      191,
+    ),
+    plano: nullableText(
+      payload.plano ?? payload.plano_principal ?? payload.planoNome ?? payload.plano_nome,
+      191,
+    ),
+    numeroMatricula: nullableText(
+      payload.numeroMatricula ?? payload.numero_matricula ?? matricula.dadosAluno.numeroMatricula,
+      50,
+    ),
+    status: normalizeStudentStatus(payload.status),
+    matriculaEm:
+      sanitizeIsoDate(payload.matriculaEm ?? payload.matricula_em ?? payload.created_at) ||
+      new Date().toISOString().slice(0, 10),
+    turmas: uniqueValues(matricula.esportivas.turmas),
+    unidades: uniqueValues(matricula.esportivas.unidades),
+    horarios: uniqueValues(matricula.esportivas.horarios),
+    planos: uniqueValues([
+      ...normalizeArrayField(payload.planos ?? payload.planos_json),
+      payload.plano,
+      payload.plano_principal,
+      payload.planoNome,
+      payload.plano_nome,
+    ]),
+    planoId: nullableText(payload.planoId ?? payload.plano_id, 64),
+    planoValor: numeric(payload.planoValor ?? payload.plano_valor, 0) || null,
+    unidade: nullableText(
+      payload.unidade ?? payload.unidade_principal ?? matricula.esportivas.unidades[0],
+      191,
+    ),
+    diasHorarios: uniqueValues([
+      ...normalizeArrayField(payload.diasHorarios),
+      ...normalizeArrayField(payload.dias_horarios),
+      ...normalizeArrayField(payload.dias_horarios_json),
+      ...matricula.esportivas.horarios,
+    ]),
+    origemCadastro: nullableText(payload.origemCadastro ?? payload.origem_cadastro, 100),
+    matriculaPublicaProtocolo: nullableText(
+      payload.matriculaPublicaProtocolo ?? payload.matricula_publica_protocolo,
+      100,
+    ),
+    matricula,
+    financeiro: safeJsonParse(payload.financeiro ?? payload.financeiro_json, null),
+  };
+}
+
+async function resolvePlanoForAluno(connection, aluno) {
+  const desiredPlanId = text(aluno.planoId, 64);
+  const desiredPlanName = text(aluno.plano, 191);
+
+  if (desiredPlanId) {
+    const [rows] = await connection.execute(
+      `
+        SELECT *
+        FROM j12_planos
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [desiredPlanId],
     );
 
-    if (Array.isArray(baseRows) && baseRows.length > 0) {
-      const [
-        responsavelRows,
-        enderecoRows,
-        documentoRows,
-        esporteRows,
-        saudeRows,
-        estrategicoRows,
-      ] = await Promise.all([
-        query("SELECT * FROM j12_alunos_responsaveis"),
-        query("SELECT * FROM j12_alunos_enderecos"),
-        query("SELECT * FROM j12_alunos_documentos"),
-        query("SELECT * FROM j12_alunos_esportes"),
-        query("SELECT * FROM j12_alunos_saude"),
-        query("SELECT * FROM j12_alunos_estrategico"),
-      ]);
-
-      const related = {
-        responsaveis: new Map((responsavelRows || []).map((row) => [row.aluno_id, row])),
-        enderecos: new Map((enderecoRows || []).map((row) => [row.aluno_id, row])),
-        documentos: new Map((documentoRows || []).map((row) => [row.aluno_id, row])),
-        esportes: new Map((esporteRows || []).map((row) => [row.aluno_id, row])),
-        saude: new Map((saudeRows || []).map((row) => [row.aluno_id, row])),
-        estrategico: new Map((estrategicoRows || []).map((row) => [row.aluno_id, row])),
-      };
-
-      return {
-        source: "j12_alunos",
-        rows: baseRows.map((row) => mapJoinedRowsToAluno(row, related)),
-      };
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0];
     }
   }
 
-  const legacyRows = await query("SELECT * FROM alunos ORDER BY updated_at DESC, nome ASC");
+  if (!desiredPlanName) return null;
+
+  const [rows] = await connection.execute(
+    `
+      SELECT *
+      FROM j12_planos
+      WHERE LOWER(nome) = LOWER(?)
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 1
+    `,
+    [desiredPlanName],
+  );
+
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+function buildFinanceiroConfig(aluno, plano, matricula) {
+  const current = safeJsonParse(aluno.financeiro, {});
+  const planName = text(current.planoNome ?? aluno.plano ?? plano?.nome, 191);
+  const planId = text(current.planoId ?? aluno.planoId ?? plano?.id, 64);
+  const valorPlano = numeric(
+    current.valorPlano ?? aluno.planoValor ?? plano?.preco_mensal ?? plano?.valor,
+    0,
+  );
+
   return {
-    source: "alunos",
-    rows: Array.isArray(legacyRows)
-      ? legacyRows.map((row) => ({
-          id: row.id,
-          nome: row.nome,
-          email: row.email ?? "",
-          telefone: row.telefone ?? "",
-          dataNascimento: row.data_nascimento ?? "",
-          responsavel: row.responsavel ?? "",
-          telefoneResponsavel: row.telefone_responsavel ?? "",
-          modalidade: row.modalidade ?? "",
-          unidades: parseJson(row.unidades_json, []),
-          turmas: parseJson(row.turmas_json, []),
-          planos: parseJson(row.planos_json, []),
-          horarios: parseJson(row.horarios_json, []),
-          turma: row.turma ?? "",
-          plano: row.plano ?? "",
-          status: row.status ?? "ativo",
-          matriculaEm: row.matricula_em ?? "",
-          numeroMatricula: row.numero_matricula ?? "",
-          cpf: row.cpf ?? "",
-          rg: row.rg ?? "",
-          sexo: row.sexo ?? "",
-          matricula: parseJson(row.matricula_json, null),
-          financeiro: parseJson(row.financeiro_json, null),
-          origemCadastro: row.origem_cadastro ?? "",
-          matriculaPublicaProtocolo: row.matricula_publica_protocolo ?? "",
-        }))
-      : [],
+    planoId: planId || null,
+    planoNome: planName || null,
+    valorPlano: valorPlano > 0 ? valorPlano : null,
+    periodicidade: text(current.periodicidade, 30) || "mensal",
+    diaVencimento:
+      Number.isFinite(Number(current.diaVencimento)) && Number(current.diaVencimento) > 0
+        ? Math.trunc(Number(current.diaVencimento))
+        : 10,
+    dataInicioFinanceiro: sanitizeIsoDate(current.dataInicioFinanceiro) || aluno.matriculaEm,
+    descontoValor: numeric(current.descontoValor, 0) || null,
+    descontoPercentual: numeric(current.descontoPercentual, 0) || null,
+    bolsaValor: numeric(current.bolsaValor, 0) || null,
+    bolsaPercentual: numeric(current.bolsaPercentual, 0) || null,
+    multaPercentual: numeric(current.multaPercentual, 0) || null,
+    jurosDiaPercentual: numeric(current.jurosDiaPercentual, 0) || null,
+    cobrancaAutomatica: current.cobrancaAutomatica !== false,
+    recorrenciaAtiva: current.recorrenciaAtiva !== false,
+    cobrancaProporcional: Boolean(current.cobrancaProporcional),
+    observacoes: nullableText(current.observacoes, 65535),
+    unidade: nullableText(
+      current.unidade ?? aluno.unidade ?? matricula.esportivas.unidades[0],
+      191,
+    ),
+    modalidade: nullableText(
+      current.modalidade ?? aluno.modalidade ?? matricula.esportivas.modalidades[0],
+      191,
+    ),
+    diasHorarios: uniqueValues([
+      ...normalizeArrayField(current.diasHorarios),
+      ...matricula.esportivas.horarios,
+    ]),
   };
 }
 
 async function persistAluno(connection, aluno) {
-  const matricula = buildMatriculaSnapshotFromAluno(aluno);
-  const modalidades = uniqueValues(matricula.esportivas.modalidades);
-  const unidades = uniqueValues(matricula.esportivas.unidades);
-  const horarios = uniqueValues(matricula.esportivas.horarios);
-  const turmas = uniqueValues(matricula.esportivas.turmas);
-  const planos = uniqueValues(aluno.planos?.length ? aluno.planos : aluno.plano ? [aluno.plano] : []);
+  const enrollment =
+    text(aluno.numeroMatricula, 50) || (await allocateEnrollmentNumber(connection)).numeroMatricula;
+  const plano = await resolvePlanoForAluno(connection, aluno);
+  const matricula = buildMatriculaSnapshot({
+    ...aluno,
+    numeroMatricula: enrollment,
+    matricula: aluno.matricula,
+  });
+  const modalidades = uniqueValues(
+    matricula.esportivas.modalidades.length > 0
+      ? matricula.esportivas.modalidades
+      : [aluno.modalidade],
+  );
+  const turmas = uniqueValues(
+    matricula.esportivas.turmas.length > 0 ? matricula.esportivas.turmas : [aluno.turma],
+  );
+  const unidades = uniqueValues(
+    matricula.esportivas.unidades.length > 0 ? matricula.esportivas.unidades : [aluno.unidade],
+  );
+  const horarios = uniqueValues(
+    matricula.esportivas.horarios.length > 0 ? matricula.esportivas.horarios : aluno.diasHorarios,
+  );
+  const planos = uniqueValues(
+    aluno.planos.length > 0 ? [...aluno.planos, plano?.nome] : [aluno.plano, plano?.nome],
+  );
+  const planoNome = nullableText(aluno.plano ?? plano?.nome, 191);
+  const planoId = nullableText(aluno.planoId ?? plano?.id, 64);
+  const planoValor = numeric(aluno.planoValor ?? plano?.preco_mensal ?? plano?.valor, 0) || null;
+  const financeiro = buildFinanceiroConfig(
+    {
+      ...aluno,
+      plano: planoNome,
+      planoId,
+      planoValor,
+    },
+    plano,
+    matricula,
+  );
 
   await connection.execute(
     `
@@ -460,6 +476,8 @@ async function persistAluno(connection, aluno) {
         periodo_escolar,
         email_contato,
         telefone_contato,
+        responsavel,
+        telefone_responsavel,
         status,
         matricula_em,
         modalidade_principal,
@@ -469,8 +487,12 @@ async function persistAluno(connection, aluno) {
         origem_cadastro,
         matricula_publica_protocolo,
         financeiro_json,
-        matricula_snapshot_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        matricula_snapshot_json,
+        plano_id,
+        plano_valor,
+        unidade_principal,
+        dias_horarios_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         numero_matricula = VALUES(numero_matricula),
         nome_completo = VALUES(nome_completo),
@@ -483,6 +505,8 @@ async function persistAluno(connection, aluno) {
         periodo_escolar = VALUES(periodo_escolar),
         email_contato = VALUES(email_contato),
         telefone_contato = VALUES(telefone_contato),
+        responsavel = VALUES(responsavel),
+        telefone_responsavel = VALUES(telefone_responsavel),
         status = VALUES(status),
         matricula_em = VALUES(matricula_em),
         modalidade_principal = VALUES(modalidade_principal),
@@ -492,33 +516,59 @@ async function persistAluno(connection, aluno) {
         origem_cadastro = VALUES(origem_cadastro),
         matricula_publica_protocolo = VALUES(matricula_publica_protocolo),
         financeiro_json = VALUES(financeiro_json),
-        matricula_snapshot_json = VALUES(matricula_snapshot_json)
+        matricula_snapshot_json = VALUES(matricula_snapshot_json),
+        plano_id = VALUES(plano_id),
+        plano_valor = VALUES(plano_valor),
+        unidade_principal = VALUES(unidade_principal),
+        dias_horarios_json = VALUES(dias_horarios_json)
     `,
     [
       aluno.id,
-      nullableText(matricula.dadosAluno.numeroMatricula, 50) || aluno.numeroMatricula,
+      enrollment,
       aluno.nome,
       aluno.dataNascimento,
-      nullableText(matricula.dadosAluno.idade, 10),
-      nullableText(matricula.dadosAluno.cpf, 20) || aluno.cpf,
-      nullableText(matricula.dadosAluno.rg, 30) || aluno.rg,
-      nullableText(matricula.dadosAluno.sexo, 30) || aluno.sexo,
-      nullableText(matricula.dadosAluno.colegio, 191),
-      nullableText(matricula.dadosAluno.periodoEscolar, 50),
-      aluno.email || nullableText(matricula.responsavel.email, 191),
-      aluno.telefone || nullableText(matricula.responsavel.whatsapp, 50),
+      aluno.idade,
+      aluno.cpf,
+      aluno.rg,
+      aluno.sexo,
+      aluno.colegio,
+      aluno.periodoEscolar,
+      aluno.email,
+      aluno.telefone,
+      aluno.responsavel,
+      aluno.telefoneResponsavel,
       aluno.status,
       aluno.matriculaEm,
-      aluno.modalidade || nullableText(modalidades[0], 191),
-      aluno.turma || nullableText(turmas[0], 191),
-      aluno.plano || nullableText(planos[0], 191),
+      nullableText(aluno.modalidade ?? modalidades[0], 191),
+      nullableText(aluno.turma ?? turmas[0], 191),
+      planoNome,
       stringifyJson(planos),
       aluno.origemCadastro,
       aluno.matriculaPublicaProtocolo,
-      stringifyJson(aluno.financeiro),
-      stringifyJson(matricula),
+      stringifyJson(financeiro),
+      stringifyJson({
+        ...matricula,
+        esportivas: {
+          ...matricula.esportivas,
+          modalidades,
+          unidades,
+          horarios,
+          turmas,
+        },
+      }),
+      planoId,
+      planoValor,
+      nullableText(aluno.unidade ?? unidades[0], 191),
+      stringifyJson(horarios),
     ],
   );
+
+  await upsertEnrollmentNumberRegistry(connection, {
+    numeroMatricula: enrollment,
+    alunoId: aluno.id,
+    alunoNome: aluno.nome,
+    status: aluno.status,
+  });
 
   await connection.execute(
     `
@@ -541,11 +591,11 @@ async function persistAluno(connection, aluno) {
     `,
     [
       aluno.id,
-      nullableText(matricula.responsavel.nomeCompleto, 191) || aluno.responsavel,
+      nullableText(matricula.responsavel.nomeCompleto, 191),
       nullableText(matricula.responsavel.cpf, 20),
       nullableText(matricula.responsavel.rg, 30),
-      nullableText(matricula.responsavel.whatsapp, 50) || aluno.telefoneResponsavel,
-      nullableText(matricula.responsavel.email, 191) || aluno.email,
+      nullableText(matricula.responsavel.whatsapp, 50),
+      nullableText(matricula.responsavel.email, 191),
       nullableText(matricula.responsavel.parentesco, 100),
     ],
   );
@@ -697,124 +747,129 @@ async function persistAluno(connection, aluno) {
     ],
   );
 
-  await connection.execute(
+  return {
+    id: aluno.id,
+    numeroMatricula: enrollment,
+    planoId,
+    planoNome,
+    planoValor,
+  };
+}
+
+async function loadStudentRows(options = {}) {
+  const params = [];
+  const conditions = [];
+
+  if (options.studentId) {
+    conditions.push("aluno.id = ?");
+    params.push(String(options.studentId));
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const rows = await query(
     `
-      INSERT INTO alunos (
-        id,
-        nome,
-        email,
-        telefone,
-        data_nascimento,
-        responsavel,
-        telefone_responsavel,
-        modalidade,
-        turma,
-        plano,
-        status,
-        matricula_em,
-        numero_matricula,
-        cpf,
-        rg,
-        sexo,
-        origem_cadastro,
-        matricula_publica_protocolo,
-        unidades_json,
-        turmas_json,
-        planos_json,
-        horarios_json,
-        matricula_json,
-        financeiro_json,
-        responsavel_cpf,
-        responsavel_email,
-        responsavel_whatsapp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        nome = VALUES(nome),
-        email = VALUES(email),
-        telefone = VALUES(telefone),
-        data_nascimento = VALUES(data_nascimento),
-        responsavel = VALUES(responsavel),
-        telefone_responsavel = VALUES(telefone_responsavel),
-        modalidade = VALUES(modalidade),
-        turma = VALUES(turma),
-        plano = VALUES(plano),
-        status = VALUES(status),
-        matricula_em = VALUES(matricula_em),
-        numero_matricula = VALUES(numero_matricula),
-        cpf = VALUES(cpf),
-        rg = VALUES(rg),
-        sexo = VALUES(sexo),
-        origem_cadastro = VALUES(origem_cadastro),
-        matricula_publica_protocolo = VALUES(matricula_publica_protocolo),
-        unidades_json = VALUES(unidades_json),
-        turmas_json = VALUES(turmas_json),
-        planos_json = VALUES(planos_json),
-        horarios_json = VALUES(horarios_json),
-        matricula_json = VALUES(matricula_json),
-        financeiro_json = VALUES(financeiro_json),
-        responsavel_cpf = VALUES(responsavel_cpf),
-        responsavel_email = VALUES(responsavel_email),
-        responsavel_whatsapp = VALUES(responsavel_whatsapp)
+      SELECT
+        aluno.*,
+        aluno.nome_completo AS nome,
+        aluno.email_contato AS email,
+        aluno.telefone_contato AS telefone,
+        resp.nome_completo AS responsavel_nome,
+        resp.cpf AS responsavel_cpf,
+        resp.rg AS responsavel_rg,
+        resp.whatsapp AS responsavel_whatsapp,
+        resp.email AS responsavel_email,
+        resp.parentesco AS responsavel_parentesco,
+        endereco.cep,
+        endereco.rua,
+        endereco.numero,
+        endereco.complemento,
+        endereco.bairro,
+        endereco.cidade,
+        endereco.estado,
+        docs.foto_perfil_aluno_json,
+        docs.rg_cpf_aluno_json,
+        docs.rg_cpf_responsavel_json,
+        docs.comprovante_endereco_json,
+        docs.atestado_medico_json,
+        esporte.modalidades_json,
+        esporte.unidades_json,
+        esporte.horarios_json,
+        esporte.turmas_json,
+        esporte.nivel,
+        esporte.treinou_antes,
+        esporte.caracteristica,
+        esporte.objetivo,
+        saude.restricao_medica,
+        saude.medicamentos,
+        saude.alergias,
+        saude.lesoes,
+        saude.plano_saude,
+        saude.observacoes_importantes,
+        estr.como_conheceu,
+        estr.indicacao_quem,
+        estr.observacoes_gerais
+      FROM j12_alunos aluno
+      LEFT JOIN j12_alunos_responsaveis resp ON resp.aluno_id = aluno.id
+      LEFT JOIN j12_alunos_enderecos endereco ON endereco.aluno_id = aluno.id
+      LEFT JOIN j12_alunos_documentos docs ON docs.aluno_id = aluno.id
+      LEFT JOIN j12_alunos_esportes esporte ON esporte.aluno_id = aluno.id
+      LEFT JOIN j12_alunos_saude saude ON saude.aluno_id = aluno.id
+      LEFT JOIN j12_alunos_estrategico estr ON estr.aluno_id = aluno.id
+      ${whereClause}
+      ORDER BY aluno.updated_at DESC, aluno.created_at DESC, aluno.nome_completo ASC
     `,
-    [
-      aluno.id,
-      aluno.nome,
-      aluno.email,
-      aluno.telefone,
-      aluno.dataNascimento,
-      aluno.responsavel,
-      aluno.telefoneResponsavel,
-      aluno.modalidade,
-      aluno.turma,
-      aluno.plano,
-      aluno.status,
-      aluno.matriculaEm,
-      aluno.numeroMatricula,
-      aluno.cpf,
-      aluno.rg,
-      aluno.sexo,
-      aluno.origemCadastro,
-      aluno.matriculaPublicaProtocolo,
-      stringifyJson(unidades),
-      stringifyJson(turmas),
-      stringifyJson(planos),
-      stringifyJson(horarios),
-      stringifyJson(matricula),
-      stringifyJson(aluno.financeiro),
-      nullableText(matricula.responsavel.cpf, 20),
-      nullableText(matricula.responsavel.email, 191),
-      nullableText(matricula.responsavel.whatsapp, 50),
-    ],
+    params,
   );
 
-  await upsertEnrollmentNumberRegistry(connection, {
-    numeroMatricula: aluno.numeroMatricula,
-    alunoId: aluno.id,
-    alunoNome: aluno.nome,
-    status: aluno.status,
-  });
+  return {
+    rows: Array.isArray(rows) ? rows : [],
+  };
+}
+
+async function findStudentRowById(studentId) {
+  const { rows } = await loadStudentRows({ studentId });
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
 
 async function getAlunos(req, res, next) {
   try {
-    const { rows, source } = await loadStudentRows();
-    const list = Array.isArray(rows) ? rows : [];
-    console.log(`[alunos] ${list.length} registro(s) carregado(s) de ${source}.`);
-
     if (!req.auth || canManageSystem(req.auth)) {
-      return res.json(list);
-    }
-
-    if (req.auth.role === "professor") {
-      return res.json(getProfessorScopedStudents(list, req.auth));
+      const { rows } = await loadStudentRows();
+      return res.json(rows);
     }
 
     const studentId = resolveScopedStudentId(req.auth);
     if (!studentId) {
-      return res.status(403).json({ message: "Seu perfil nao possui um aluno vinculado." });
+      return res.status(403).json({ message: "Usuario sem aluno vinculado." });
     }
 
-    return res.json(list.filter((row) => String(row.id) === String(studentId)));
+    const row = await findStudentRowById(studentId);
+    return res.json(row ? [row] : []);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getAlunoById(req, res, next) {
+  try {
+    const studentId = text(req.params.id, 64);
+    if (!studentId) {
+      return res.status(400).json({ message: "ID do aluno invalido." });
+    }
+
+    if (req.auth && !canManageSystem(req.auth)) {
+      const scopedStudentId = resolveScopedStudentId(req.auth);
+      if (!scopedStudentId || String(scopedStudentId) !== studentId) {
+        return res.status(403).json({ message: "Acesso negado a este aluno." });
+      }
+    }
+
+    const row = await findStudentRowById(studentId);
+    if (!row) {
+      return res.status(404).json({ message: "Aluno nao encontrado." });
+    }
+
+    return res.json(row);
   } catch (error) {
     next(error);
   }
@@ -823,19 +878,31 @@ async function getAlunos(req, res, next) {
 async function createAluno(req, res, next) {
   try {
     if (!canManageSystem(req.auth)) {
-      return res
-        .status(403)
-        .json({ message: "Apenas administradores e coordenadores podem cadastrar alunos." });
+      return res.status(403).json({ message: "Sem permissao para cadastrar aluno." });
     }
 
-    const aluno = normalizeAlunoPayload(req.body);
+    const aluno = normalizeAlunoPayload(req.body ?? {});
 
     await transaction(async (connection) => {
       await persistAluno(connection, aluno);
     });
 
-    console.log(`[alunos] Aluno criado com sucesso: ${aluno.id}.`);
-    res.status(201).json(aluno);
+    await syncStudentUsers({ onlyStudentId: aluno.id });
+    await syncResponsavelUsers({ onlyStudentId: aluno.id });
+
+    try {
+      await generateMonthlyChargeForStudent(aluno.id, {
+        actorName: req.auth?.nome || req.auth?.email || "admin",
+      });
+    } catch (error) {
+      console.warn(
+        `[alunos] Falha ao gerar mensalidade inicial para ${aluno.id}:`,
+        error?.message || error,
+      );
+    }
+
+    const saved = await findStudentRowById(aluno.id);
+    return res.status(201).json(saved ?? { id: aluno.id });
   } catch (error) {
     next(error);
   }
@@ -844,19 +911,37 @@ async function createAluno(req, res, next) {
 async function updateAluno(req, res, next) {
   try {
     if (!canManageSystem(req.auth)) {
-      return res
-        .status(403)
-        .json({ message: "Apenas administradores e coordenadores podem editar alunos." });
+      return res.status(403).json({ message: "Sem permissao para atualizar aluno." });
     }
 
-    const aluno = normalizeAlunoPayload(req.body, req.params.id);
+    const studentId = text(req.params.id, 64);
+    if (!studentId) {
+      return res.status(400).json({ message: "ID do aluno invalido." });
+    }
+
+    const current = await findStudentRowById(studentId);
+    if (!current) {
+      return res.status(404).json({ message: "Aluno nao encontrado." });
+    }
+
+    const aluno = normalizeAlunoPayload(
+      {
+        ...current,
+        ...req.body,
+        id: studentId,
+      },
+      studentId,
+    );
 
     await transaction(async (connection) => {
       await persistAluno(connection, aluno);
     });
 
-    console.log(`[alunos] Aluno atualizado com sucesso: ${aluno.id}.`);
-    res.json(aluno);
+    await syncStudentUsers({ onlyStudentId: studentId });
+    await syncResponsavelUsers({ onlyStudentId: studentId });
+
+    const saved = await findStudentRowById(studentId);
+    return res.json(saved ?? { id: studentId });
   } catch (error) {
     next(error);
   }
@@ -865,49 +950,78 @@ async function updateAluno(req, res, next) {
 async function deleteAluno(req, res, next) {
   try {
     if (!canManageSystem(req.auth)) {
-      return res
-        .status(403)
-        .json({ message: "Apenas administradores e coordenadores podem excluir alunos." });
+      return res.status(403).json({ message: "Sem permissao para excluir aluno." });
     }
 
-    const alunoId = sanitizeString(req.params.id, 64);
+    const studentId = text(req.params.id, 64);
+    if (!studentId) {
+      return res.status(400).json({ message: "ID do aluno invalido." });
+    }
+
+    const current = await query(
+      "SELECT id, numero_matricula FROM j12_alunos WHERE id = ? LIMIT 1",
+      [studentId],
+    );
+    if (!Array.isArray(current) || current.length === 0) {
+      return res.status(404).json({ message: "Aluno nao encontrado." });
+    }
 
     await transaction(async (connection) => {
-      const [currentRows] = await connection.execute(
-        "SELECT numero_matricula, nome_completo FROM j12_alunos WHERE id = ? LIMIT 1",
-        [alunoId],
+      const relatedTables = [
+        "j12_alunos_responsaveis",
+        "j12_alunos_enderecos",
+        "j12_alunos_documentos",
+        "j12_alunos_esportes",
+        "j12_alunos_saude",
+        "j12_alunos_estrategico",
+        "j12_financeiro_cobrancas",
+        "student_presencas",
+        "student_contracts",
+        "student_notifications",
+      ];
+
+      for (const tableName of relatedTables) {
+        await connection.execute(`DELETE FROM ${tableName} WHERE aluno_id = ?`, [studentId]);
+      }
+
+      await connection.execute(
+        `
+          DELETE FROM j12_matriculas_publicas
+          WHERE aluno_id = ?
+        `,
+        [studentId],
       );
 
-      await connection.execute("DELETE FROM j12_alunos_estrategico WHERE aluno_id = ?", [alunoId]);
-      await connection.execute("DELETE FROM j12_alunos_saude WHERE aluno_id = ?", [alunoId]);
-      await connection.execute("DELETE FROM j12_alunos_esportes WHERE aluno_id = ?", [alunoId]);
-      await connection.execute("DELETE FROM j12_alunos_documentos WHERE aluno_id = ?", [alunoId]);
-      await connection.execute("DELETE FROM j12_alunos_enderecos WHERE aluno_id = ?", [alunoId]);
-      await connection.execute("DELETE FROM j12_alunos_responsaveis WHERE aluno_id = ?", [alunoId]);
-      await connection.execute("DELETE FROM j12_alunos WHERE id = ?", [alunoId]);
-      await connection.execute("DELETE FROM alunos WHERE id = ?", [alunoId]);
+      await upsertEnrollmentNumberRegistry(connection, {
+        numeroMatricula: current[0].numero_matricula,
+        alunoId: studentId,
+        alunoNome: null,
+        status: "excluido",
+      });
 
-      if (Array.isArray(currentRows) && currentRows.length > 0) {
-        await upsertEnrollmentNumberRegistry(connection, {
-          numeroMatricula: currentRows[0].numero_matricula,
-          alunoId: null,
-          alunoNome: currentRows[0].nome_completo,
-          status: "excluido",
-        });
-      }
+      await connection.execute("DELETE FROM j12_alunos WHERE id = ?", [studentId]);
     });
 
-    console.log(`[alunos] Aluno removido com sucesso: ${alunoId}.`);
-    res.json({ ok: true });
+    await deactivateStudentUsers(studentId);
+    await deactivateResponsavelUsersByStudent(studentId);
+
+    return res.json({
+      ok: true,
+      message: "Aluno excluido com sucesso.",
+    });
   } catch (error) {
     next(error);
   }
 }
 
 module.exports = {
+  normalizeAlunoPayload,
+  buildMatriculaSnapshot,
+  loadStudentRows,
+  persistAluno,
   getAlunos,
+  getAlunoById,
   createAluno,
   updateAluno,
   deleteAluno,
-  persistAluno,
 };

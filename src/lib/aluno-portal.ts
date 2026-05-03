@@ -44,7 +44,11 @@ type PortalState<T> = {
   refresh: () => Promise<void>;
 };
 
-function usePortalResource<T>(path: string, initialData: T, enabled = true): PortalState<T> {
+function usePortalResource<T>(
+  load: () => Promise<T>,
+  initialData: T,
+  enabled = true,
+): PortalState<T> {
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -59,14 +63,14 @@ function usePortalResource<T>(path: string, initialData: T, enabled = true): Por
     setError(null);
 
     try {
-      const next = await mysqlApi.get<T>(path);
+      const next = await load();
       setData(next);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar dados.");
     } finally {
       setLoading(false);
     }
-  }, [enabled, path]);
+  }, [enabled, load]);
 
   useEffect(() => {
     void refresh();
@@ -81,21 +85,111 @@ function usePortalResource<T>(path: string, initialData: T, enabled = true): Por
 }
 
 export function usePortalAluno(enabled = true) {
-  return usePortalResource<Aluno | null>("/aluno/me", null, enabled);
+  const loadAluno = useCallback(async () => mysqlApi.get<Aluno | null>("/aluno/me"), []);
+
+  return usePortalResource<Aluno | null>(loadAluno, null, enabled);
 }
 
 export function usePortalFinanceiro(enabled = true) {
-  return usePortalResource<Transacao[]>("/aluno/me/financeiro", [], enabled);
+  const loadFinanceiro = useCallback(async () => {
+    const response = await mysqlApi.get<
+      | Transacao[]
+      | {
+          mensalidades?: Array<
+            Transacao & {
+              plano_nome?: string;
+              planoNome?: string;
+              forma_pagamento?: string | null;
+              data_pagamento?: string | null;
+            }
+          >;
+        }
+    >("/aluno/me/financeiro");
+    const transacoes = Array.isArray(response) ? response : response?.mensalidades ?? [];
+    return Array.isArray(transacoes)
+      ? transacoes.map((item) => ({
+          ...item,
+          planoNome: item.planoNome ?? item.plano_nome ?? item.planoNome,
+          formaPagamento:
+            item.formaPagamento ??
+            (item as { forma_pagamento?: Transacao["formaPagamento"] }).forma_pagamento,
+          dataPagamento:
+            item.dataPagamento ??
+            (item as { data_pagamento?: string | null }).data_pagamento ??
+            item.pagoEm ??
+            null,
+          pagoEm:
+            item.pagoEm ??
+            (item as { data_pagamento?: string | null }).data_pagamento ??
+            item.dataPagamento ??
+            null,
+        }))
+      : [];
+  }, []);
+
+  return usePortalResource<Transacao[]>(loadFinanceiro, [], enabled);
 }
 
 export function usePortalPresencas(enabled = true) {
-  return usePortalResource<PortalPresenca[]>("/aluno/me/presencas", [], enabled);
+  const loadPresencas = useCallback(async () => {
+    const response = await mysqlApi.get<
+      | PortalPresenca[]
+      | {
+          presencas?: Array<
+            PortalPresenca & {
+              data_aula?: string;
+              turma_nome?: string;
+            }
+          >;
+        }
+    >("/aluno/me/presencas");
+    const presencas = Array.isArray(response) ? response : response?.presencas ?? [];
+    return Array.isArray(presencas)
+      ? presencas.map((item) => ({
+          ...item,
+          dataAula: item.dataAula ?? (item as { data_aula?: string }).data_aula ?? "",
+          turma: item.turma ?? (item as { turma_nome?: string }).turma_nome ?? "",
+        }))
+      : [];
+  }, []);
+
+  return usePortalResource<PortalPresenca[]>(loadPresencas, [], enabled);
 }
 
 export function usePortalContrato(enabled = true) {
-  return usePortalResource<PortalContrato | null>("/aluno/me/contrato", null, enabled);
+  const loadContrato = useCallback(async () => {
+    const contrato = await mysqlApi.get<
+      | PortalContrato
+      | {
+          status?: string;
+          message?: string;
+          arquivoPdf?: string | null;
+          dataEmissao?: string | null;
+          dataAssinatura?: string | null;
+          tipoDocumento?: string;
+          templateHtml?: string;
+          observacoes?: string;
+        }
+      | null
+    >("/aluno/me/contrato");
+
+    if (contrato && typeof contrato === "object" && "status" in contrato) {
+      if (contrato.status === "nao_encontrado") {
+        return null;
+      }
+    }
+
+    return contrato as PortalContrato | null;
+  }, []);
+
+  return usePortalResource<PortalContrato | null>(loadContrato, null, enabled);
 }
 
 export function usePortalNotificacoes(enabled = true) {
-  return usePortalResource<PortalNotificacao[]>("/aluno/me/notificacoes", [], enabled);
+  const loadNotificacoes = useCallback(async () => {
+    const notificacoes = await mysqlApi.get<PortalNotificacao[]>("/aluno/me/notificacoes");
+    return Array.isArray(notificacoes) ? notificacoes : [];
+  }, []);
+
+  return usePortalResource<PortalNotificacao[]>(loadNotificacoes, [], enabled);
 }

@@ -14,6 +14,12 @@ const {
 
 const router = express.Router();
 
+router.get("/login", (_req, res) => {
+  res.status(405).json({
+    message: "Use POST /auth/login para autenticar com e-mail e senha.",
+  });
+});
+
 function getBaseUrl(req) {
   const origin = String(req.headers.origin || "").trim();
   if (origin) return origin.replace(/\/+$/, "");
@@ -34,7 +40,7 @@ router.post("/login", async (req, res, next) => {
       return res.status(401).json({ message: "Login ou senha invalidos." });
     }
 
-    const token = await createSession(user.id);
+    const token = await createSession(user);
     res.json({ token, user });
   } catch (error) {
     next(error);
@@ -42,7 +48,7 @@ router.post("/login", async (req, res, next) => {
 });
 
 router.get("/me", requireAuth, async (req, res) => {
-  res.json(req.auth);
+  res.json(req.user || req.auth);
 });
 
 router.post("/logout", requireAuth, async (req, res, next) => {
@@ -57,7 +63,9 @@ router.post("/logout", requireAuth, async (req, res, next) => {
 router.post("/forgot-password", async (req, res, next) => {
   try {
     const identifier = String(req.body.email || req.body.login || req.body.identifier || "").trim();
-    const channel = String(req.body.channel || "email").trim().toLowerCase();
+    const channel = String(req.body.channel || "email")
+      .trim()
+      .toLowerCase();
 
     if (!identifier) {
       return res.status(400).json({ message: "Informe um e-mail ou login valido." });
@@ -65,7 +73,9 @@ router.post("/forgot-password", async (req, res, next) => {
 
     const reset = await createPasswordResetToken(identifier, channel);
     if (!reset) {
-      return res.status(404).json({ message: "Nao encontramos um usuario com esse identificador." });
+      return res
+        .status(404)
+        .json({ message: "Nao encontramos um usuario com esse identificador." });
     }
 
     res.json({
@@ -141,7 +151,7 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
       return res.status(400).json({ message: "A confirmacao da nova senha nao confere." });
     }
 
-    await changePassword(req.auth.id, currentPassword, nextPassword);
+    await changePassword((req.user || req.auth).id, currentPassword, nextPassword);
     res.json({ ok: true, message: "Senha alterada com sucesso." });
   } catch (error) {
     next(error);

@@ -190,7 +190,10 @@ function validatePublicEnrollment(matricula) {
     return "Selecione pelo menos uma unidade.";
   }
 
-  if (matricula?.esportivas?.horarios?.length === 0 || matricula?.esportivas?.turmas?.length === 0) {
+  if (
+    matricula?.esportivas?.horarios?.length === 0 ||
+    matricula?.esportivas?.turmas?.length === 0
+  ) {
     return "Selecione pelo menos um horario disponivel.";
   }
 
@@ -239,7 +242,9 @@ function buildAlunoFromPublicEnrollment(matricula, protocol, enrollmentNumber, s
 }
 
 function normalizeCep(value) {
-  return String(value ?? "").replace(/\D/g, "").trim();
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .trim();
 }
 
 async function fetchCepAddress(cep) {
@@ -306,7 +311,8 @@ async function createPublicEnrollment(req, res, next) {
     }
 
     const protocol = buildProtocol();
-    const submittedAt = sanitizeIsoDate(req.body?.submittedAt) || new Date().toISOString().slice(0, 10);
+    const submittedAt =
+      sanitizeIsoDate(req.body?.submittedAt) || new Date().toISOString().slice(0, 10);
     const createdAt = toMysqlDateTime();
     let createdEnrollment;
 

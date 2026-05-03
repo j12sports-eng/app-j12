@@ -1,15 +1,6 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  Plus,
-  Search,
-  Pencil,
-  Trash2,
-  Mail,
-  X,
-  Eye,
-  MessageCircle,
-} from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Mail, X, Eye, MessageCircle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,7 +75,9 @@ function normalizeWhatsappPhone(value?: string) {
 }
 
 function getAlunoWhatsappLink(aluno: Aluno) {
-  const phone = normalizeWhatsappPhone(aluno.matricula?.responsavel.whatsapp || aluno.telefoneResponsavel);
+  const phone = normalizeWhatsappPhone(
+    aluno.matricula?.responsavel.whatsapp || aluno.telefoneResponsavel,
+  );
   if (!phone) return null;
 
   const message = encodeURIComponent(
@@ -133,21 +126,20 @@ function AlunosPage() {
   const navigate = useNavigate();
   const { hasRole, user, isSelfService } = useAuth();
   const canEdit = hasRole("admin", "coordenador");
+  const userRole = user?.role;
+  const studentId = user?.studentId ?? null;
   const alunosBase = useAlunos();
   const alunosStatus = useAlunosStatus();
   const portalAluno = usePortalAluno(isSelfService);
-  const alunos = useMemo(
-    () => {
-      if (isSelfService) {
-        return portalAluno.data ? [portalAluno.data] : [];
-      }
+  const alunos = useMemo(() => {
+    if (isSelfService) {
+      return portalAluno.data ? [portalAluno.data] : [];
+    }
 
-      return user?.role === "aluno" && user.studentId
-        ? alunosBase.filter((aluno) => aluno.id === user.studentId)
-        : alunosBase;
-    },
-    [alunosBase, isSelfService, portalAluno.data, user],
-  );
+    return userRole === "aluno" && studentId
+      ? alunosBase.filter((aluno) => aluno.id === studentId)
+      : alunosBase;
+  }, [alunosBase, isSelfService, portalAluno.data, studentId, userRole]);
   const turmas = useTurmas();
   const settings = useSettingsState();
 
@@ -160,6 +152,88 @@ function AlunosPage() {
   const [toDelete, setToDelete] = useState<Aluno | null>(null);
   const [perfil, setPerfil] = useState<Aluno | null>(null);
   const [contratoVer, setContratoVer] = useState<Contrato | null>(null);
+
+  const modalidadesDisponiveis = useMemo(() => {
+    const values = [
+      ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+      ...turmas.filter((turma) => turma.ativa).map((turma) => turma.modalidade),
+      ...alunos.flatMap((aluno) => getAlunoModalidades(aluno)),
+    ];
+
+    return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
+  }, [settings.modalities, turmas, alunos]);
+
+  const filtrados = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return alunos.filter((a) => {
+      if (filtroStatus !== "todos" && a.status !== filtroStatus) return false;
+      if (filtroModalidade !== "todas" && !getAlunoModalidades(a).includes(filtroModalidade)) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        a.nome.toLowerCase().includes(q) ||
+        a.email.toLowerCase().includes(q) ||
+        getAlunoTurmas(a).some((turma) => turma.toLowerCase().includes(q)) ||
+        getAlunoPlanos(a).some((plano) => plano.toLowerCase().includes(q)) ||
+        getAlunoUnidades(a).some((unidade) => unidade.toLowerCase().includes(q))
+      );
+    });
+  }, [alunos, busca, filtroStatus, filtroModalidade]);
+
+  const totais = useMemo(
+    () => ({
+      total: alunos.length,
+      ativos: alunos.filter((a) => a.status === "ativo").length,
+      experimentais: alunos.filter((a) => a.status === "experimental").length,
+      inativos: alunos.filter((a) => a.status === "inativo").length,
+    }),
+    [alunos],
+  );
+
+  const openNovo = useCallback(() => {
+    navigate({ to: "/matricula" });
+  }, [navigate]);
+
+  const openEdit = useCallback((aluno: Aluno) => {
+    setEditing(aluno);
+    setOpenForm(true);
+  }, []);
+
+  const openPerfil = useCallback((aluno: Aluno) => {
+    setPerfil(aluno);
+  }, []);
+
+  const handlePerfilOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setPerfil(null);
+    }
+  }, []);
+
+  const handleContratoOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setContratoVer(null);
+    }
+  }, []);
+
+  const handleDeleteOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setToDelete(null);
+    }
+  }, []);
+
+  const handleAbrirContrato = useCallback((contrato: Contrato) => {
+    setContratoVer(contrato);
+  }, []);
+
+  const confirmarExclusao = useCallback(() => {
+    if (!toDelete) return;
+    alunosStore.remove(toDelete.id);
+    toast.success(`${toDelete.nome} foi removido`);
+    setToDelete(null);
+  }, [toDelete]);
 
   if (isSelfService && portalAluno.loading) {
     return (
@@ -200,342 +274,297 @@ function AlunosPage() {
     );
   }
 
-  const modalidadesDisponiveis = useMemo(() => {
-    const values = [
-      ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
-      ...turmas.filter((turma) => turma.ativa).map((turma) => turma.modalidade),
-      ...alunos.flatMap((aluno) => getAlunoModalidades(aluno)),
-    ];
-
-    return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b, "pt-BR"),
-    );
-  }, [settings.modalities, turmas, alunos]);
-
-  const filtrados = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    return alunos.filter((a) => {
-      if (filtroStatus !== "todos" && a.status !== filtroStatus) return false;
-      if (
-        filtroModalidade !== "todas" &&
-        !getAlunoModalidades(a).includes(filtroModalidade)
-      ) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        a.nome.toLowerCase().includes(q) ||
-        a.email.toLowerCase().includes(q) ||
-        getAlunoTurmas(a).some((turma) => turma.toLowerCase().includes(q)) ||
-        getAlunoPlanos(a).some((plano) => plano.toLowerCase().includes(q)) ||
-        getAlunoUnidades(a).some((unidade) => unidade.toLowerCase().includes(q))
-      );
-    });
-  }, [alunos, busca, filtroStatus, filtroModalidade]);
-
-  const totais = useMemo(
-    () => ({
-      total: alunos.length,
-      ativos: alunos.filter((a) => a.status === "ativo").length,
-      experimentais: alunos.filter((a) => a.status === "experimental").length,
-      inativos: alunos.filter((a) => a.status === "inativo").length,
-    }),
-    [alunos],
-  );
-
-  function openNovo() {
-    navigate({ to: "/matricula" });
-  }
-  function openEdit(a: Aluno) {
-    setEditing(a);
-    setOpenForm(true);
-  }
-  function openPerfil(a: Aluno) {
-    setPerfil(a);
-  }
-  function confirmarExclusao() {
-    if (!toDelete) return;
-    alunosStore.remove(toDelete.id);
-    toast.success(`${toDelete.nome} foi removido`);
-    setToDelete(null);
-  }
-
   return (
     <TooltipProvider delayDuration={120}>
       <AppShell title={isSelfService ? "Meu Perfil" : "Alunos"}>
-      {!isSelfService && alunosStatus.loading ? (
-        <div className="mb-4 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-          Atualizando lista de alunos no MySQL...
-        </div>
-      ) : null}
-
-      {!isSelfService && alunosStatus.error ? (
-        <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {alunosStatus.error}
-        </div>
-      ) : null}
-
-      {/* KPIs */}
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { label: "Total", value: totais.total, tone: "text-foreground" },
-          { label: "Ativos", value: totais.ativos, tone: "text-success" },
-          { label: "Experimentais", value: totais.experimentais, tone: "text-primary" },
-          { label: "Inativos", value: totais.inativos, tone: "text-muted-foreground" },
-        ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-border bg-card px-4 py-3">
-            <div className="text-xs text-muted-foreground">{k.label}</div>
-            <div className={cn("text-2xl font-bold", k.tone)}>{k.value}</div>
+        {!isSelfService && alunosStatus.loading ? (
+          <div className="mb-4 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+            Atualizando lista de alunos no MySQL...
           </div>
-        ))}
-      </div>
+        ) : null}
 
-      {/* Toolbar */}
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, e-mail, turma, plano ou unidade..."
-            className="w-full rounded-lg border border-input bg-input/40 py-2 pl-9 pr-9 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-          />
-          {busca && (
+        {!isSelfService && alunosStatus.error ? (
+          <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {alunosStatus.error}
+          </div>
+        ) : null}
+
+        {/* KPIs */}
+        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            { label: "Total", value: totais.total, tone: "text-foreground" },
+            { label: "Ativos", value: totais.ativos, tone: "text-success" },
+            { label: "Experimentais", value: totais.experimentais, tone: "text-primary" },
+            { label: "Inativos", value: totais.inativos, tone: "text-muted-foreground" },
+          ].map((k) => (
+            <div key={k.label} className="rounded-xl border border-border bg-card px-4 py-3">
+              <div className="text-xs text-muted-foreground">{k.label}</div>
+              <div className={cn("text-2xl font-bold", k.tone)}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome, e-mail, turma, plano ou unidade..."
+              className="w-full rounded-lg border border-input bg-input/40 py-2 pl-9 pr-9 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+            />
+            {busca && (
+              <button
+                onClick={() => setBusca("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-accent/30"
+                aria-label="Limpar busca"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <select
+            value={filtroStatus}
+            onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
+            className="rounded-lg border border-input bg-input/40 px-3 py-2 text-sm outline-none focus:border-primary"
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filtroModalidade}
+            onChange={(e) => setFiltroModalidade(e.target.value as typeof filtroModalidade)}
+            className="rounded-lg border border-input bg-input/40 px-3 py-2 text-sm outline-none focus:border-primary"
+          >
+            <option value="todas">Todas modalidades</option>
+            {modalidadesDisponiveis.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+
+          {canEdit && (
             <button
-              onClick={() => setBusca("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-accent/30"
-              aria-label="Limpar busca"
+              onClick={openNovo}
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground"
+              style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
             >
-              <X className="h-4 w-4" />
+              <Plus className="h-4 w-4" />
+              Nova matrícula
             </button>
           )}
         </div>
 
-        <select
-          value={filtroStatus}
-          onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
-          className="rounded-lg border border-input bg-input/40 px-3 py-2 text-sm outline-none focus:border-primary"
-        >
-          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        {/* Tabela desktop */}
+        <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3">Aluno</th>
+                <th className="px-4 py-3">Contato</th>
+                <th className="px-4 py-3">Modalidade</th>
+                <th className="px-4 py-3">Turma</th>
+                <th className="px-4 py-3">Plano</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtrados.map((a) => (
+                <tr key={a.id} className="hover:bg-accent/5">
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => openPerfil(a)}
+                      className="text-left font-medium hover:text-primary hover:underline"
+                    >
+                      {a.nome}
+                    </button>
+                    {a.responsavel && (
+                      <div className="text-xs text-muted-foreground">Resp.: {a.responsavel}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-xs text-muted-foreground">{a.email}</div>
+                    <div className="text-xs text-muted-foreground/80">
+                      Matrícula {a.numeroMatricula || "—"}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">{formatAlunoScope(getAlunoModalidades(a))}</td>
+                  <td className="px-4 py-3">{formatAlunoScope(getAlunoTurmas(a))}</td>
+                  <td className="px-4 py-3">{formatAlunoScope(getAlunoPlanos(a))}</td>
+                  <td className="px-4 py-3">{statusBadge(a.status)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <WhatsappAction aluno={a} />
+                      <button
+                        onClick={() => openPerfil(a)}
+                        className="rounded-md p-2 text-muted-foreground hover:bg-primary/15 hover:text-primary"
+                        aria-label="Ver perfil"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      {canEdit ? (
+                        <>
+                          <button
+                            onClick={() => openEdit(a)}
+                            className="rounded-md p-2 text-muted-foreground hover:bg-primary/15 hover:text-primary"
+                            aria-label="Editar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setToDelete(a)}
+                            className="rounded-md p-2 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                            aria-label="Excluir"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtrados.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                    Nenhum aluno encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-        <select
-          value={filtroModalidade}
-          onChange={(e) => setFiltroModalidade(e.target.value as typeof filtroModalidade)}
-          className="rounded-lg border border-input bg-input/40 px-3 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="todas">Todas modalidades</option>
-          {modalidadesDisponiveis.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-
-        {canEdit && (
-          <button
-            onClick={openNovo}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground"
-            style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
-          >
-            <Plus className="h-4 w-4" />
-            Nova matrícula
-          </button>
-        )}
-      </div>
-
-      {/* Tabela desktop */}
-      <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3">Aluno</th>
-              <th className="px-4 py-3">Contato</th>
-              <th className="px-4 py-3">Modalidade</th>
-              <th className="px-4 py-3">Turma</th>
-              <th className="px-4 py-3">Plano</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filtrados.map((a) => (
-              <tr key={a.id} className="hover:bg-accent/5">
-                <td className="px-4 py-3">
+        {/* Cards mobile */}
+        <div className="space-y-3 md:hidden">
+          {filtrados.map((a) => (
+            <div key={a.id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
                   <button
                     onClick={() => openPerfil(a)}
-                    className="text-left font-medium hover:text-primary hover:underline"
+                    className="truncate text-left font-semibold hover:text-primary"
                   >
                     {a.nome}
                   </button>
-                  {a.responsavel && (
-                    <div className="text-xs text-muted-foreground">Resp.: {a.responsavel}</div>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="text-xs text-muted-foreground">{a.email}</div>
-                  <div className="text-xs text-muted-foreground/80">
-                    Matrícula {a.numeroMatricula || "—"}
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {formatAlunoScope(getAlunoModalidades(a))} ·{" "}
+                    {formatAlunoScope(getAlunoTurmas(a))}
                   </div>
-                </td>
-                <td className="px-4 py-3">{formatAlunoScope(getAlunoModalidades(a))}</td>
-                <td className="px-4 py-3">{formatAlunoScope(getAlunoTurmas(a))}</td>
-                <td className="px-4 py-3">{formatAlunoScope(getAlunoPlanos(a))}</td>
-                <td className="px-4 py-3">{statusBadge(a.status)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-1">
-                    <WhatsappAction aluno={a} />
+                </div>
+                {statusBadge(a.status)}
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-3.5 w-3.5" />
+                  {a.email}
+                </div>
+                <div>Matrícula {a.numeroMatricula || "—"}</div>
+              </div>
+              <div className="mt-2 text-xs">
+                <span className="text-muted-foreground">Plano: </span>
+                <span className="font-medium">{formatAlunoScope(getAlunoPlanos(a))}</span>
+              </div>
+              <div className="mt-3 flex gap-2 border-t border-border pt-3">
+                <a
+                  href={getAlunoWhatsappLink(a) ?? undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-disabled={!getAlunoWhatsappLink(a)}
+                  className={cn(
+                    "flex items-center justify-center rounded-lg border border-border px-3 py-2 text-sm font-medium transition",
+                    getAlunoWhatsappLink(a)
+                      ? "hover:bg-emerald-500/10 hover:text-emerald-400"
+                      : "pointer-events-none opacity-40",
+                  )}
+                  title={
+                    getAlunoWhatsappLink(a) ? "Falar com responsável" : "WhatsApp não cadastrado"
+                  }
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </a>
+                {canEdit ? (
+                  <>
                     <button
                       onClick={() => openPerfil(a)}
-                      className="rounded-md p-2 text-muted-foreground hover:bg-primary/15 hover:text-primary"
-                      aria-label="Ver perfil"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/10 hover:text-primary"
                     >
-                      <Eye className="h-4 w-4" />
+                      <Eye className="h-4 w-4" /> Ver
                     </button>
-                    {canEdit ? (
-                      <>
-                      <button
-                        onClick={() => openEdit(a)}
-                        className="rounded-md p-2 text-muted-foreground hover:bg-primary/15 hover:text-primary"
-                        aria-label="Editar"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setToDelete(a)}
-                        className="rounded-md p-2 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-                        aria-label="Excluir"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                      </>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtrados.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
-                  Nenhum aluno encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Cards mobile */}
-      <div className="space-y-3 md:hidden">
-        {filtrados.map((a) => (
-          <div key={a.id} className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <button
-                  onClick={() => openPerfil(a)}
-                  className="truncate text-left font-semibold hover:text-primary"
-                >
-                  {a.nome}
-                </button>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  {formatAlunoScope(getAlunoModalidades(a))} · {formatAlunoScope(getAlunoTurmas(a))}
-                </div>
-              </div>
-              {statusBadge(a.status)}
-            </div>
-            <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" />{a.email}</div>
-              <div>Matrícula {a.numeroMatricula || "—"}</div>
-            </div>
-            <div className="mt-2 text-xs">
-              <span className="text-muted-foreground">Plano: </span>
-              <span className="font-medium">{formatAlunoScope(getAlunoPlanos(a))}</span>
-            </div>
-            <div className="mt-3 flex gap-2 border-t border-border pt-3">
-              <a
-                href={getAlunoWhatsappLink(a) ?? undefined}
-                target="_blank"
-                rel="noreferrer"
-                aria-disabled={!getAlunoWhatsappLink(a)}
-                className={cn(
-                  "flex items-center justify-center rounded-lg border border-border px-3 py-2 text-sm font-medium transition",
-                  getAlunoWhatsappLink(a)
-                    ? "hover:bg-emerald-500/10 hover:text-emerald-400"
-                    : "pointer-events-none opacity-40",
+                    <button
+                      onClick={() => openEdit(a)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/10 hover:text-primary"
+                    >
+                      <Pencil className="h-4 w-4" /> Editar
+                    </button>
+                    <button
+                      onClick={() => setToDelete(a)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" /> Excluir
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => openPerfil(a)}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/10 hover:text-primary"
+                  >
+                    <Eye className="h-4 w-4" /> Ver
+                  </button>
                 )}
-                title={getAlunoWhatsappLink(a) ? "Falar com responsável" : "WhatsApp não cadastrado"}
-              >
-                <MessageCircle className="h-4 w-4" />
-              </a>
-              {canEdit ? (
-                <>
-                <button
-                  onClick={() => openPerfil(a)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/10 hover:text-primary"
-                >
-                  <Eye className="h-4 w-4" /> Ver
-                </button>
-                <button
-                  onClick={() => openEdit(a)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/10 hover:text-primary"
-                >
-                  <Pencil className="h-4 w-4" /> Editar
-                </button>
-                <button
-                  onClick={() => setToDelete(a)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" /> Excluir
-                </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => openPerfil(a)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/10 hover:text-primary"
-                >
-                  <Eye className="h-4 w-4" /> Ver
-                </button>
-              )}
+              </div>
             </div>
-          </div>
-        ))}
-        {filtrados.length === 0 && (
-          <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-muted-foreground">
-            Nenhum aluno encontrado.
-          </div>
-        )}
-      </div>
+          ))}
+          {filtrados.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-muted-foreground">
+              Nenhum aluno encontrado.
+            </div>
+          )}
+        </div>
 
-      <AlunoFormDialog open={openForm} onOpenChange={setOpenForm} aluno={editing} />
+        <AlunoFormDialog open={openForm} onOpenChange={setOpenForm} aluno={editing} />
 
-      <AlunoPerfilDialog
-        open={!!perfil}
-        onOpenChange={(v) => !v && setPerfil(null)}
-        aluno={perfil}
-        onAbrirContrato={(c) => setContratoVer(c)}
-      />
+        <AlunoPerfilDialog
+          open={!!perfil}
+          onOpenChange={handlePerfilOpenChange}
+          aluno={perfil}
+          onAbrirContrato={handleAbrirContrato}
+        />
 
-      <ContratoVisualizarDialog
-        open={!!contratoVer}
-        onOpenChange={(v) => !v && setContratoVer(null)}
-        contrato={contratoVer}
-      />
+        <ContratoVisualizarDialog
+          open={!!contratoVer}
+          onOpenChange={handleContratoOpenChange}
+          contrato={contratoVer}
+        />
 
-      <AlertDialog open={!!toDelete} onOpenChange={(v) => !v && setToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir aluno?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação não pode ser desfeita. <strong>{toDelete?.nome}</strong> será removido permanentemente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmarExclusao}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <AlertDialog open={!!toDelete} onOpenChange={handleDeleteOpenChange}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir aluno?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação não pode ser desfeita. <strong>{toDelete?.nome}</strong> será removido
+                permanentemente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmarExclusao}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </AppShell>
     </TooltipProvider>
   );

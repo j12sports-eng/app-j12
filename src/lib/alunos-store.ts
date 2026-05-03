@@ -19,6 +19,7 @@ export type AlunoPeriodicidadeFinanceira =
 
 export interface AlunoFinanceiroConfig {
   planoId?: string | null;
+  planoNome?: string | null;
   valorPlano?: number | null;
   periodicidade?: AlunoPeriodicidadeFinanceira | null;
   diaVencimento?: number | null;
@@ -33,6 +34,9 @@ export interface AlunoFinanceiroConfig {
   recorrenciaAtiva?: boolean | null;
   cobrancaProporcional?: boolean | null;
   observacoes?: string | null;
+  unidade?: string | null;
+  modalidade?: string | null;
+  diasHorarios?: string[] | null;
 }
 
 export type TurmaCatalogo = {
@@ -41,7 +45,7 @@ export type TurmaCatalogo = {
   unidade: string;
 };
 
-export interface Aluno {
+export interface Aluno extends Record<string, unknown> {
   id: string;
   nome: string;
   email: string;
@@ -66,6 +70,15 @@ export interface Aluno {
   origemCadastro?: string;
   matriculaPublicaProtocolo?: string;
   financeiro?: AlunoFinanceiroConfig;
+  planoId?: string | null;
+  planoNome?: string | null;
+  planoValor?: number | null;
+  plano_id?: string | null;
+  plano_nome?: string | null;
+  plano_valor?: number | null;
+  mensalidade?: number | null;
+  unidade?: string | null;
+  dias_horarios?: string[] | string | null;
 }
 
 export const MODALIDADES: Modalidade[] = ["Futebol", "Futsal", "Volei", "Basquete", "Natacao"];
@@ -78,49 +91,153 @@ export const TURMA_CATALOGO: TurmaCatalogo[] = [
 ];
 export const TURMAS = TURMA_CATALOGO.map((turma) => turma.nome);
 export const UNIDADES = Array.from(new Set(TURMA_CATALOGO.map((turma) => turma.unidade)));
-export const PLANOS = ["Mensal Basico", "Mensal Plus", "Trimestral", "Semestral", "Anual"];
 
-const seed: Aluno[] = [
-  {
-    id: "a1",
-    nome: "Lucas Almeida",
-    email: "lucas.almeida@email.com",
-    telefone: "(11) 98123-4567",
-    dataNascimento: "2014-03-12",
-    responsavel: "Carla Almeida",
-    telefoneResponsavel: "(11) 99888-1122",
-    modalidade: "Futebol",
-    unidades: ["Unidade Centro", "Unidade Zona Norte"],
-    turmas: ["Sub-11 Tarde", "Sub-9 Manha"],
-    planos: ["Mensal Plus", "Trimestral"],
-    turma: "Sub-11 Tarde",
-    plano: "Mensal Plus",
-    status: "ativo",
-    matriculaEm: "2024-02-10",
-  },
-  {
-    id: "a2",
-    nome: "Mariana Souza",
-    email: "mari.souza@email.com",
-    telefone: "(11) 97777-3344",
-    dataNascimento: "2012-07-22",
-    responsavel: "Paulo Souza",
-    telefoneResponsavel: "(11) 98765-1010",
-    modalidade: "Volei",
-    unidades: ["Unidade Centro"],
-    turmas: ["Sub-13 Tarde"],
-    planos: ["Trimestral"],
-    turma: "Sub-13 Tarde",
-    plano: "Trimestral",
-    status: "ativo",
-    matriculaEm: "2023-11-05",
-  },
-];
+type AlunoInput = Omit<Aluno, "id" | "matriculaEm"> & Record<string, unknown>;
 
-type AlunoInput = Omit<Aluno, "id" | "matriculaEm">;
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function uniqueValues(values: string[]) {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+  return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)));
+}
+
+function numeric(value: unknown, fallback = 0) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : fallback;
+}
+
+function text(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function safeJsonParse<T>(value: unknown, fallback: T): T {
+  if (value == null || value === "") return fallback;
+  if (typeof value === "object") return (value ?? fallback) as T;
+
+  try {
+    const parsed = JSON.parse(String(value)) as T;
+    if (parsed == null) return fallback;
+    if (Array.isArray(fallback)) {
+      return (Array.isArray(parsed) ? parsed : fallback) as T;
+    }
+    if (typeof fallback === "object") {
+      return (typeof parsed === "object" ? parsed : fallback) as T;
+    }
+    return parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeArrayField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueValues(value.map((item) => String(item ?? "")));
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return [];
+
+    if (
+      (normalized.startsWith("[") && normalized.endsWith("]")) ||
+      (normalized.startsWith("{") && normalized.endsWith("}"))
+    ) {
+      try {
+        const parsed = JSON.parse(normalized);
+        return Array.isArray(parsed) ? uniqueValues(parsed.map((item) => String(item ?? ""))) : [];
+      } catch {
+        return uniqueValues(normalized.split(/[;,|]/g));
+      }
+    }
+
+    return uniqueValues(normalized.split(/[;,|]/g));
+  }
+
+  return value == null ? [] : [String(value)];
+}
+
+function normalizeStudentStatus(value: unknown): StatusAluno {
+  const normalized = text(value).toLowerCase();
+  if (normalized === "inativo") return "inativo";
+  if (normalized === "experimental") return "experimental";
+  return "ativo";
+}
+
+function normalizePeriodicidade(value: unknown): AlunoPeriodicidadeFinanceira | null {
+  const normalized = text(value).toLowerCase();
+  switch (normalized) {
+    case "mensal":
+    case "bimestral":
+    case "trimestral":
+    case "semestral":
+    case "anual":
+      return normalized;
+    default:
+      return null;
+  }
+}
+
+function normalizeFinanceiroConfig(
+  raw: unknown,
+  fallback: {
+    planoId?: string | null;
+    planoNome?: string | null;
+    planoValor?: number | null;
+    modalidade?: string | null;
+    unidade?: string | null;
+    diasHorarios?: string[];
+  },
+): AlunoFinanceiroConfig | undefined {
+  const parsed = safeJsonParse<Record<string, unknown>>(raw, {});
+  const planoId = text(parsed.planoId ?? fallback.planoId) || null;
+  const planoNome = text(parsed.planoNome ?? fallback.planoNome) || null;
+  const valorPlano = numeric(parsed.valorPlano ?? parsed.valor ?? fallback.planoValor, 0);
+  const diasHorarios = uniqueValues([
+    ...normalizeArrayField(parsed.diasHorarios),
+    ...normalizeArrayField(fallback.diasHorarios),
+  ]);
+
+  const output: AlunoFinanceiroConfig = {
+    planoId,
+    planoNome,
+    valorPlano: valorPlano > 0 ? valorPlano : null,
+    periodicidade: normalizePeriodicidade(parsed.periodicidade),
+    diaVencimento:
+      Number.isFinite(Number(parsed.diaVencimento)) && Number(parsed.diaVencimento) > 0
+        ? Math.trunc(Number(parsed.diaVencimento))
+        : null,
+    dataInicioFinanceiro: text(parsed.dataInicioFinanceiro) || null,
+    descontoValor: numeric(parsed.descontoValor, 0) || null,
+    descontoPercentual: numeric(parsed.descontoPercentual, 0) || null,
+    bolsaValor: numeric(parsed.bolsaValor, 0) || null,
+    bolsaPercentual: numeric(parsed.bolsaPercentual, 0) || null,
+    multaPercentual: numeric(parsed.multaPercentual, 0) || null,
+    jurosDiaPercentual: numeric(parsed.jurosDiaPercentual, 0) || null,
+    cobrancaAutomatica:
+      parsed.cobrancaAutomatica == null ? null : Boolean(parsed.cobrancaAutomatica),
+    recorrenciaAtiva: parsed.recorrenciaAtiva == null ? null : Boolean(parsed.recorrenciaAtiva),
+    cobrancaProporcional:
+      parsed.cobrancaProporcional == null ? null : Boolean(parsed.cobrancaProporcional),
+    observacoes: text(parsed.observacoes) || null,
+    unidade: text(parsed.unidade ?? fallback.unidade) || null,
+    modalidade: text(parsed.modalidade ?? fallback.modalidade) || null,
+    diasHorarios,
+  };
+
+  if (
+    !output.planoId &&
+    !output.planoNome &&
+    !output.valorPlano &&
+    !output.periodicidade &&
+    !output.unidade &&
+    !output.modalidade &&
+    output.diasHorarios?.length === 0
+  ) {
+    return undefined;
+  }
+
+  return output;
 }
 
 export function getUnidadesFromTurmas(turmas: string[]) {
@@ -146,34 +263,52 @@ export function getAlunoTurmas(aluno: Pick<Aluno, "turmas" | "turma">) {
   return uniqueValues(aluno.turmas?.length ? aluno.turmas : [aluno.turma]);
 }
 
-export function getAlunoPlanos(aluno: Pick<Aluno, "planos" | "plano">) {
-  return uniqueValues(aluno.planos?.length ? aluno.planos : [aluno.plano]);
+export function getAlunoPlanos(
+  aluno: Pick<Aluno, "planos" | "plano" | "planoNome" | "plano_nome" | "financeiro">,
+) {
+  return uniqueValues(
+    aluno.planos?.length
+      ? aluno.planos
+      : [
+          aluno.plano,
+          aluno.planoNome ?? "",
+          aluno.plano_nome ?? "",
+          aluno.financeiro?.planoNome ?? "",
+        ],
+  );
 }
 
 export function getAlunoUnidades(
-  aluno: Pick<Aluno, "unidades" | "turmas" | "turma" | "matricula">,
+  aluno: Pick<Aluno, "unidades" | "turmas" | "turma" | "matricula" | "unidade" | "financeiro">,
 ) {
   const turmas = getAlunoTurmas(aluno);
   const fromTurmas = getUnidadesFromTurmas(turmas);
   const fromMatricula = aluno.matricula?.esportivas?.unidades ?? [];
+  const fromFinanceiro = aluno.financeiro?.unidade ? [aluno.financeiro.unidade] : [];
+
   return uniqueValues(
     aluno.unidades?.length
-      ? [...aluno.unidades, ...fromTurmas, ...fromMatricula]
-      : [...fromTurmas, ...fromMatricula],
+      ? [...aluno.unidades, ...fromTurmas, ...fromMatricula, ...fromFinanceiro]
+      : [...fromTurmas, ...fromMatricula, ...fromFinanceiro, aluno.unidade ?? ""],
   );
 }
 
-export function getAlunoHorarios(aluno: Pick<Aluno, "horarios" | "matricula">) {
-  return uniqueValues(
-    aluno.horarios?.length ? aluno.horarios : aluno.matricula?.esportivas?.horarios ?? [],
-  );
+export function getAlunoHorarios(
+  aluno: Pick<Aluno, "horarios" | "matricula" | "dias_horarios" | "financeiro">,
+) {
+  return uniqueValues([
+    ...(aluno.horarios?.length ? aluno.horarios : []),
+    ...(aluno.matricula?.esportivas?.horarios ?? []),
+    ...normalizeArrayField(aluno.dias_horarios),
+    ...(aluno.financeiro?.diasHorarios ?? []),
+  ]);
 }
 
-export function getAlunoModalidades(aluno: Pick<Aluno, "modalidade" | "matricula">) {
+export function getAlunoModalidades(aluno: Pick<Aluno, "modalidade" | "matricula" | "financeiro">) {
   return uniqueValues(
     aluno.matricula?.esportivas?.modalidades?.length
       ? aluno.matricula.esportivas.modalidades
-      : [aluno.modalidade],
+      : [aluno.financeiro?.modalidade ?? "", aluno.modalidade],
   );
 }
 
@@ -182,76 +317,169 @@ export function formatAlunoScope(values: string[]) {
   return values.join(", ");
 }
 
-function normalizeAluno(aluno: Aluno): Aluno {
-  const turmas = getAlunoTurmas(aluno);
-  const planos = getAlunoPlanos(aluno);
-  const modalidade =
-    aluno.modalidade ||
-    aluno.matricula?.esportivas?.modalidades?.[0] ||
-    getPrimaryModalidadeFromTurmas(turmas, MODALIDADES[0] ?? "Futebol");
-  const baseMatricula = normalizeAlunoMatriculaData(aluno.matricula);
+function normalizeAluno(raw: Partial<Aluno> & Record<string, unknown>): Aluno {
+  const baseMatricula = normalizeAlunoMatriculaData(
+    raw.matricula ?? safeJsonParse(raw.matricula_snapshot_json ?? raw.matricula_json, {}),
+  );
   const fallbackMatricula = buildEmptyAlunoMatricula();
-  const dataNascimento = baseMatricula.dadosAluno.dataNascimento || aluno.dataNascimento || "";
+
+  const modalidades = uniqueValues([
+    ...normalizeArrayField(baseMatricula.esportivas?.modalidades ?? []),
+    ...normalizeArrayField(raw.modalidades_json ?? raw.modalidades),
+    text(raw.modalidade ?? raw.modalidade_principal),
+  ]);
+  const turmas = uniqueValues([
+    ...normalizeArrayField(baseMatricula.esportivas?.turmas ?? []),
+    ...normalizeArrayField(raw.turmas_json ?? raw.turmas),
+    text(raw.turma ?? raw.turma_principal),
+  ]);
+  const unidades = uniqueValues([
+    ...normalizeArrayField(baseMatricula.esportivas?.unidades ?? []),
+    ...normalizeArrayField(raw.unidades_json ?? raw.unidades),
+    text(raw.unidade ?? raw.unidade_principal),
+  ]);
+  const horarios = uniqueValues([
+    ...normalizeArrayField(baseMatricula.esportivas?.horarios ?? []),
+    ...normalizeArrayField(raw.horarios_json ?? raw.horarios),
+    ...normalizeArrayField(raw.dias_horarios_json ?? raw.dias_horarios),
+  ]);
+
+  const planoId = text(raw.planoId ?? raw.plano_id) || null;
+  const planoNome = text(raw.planoNome ?? raw.plano_nome ?? raw.plano ?? raw.plano_principal);
+  const planos = uniqueValues([...normalizeArrayField(raw.planos_json ?? raw.planos), planoNome]);
+  const planoValor = numeric(raw.planoValor ?? raw.plano_valor, 0) || null;
+
+  const modalidade =
+    modalidades[0] ||
+    text(baseMatricula.esportivas?.modalidades?.[0]) ||
+    text(raw.modalidade ?? raw.modalidade_principal) ||
+    getPrimaryModalidadeFromTurmas(turmas, MODALIDADES[0] ?? "Futebol");
+
+  const dataNascimento =
+    text(
+      raw.dataNascimento ??
+        raw.data_nascimento ??
+        baseMatricula.dadosAluno?.dataNascimento ??
+        raw.matricula?.dadosAluno?.dataNascimento,
+    ) || "";
+
+  const financeiro = normalizeFinanceiroConfig(raw.financeiro ?? raw.financeiro_json, {
+    planoId,
+    planoNome: planoNome || planos[0] || null,
+    planoValor,
+    modalidade,
+    unidade: unidades[0] ?? null,
+    diasHorarios: horarios,
+  });
+
   const matricula: AlunoMatriculaData = {
     ...fallbackMatricula,
     ...baseMatricula,
     dadosAluno: {
       ...fallbackMatricula.dadosAluno,
       ...baseMatricula.dadosAluno,
-      numeroMatricula: baseMatricula.dadosAluno.numeroMatricula || aluno.numeroMatricula || "",
-      nomeCompleto: baseMatricula.dadosAluno.nomeCompleto || aluno.nome || "",
+      numeroMatricula:
+        text(
+          raw.numeroMatricula ?? raw.numero_matricula ?? baseMatricula.dadosAluno.numeroMatricula,
+        ) || "",
+      nomeCompleto:
+        text(raw.nome ?? raw.nome_completo ?? baseMatricula.dadosAluno.nomeCompleto) || "",
       dataNascimento,
       idade: calculateStudentAge(dataNascimento),
-      cpf: baseMatricula.dadosAluno.cpf || aluno.cpf || "",
-      rg: baseMatricula.dadosAluno.rg || aluno.rg || "",
-      sexo: baseMatricula.dadosAluno.sexo || aluno.sexo || "",
+      cpf: text(raw.cpf ?? baseMatricula.dadosAluno.cpf) || "",
+      rg: text(raw.rg ?? baseMatricula.dadosAluno.rg) || "",
+      sexo: text(raw.sexo ?? baseMatricula.dadosAluno.sexo) || "",
+      colegio: text(raw.colegio ?? baseMatricula.dadosAluno.colegio) || "",
+      periodoEscolar:
+        text(
+          raw.periodoEscolar ?? raw.periodo_escolar ?? baseMatricula.dadosAluno.periodoEscolar,
+        ) || "",
     },
     responsavel: {
       ...fallbackMatricula.responsavel,
       ...baseMatricula.responsavel,
-      nomeCompleto: baseMatricula.responsavel.nomeCompleto || aluno.responsavel || "",
-      whatsapp: baseMatricula.responsavel.whatsapp || aluno.telefoneResponsavel || "",
-      email: baseMatricula.responsavel.email || aluno.email || "",
+      nomeCompleto:
+        text(raw.responsavel ?? raw.responsavel_nome ?? baseMatricula.responsavel.nomeCompleto) ||
+        "",
+      whatsapp:
+        text(
+          raw.telefoneResponsavel ??
+            raw.telefone_responsavel ??
+            raw.responsavel_whatsapp ??
+            baseMatricula.responsavel.whatsapp,
+        ) || "",
+      email:
+        text(
+          raw.email ??
+            raw.email_contato ??
+            raw.responsavel_email ??
+            baseMatricula.responsavel.email,
+        ) || "",
     },
     esportivas: {
       ...fallbackMatricula.esportivas,
       ...baseMatricula.esportivas,
-      modalidades: uniqueValues(
-        baseMatricula.esportivas.modalidades.length > 0
-          ? baseMatricula.esportivas.modalidades
-          : [modalidade],
-      ),
-      unidades: uniqueValues([...baseMatricula.esportivas.unidades, ...(aluno.unidades ?? [])]),
-      horarios: uniqueValues([...baseMatricula.esportivas.horarios, ...(aluno.horarios ?? [])]),
-      turmas: uniqueValues([...baseMatricula.esportivas.turmas, ...turmas]),
+      modalidades: modalidades.length > 0 ? modalidades : [modalidade],
+      unidades,
+      horarios,
+      turmas,
     },
   };
-  const unidades = getAlunoUnidades({ ...aluno, turmas, matricula });
-  const horarios = getAlunoHorarios({ ...aluno, matricula });
+
+  const nome = text(raw.nome ?? raw.nome_completo) || matricula.dadosAluno.nomeCompleto || "Aluno";
+  const email =
+    text(raw.email ?? raw.email_contato ?? matricula.responsavel.email ?? raw.responsavel_email) ||
+    "";
+  const telefone =
+    text(raw.telefone ?? raw.telefone_contato ?? matricula.responsavel.whatsapp) || "";
+  const status = normalizeStudentStatus(raw.status);
+  const matriculaEm =
+    text(raw.matriculaEm ?? raw.matricula_em ?? raw.created_at).slice(0, 10) || todayISO();
 
   return {
-    ...aluno,
+    ...raw,
+    id: text(raw.id) || `aluno-${Date.now()}`,
+    nome,
+    email,
+    telefone,
+    dataNascimento,
+    responsavel:
+      text(raw.responsavel ?? raw.responsavel_nome) || matricula.responsavel.nomeCompleto,
+    telefoneResponsavel:
+      text(raw.telefoneResponsavel ?? raw.telefone_responsavel ?? raw.responsavel_whatsapp) ||
+      matricula.responsavel.whatsapp,
+    modalidade,
+    unidades,
     turmas,
     planos,
-    unidades,
     horarios,
-    turma: turmas[0] ?? aluno.turma ?? "",
-    plano: planos[0] ?? aluno.plano ?? "",
-    modalidade,
-    responsavel: aluno.responsavel ?? matricula.responsavel.nomeCompleto,
-    telefoneResponsavel: aluno.telefoneResponsavel ?? matricula.responsavel.whatsapp,
-    numeroMatricula: aluno.numeroMatricula ?? matricula.dadosAluno.numeroMatricula,
-    cpf: aluno.cpf ?? matricula.dadosAluno.cpf,
-    rg: aluno.rg ?? matricula.dadosAluno.rg,
-    sexo: aluno.sexo ?? matricula.dadosAluno.sexo,
+    turma: text(raw.turma ?? raw.turma_principal) || turmas[0] || "",
+    plano: text(raw.plano ?? raw.plano_principal) || planoNome || planos[0] || "",
+    status,
+    matriculaEm,
+    numeroMatricula: matricula.dadosAluno.numeroMatricula || undefined,
+    cpf: matricula.dadosAluno.cpf || undefined,
+    rg: matricula.dadosAluno.rg || undefined,
+    sexo: matricula.dadosAluno.sexo || undefined,
     matricula,
-    financeiro: aluno.financeiro ?? undefined,
+    origemCadastro: text(raw.origemCadastro ?? raw.origem_cadastro) || undefined,
+    matriculaPublicaProtocolo:
+      text(raw.matriculaPublicaProtocolo ?? raw.matricula_publica_protocolo) || undefined,
+    financeiro,
+    planoId: planoId ?? financeiro?.planoId ?? null,
+    planoNome: planoNome || financeiro?.planoNome || planos[0] || null,
+    planoValor: planoValor ?? financeiro?.valorPlano ?? null,
+    plano_id: planoId ?? financeiro?.planoId ?? null,
+    plano_nome: planoNome || financeiro?.planoNome || planos[0] || null,
+    plano_valor: planoValor ?? financeiro?.valorPlano ?? null,
+    unidade: unidades[0] ?? financeiro?.unidade ?? null,
+    dias_horarios: horarios,
   };
 }
 
 const alunosResource = createMysqlResourceStore<Aluno>({
   endpoint: "/alunos",
-  initialState: seed,
+  initialState: [],
   normalize: normalizeAluno,
   loadAll: getAlunos,
   createEntity: createAluno,
@@ -259,17 +487,24 @@ const alunosResource = createMysqlResourceStore<Aluno>({
   deleteEntity: deleteAluno,
 });
 
-let state: Aluno[] = alunosResource.getSnapshot().map(normalizeAluno);
+let state: Aluno[] = alunosResource.getSnapshot();
 const listeners = new Set<() => void>();
 
 alunosResource.subscribe(() => {
-  state = alunosResource.getSnapshot().map(normalizeAluno);
+  state = alunosResource.getSnapshot();
   listeners.forEach((listener) => listener());
 });
 
-function emit(nextState: Aluno[]) {
-  state = nextState.map(normalizeAluno);
-  alunosResource.replaceState(state);
+function replaceState(nextState: Aluno[]) {
+  alunosResource.replaceState(nextState.map((item) => normalizeAluno(item)));
+}
+
+function replaceById(targetId: string, nextAluno: Aluno) {
+  replaceState(
+    alunosResource
+      .getSnapshot()
+      .map((item) => (item.id === targetId ? normalizeAluno(nextAluno) : item)),
+  );
 }
 
 export const alunosStore = {
@@ -280,30 +515,60 @@ export const alunosStore = {
   getSnapshot() {
     return state;
   },
-  getById(id: string): Aluno | undefined {
+  reload() {
+    return alunosResource.reload();
+  },
+  getById(id: string) {
     return state.find((aluno) => aluno.id === id);
   },
   create(data: AlunoInput) {
+    const optimisticId = `tmp-${Date.now()}`;
     const novo = normalizeAluno({
       ...data,
-      id: `a${Date.now()}`,
-      matriculaEm: new Date().toISOString().slice(0, 10),
+      id: optimisticId,
+      matriculaEm: todayISO(),
     });
-    emit([novo, ...state]);
-    alunosResource.persistCreate(novo);
+
+    replaceState([novo, ...alunosResource.getSnapshot()]);
+
+    void createAluno(novo)
+      .then((saved) => {
+        replaceById(optimisticId, normalizeAluno(saved as Record<string, unknown>));
+      })
+      .catch(async (error) => {
+        console.error("[alunos-store] Falha ao criar aluno.", error);
+        await alunosResource.reload();
+      });
+
     return novo;
   },
-  update(id: string, data: Partial<Aluno>) {
-    const nextState = state.map((aluno) =>
-      aluno.id === id ? normalizeAluno({ ...aluno, ...data }) : aluno,
-    );
-    const updated = nextState.find((aluno) => aluno.id === id);
-    emit(nextState);
-    if (updated) alunosResource.persistUpdate(updated);
+  update(id: string, data: Partial<Aluno> & Record<string, unknown>) {
+    const current = state.find((aluno) => aluno.id === id);
+    if (!current) return null;
+
+    const next = normalizeAluno({ ...current, ...data, id });
+    replaceState(alunosResource.getSnapshot().map((aluno) => (aluno.id === id ? next : aluno)));
+
+    void updateAluno(next)
+      .then((saved) => {
+        replaceById(id, normalizeAluno(saved as Record<string, unknown>));
+      })
+      .catch(async (error) => {
+        console.error("[alunos-store] Falha ao atualizar aluno.", error);
+        await alunosResource.reload();
+      });
+
+    return next;
   },
   remove(id: string) {
-    emit(state.filter((aluno) => aluno.id !== id));
-    alunosResource.persistDelete(id);
+    if (!state.some((aluno) => aluno.id === id)) return;
+
+    replaceState(alunosResource.getSnapshot().filter((aluno) => aluno.id !== id));
+
+    void deleteAluno(id).catch(async (error) => {
+      console.error("[alunos-store] Falha ao remover aluno.", error);
+      await alunosResource.reload();
+    });
   },
 };
 

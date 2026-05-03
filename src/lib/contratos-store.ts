@@ -1,5 +1,11 @@
 import { useSyncExternalStore } from "react";
-import { alunosStore, formatAlunoScope, getAlunoPlanos, getAlunoTurmas, type Aluno } from "./alunos-store";
+import {
+  alunosStore,
+  formatAlunoScope,
+  getAlunoPlanos,
+  getAlunoTurmas,
+  type Aluno,
+} from "./alunos-store";
 import { financeiroStore } from "./financeiro-store";
 import { createRemoteCollectionStore } from "./remote-collection";
 import {
@@ -88,7 +94,11 @@ function joinList(list: string[]): string {
 }
 
 /** Monta o objeto de variáveis a partir de um contrato. */
-export function buildVariaveis(c: ContratoInput, alunoNome: string, alunoNasc: string): ContratoVariaveis {
+export function buildVariaveis(
+  c: ContratoInput,
+  alunoNome: string,
+  alunoNasc: string,
+): ContratoVariaveis {
   const valorMensal = c.parcelas > 0 ? c.valorTotal / c.parcelas : c.valorTotal;
   return {
     responsavel: c.responsavel,
@@ -117,7 +127,10 @@ export function buildVariaveis(c: ContratoInput, alunoNome: string, alunoNasc: s
   };
 }
 
-function defaultsFromAluno(a: Aluno): { responsavel: ContratoVariaveis["responsavel"]; plano: ContratoPlano } {
+function defaultsFromAluno(a: Aluno): {
+  responsavel: ContratoVariaveis["responsavel"];
+  plano: ContratoPlano;
+} {
   const isMenor = (() => {
     const d = new Date(a.dataNascimento);
     const idade = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
@@ -125,9 +138,9 @@ function defaultsFromAluno(a: Aluno): { responsavel: ContratoVariaveis["responsa
   })();
   return {
     responsavel: {
-      nome: isMenor ? a.responsavel ?? a.nome : a.nome,
+      nome: isMenor ? (a.responsavel ?? a.nome) : a.nome,
       cpf: "",
-      telefone: isMenor ? a.telefoneResponsavel ?? a.telefone : a.telefone,
+      telefone: isMenor ? (a.telefoneResponsavel ?? a.telefone) : a.telefone,
       email: a.email,
       endereco: "",
     },
@@ -211,7 +224,9 @@ function seed(): Contrato[] {
   return out;
 }
 
-const contratosCollection = createRemoteCollectionStore<Contrato[]>("contratos", seed());
+const contratosCollection = createRemoteCollectionStore<Contrato[]>("contratos", [], {
+  emptyState: [],
+});
 let state: Contrato[] = contratosCollection.getSnapshot();
 const listeners = new Set<() => void>();
 
@@ -229,6 +244,9 @@ export const contratosStore = {
   },
   getSnapshot() {
     return state;
+  },
+  reload() {
+    return contratosCollection.reload();
   },
   getById(id: string) {
     return state.find((c) => c.id === id);
@@ -318,7 +336,9 @@ export const contratosStore = {
   ): { contrato: Contrato | null; parcelasGeradas: number } {
     const ip = `${Math.floor(Math.random() * 200) + 50}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
     const dispositivo =
-      typeof navigator !== "undefined" ? navigator.userAgent.split(")")[0].split("(")[1] ?? "Web" : "Web";
+      typeof navigator !== "undefined"
+        ? (navigator.userAgent.split(")")[0].split("(")[1] ?? "Web")
+        : "Web";
     const novaAssinatura: AssinaturaEletronica = {
       nome: dados.nome,
       cpf: dados.cpf,
@@ -360,9 +380,7 @@ export const contratosStore = {
     // Cancela cobranças pendentes geradas pelo contrato
     if (c) {
       c.transacoesGeradas.forEach((tid) => {
-        const t = financeiroStore
-          .getSnapshot()
-          .find((tr) => tr.id === tid && !tr.pagoEm);
+        const t = financeiroStore.getSnapshot().find((tr) => tr.id === tid && !tr.pagoEm);
         if (t) financeiroStore.remove(tid);
       });
     }
@@ -392,15 +410,25 @@ function gerarParcelasFinanceiras(c: Contrato): number {
     ids.push(t.id);
   }
   // Atualiza contrato com IDs gerados
-  state = state.map((x) =>
-    x.id === c.id ? { ...x, transacoesGeradas: ids } : x,
-  );
+  state = state.map((x) => (x.id === c.id ? { ...x, transacoesGeradas: ids } : x));
   emit();
   return ids.length;
 }
 
 export function useContratos(): Contrato[] {
-  return useSyncExternalStore(contratosStore.subscribe, contratosStore.getSnapshot, contratosStore.getSnapshot);
+  return useSyncExternalStore(
+    contratosStore.subscribe,
+    contratosStore.getSnapshot,
+    contratosStore.getSnapshot,
+  );
+}
+
+export function useContratosStatus() {
+  return useSyncExternalStore(
+    contratosStore.subscribe,
+    contratosCollection.getMeta,
+    contratosCollection.getMeta,
+  );
 }
 
 export const STATUS_LABEL: Record<StatusContrato, string> = {
@@ -410,4 +438,3 @@ export const STATUS_LABEL: Record<StatusContrato, string> = {
   encerrado: "Encerrado",
   cancelado: "Cancelado",
 };
-

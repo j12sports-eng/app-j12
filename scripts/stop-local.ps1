@@ -16,4 +16,4 @@ function Stop-PortProcess {
 }
 
 Stop-PortProcess -Port 3000 -Label "Frontend"
-Stop-PortProcess -Port 4001 -Label "Backend"
+Stop-PortProcess -Port 3001 -Label "Backend"

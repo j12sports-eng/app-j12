@@ -19,6 +19,7 @@ import { ProfessorContractPreviewModal } from "@/components/professores/Professo
 import { ProfessorContractSignatureModal } from "@/components/professores/ProfessorContractSignatureModal";
 import { ProfessorFormDialog } from "@/components/professores/ProfessorFormDialog";
 import { ProfessorPerfilDrawer } from "@/components/professores/ProfessorPerfilDrawer";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,12 +45,13 @@ import {
   statusProfessorBadgeClass,
   STATUS_PROFESSOR_OPTIONS,
   useProfessores,
+  useProfessoresStatus,
   type Professor,
   type StatusContratoProfessor,
   type StatusProfessor,
 } from "@/lib/professores-store";
 import { cn } from "@/lib/utils";
-import { useSettingsState } from "@/lib/settings/settings-store";
+import { useSettingsState, useSettingsStatus } from "@/lib/settings/settings-store";
 
 export const Route = createFileRoute("/professores")({
   component: () => (
@@ -74,7 +76,9 @@ function ProfessoresPage() {
   const { hasRole } = useAuth();
   const canEdit = hasRole("admin", "coordenador");
   const professores = useProfessores();
+  const professoresStatus = useProfessoresStatus();
   const settings = useSettingsState();
+  const settingsStatus = useSettingsStatus();
   const modalidadesDisponiveis = useMemo(
     () =>
       Array.from(
@@ -230,6 +234,19 @@ function ProfessoresPage() {
   return (
     <AppShell title="Professores">
       <div className="space-y-6">
+        <ResourceSyncBanner
+          status={professoresStatus}
+          resourceLabel="os professores"
+          hasData={professores.length > 0}
+        />
+        {settingsStatus.error ? (
+          <ResourceSyncBanner
+            status={settingsStatus}
+            resourceLabel="as configuracoes auxiliares"
+            hasData={settings.modalities.length > 0 || settings.units.length > 0}
+          />
+        ) : null}
+
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-2xl font-bold">Professores</h2>
@@ -272,7 +289,7 @@ function ProfessoresPage() {
             icon={BadgeCheck}
           />
           <KpiCard
-            label="Folha mock"
+            label="Folha estimada"
             value={kpis.folha.toLocaleString("pt-BR", {
               style: "currency",
               currency: "BRL",
@@ -585,7 +602,7 @@ function ProfessoresPage() {
               {deleteProfessor?.contrato.status === "Assinado" ? (
                 <>
                   Este professor possui contrato assinado. A exclusao remove o cadastro e o
-                  historico mock, portanto confirme com atencao.
+                  historico contratual, portanto confirme com atencao.
                 </>
               ) : (
                 <>Esta acao remove o professor e seus dados em memoria.</>

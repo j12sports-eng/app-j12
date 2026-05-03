@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Clock3, Lock, Save, Search, ShieldAlert, Users } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,15 +20,16 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { usePortalAluno, usePortalPresencas } from "@/lib/aluno-portal";
 import { getAccessibleClasses, getClassAccessRule } from "@/lib/presenca-access";
-import { useProfessores } from "@/lib/professores-store";
+import { useProfessores, useProfessoresStatus } from "@/lib/professores-store";
 import {
   formatDias,
   turmasStore,
   useTurmas,
+  useTurmasStatus,
   type PresencaRegistro,
   type SessaoPresenca,
 } from "@/lib/turmas-store";
-import { useAlunos } from "@/lib/alunos-store";
+import { useAlunos, useAlunosStatus } from "@/lib/alunos-store";
 import { cn } from "@/lib/utils";
 
 function todayIso() {
@@ -47,8 +49,11 @@ export function PresencePage() {
 function StaffPresencePage() {
   const { user, hasRole } = useAuth();
   const turmas = useTurmas();
+  const turmasStatus = useTurmasStatus();
   const alunos = useAlunos();
+  const alunosStatus = useAlunosStatus();
   const professores = useProfessores();
+  const professoresStatus = useProfessoresStatus();
 
   const isPrivileged = hasRole("admin", "coordenador");
   const [professorFilter, setProfessorFilter] = useState("todos");
@@ -241,6 +246,26 @@ function StaffPresencePage() {
   return (
     <AppShell title="Presenca">
       <div className="space-y-6">
+        <ResourceSyncBanner
+          status={turmasStatus}
+          resourceLabel="as turmas e o historico de presenca"
+          hasData={turmas.length > 0}
+        />
+        {alunosStatus.error ? (
+          <ResourceSyncBanner
+            status={alunosStatus}
+            resourceLabel="a lista de alunos"
+            hasData={alunos.length > 0}
+          />
+        ) : null}
+        {professoresStatus.error ? (
+          <ResourceSyncBanner
+            status={professoresStatus}
+            resourceLabel="os professores vinculados"
+            hasData={professores.length > 0}
+          />
+        ) : null}
+
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-2xl font-bold">Presenca</h2>
@@ -634,7 +659,8 @@ function StudentPresencePage() {
           <div className="mb-4">
             <h3 className="text-lg font-semibold">HistÃ³rico do aluno</h3>
             <p className="text-sm text-muted-foreground">
-              {portalAluno.data?.nome || "Aluno"} - {portalAluno.data?.turma || "Turma nÃ£o informada"}
+              {portalAluno.data?.nome || "Aluno"} -{" "}
+              {portalAluno.data?.turma || "Turma nÃ£o informada"}
             </p>
           </div>
 
@@ -645,7 +671,10 @@ function StudentPresencePage() {
               </div>
             ) : (
               portalPresencas.data.map((registro) => (
-                <div key={registro.id} className="rounded-2xl border border-border bg-background/40 p-4">
+                <div
+                  key={registro.id}
+                  className="rounded-2xl border border-border bg-background/40 p-4"
+                >
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <div className="font-medium text-foreground">{registro.turma}</div>

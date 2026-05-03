@@ -40,7 +40,9 @@ export function ContratoVisualizarDialog({ open, onOpenChange, contrato }: Props
         </pre>
         {contrato.assinatura && (
           <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-xs">
-            <div className="font-semibold text-primary">✓ Assinatura do Responsável (Contratante)</div>
+            <div className="font-semibold text-primary">
+              ✓ Assinatura do Responsável (Contratante)
+            </div>
             <div className="mt-1 text-muted-foreground">
               {contrato.assinatura.nome} (CPF {contrato.assinatura.cpf}) —{" "}
               {new Date(contrato.assinatura.assinadoEm).toLocaleString("pt-BR")} — IP{" "}
@@ -50,7 +52,9 @@ export function ContratoVisualizarDialog({ open, onOpenChange, contrato }: Props
         )}
         {contrato.assinaturaJ12 && (
           <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-xs">
-            <div className="font-semibold text-primary">✓ Assinatura da J12 Sports (Contratada)</div>
+            <div className="font-semibold text-primary">
+              ✓ Assinatura da J12 Sports (Contratada)
+            </div>
             <div className="mt-1 text-muted-foreground">
               {contrato.assinaturaJ12.nome} (CNPJ {contrato.assinaturaJ12.cpf}) —{" "}
               {new Date(contrato.assinaturaJ12.assinadoEm).toLocaleString("pt-BR")} — IP{" "}

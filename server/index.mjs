@@ -2,6 +2,8 @@ import { createServer } from "node:http";
 import {
   ALLOWED_COLLECTIONS,
   authenticateUser,
+  changeUserPassword,
+  completeStudentFirstAccess,
   createPublicEnrollment,
   createPasswordResetToken,
   createSession,
@@ -24,6 +26,37 @@ const SHOW_HEALTH_DETAILS = process.env.HEALTH_SHOW_DETAILS === "true";
 const DEFAULT_PRODUCTION_ORIGINS = ["https://app.j12sports.com.br"];
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS);
 const APP_BASE_URL = process.env.APP_BASE_URL?.trim() || "";
+
+/**
+ * Em desenvolvimento, libera leitura das coleções mesmo sem token.
+ * Em produção, continua exigindo login.
+ */
+const DEV_AUTH_BYPASS = process.env.DEV_AUTH_BYPASS === "true" && NODE_ENV !== "production";
+
+const COLLECTION_ALIASES = {
+  "/alunos": "alunos",
+  "/financeiro": "financeiro",
+  "/turmas": "turmas",
+  "/professores": "professores",
+  "/planos": "planos",
+  "/contratos": "contratos",
+  "/settings": "settings",
+};
+
+const DEV_ADMIN_USER = {
+  id: "dev-admin",
+  nome: "Administrador J12",
+  email: "admin@j12.local",
+  role: "admin",
+};
+const COLLECTION_ITEM_ROUTES = new Set(["alunos", "financeiro"]);
+const PERIODICIDADE_MONTHS = {
+  mensal: 1,
+  bimestral: 2,
+  trimestral: 3,
+  semestral: 6,
+  anual: 12,
+};
 
 function parseAllowedOrigins(rawValue) {
   if (rawValue?.trim()) {
@@ -118,6 +151,18 @@ function getAuthenticatedUser(req) {
   return findUserBySessionToken(token);
 }
 
+function getUserOrDevAdmin(req) {
+  const user = getAuthenticatedUser(req);
+
+  if (user) return user;
+
+  if (DEV_AUTH_BYPASS) {
+    return DEV_ADMIN_USER;
+  }
+
+  return null;
+}
+
 function normalizeComparable(value) {
   return String(value ?? "")
     .trim()
@@ -183,7 +228,7 @@ function getProfessorAccessContext(user) {
   };
 }
 
-function buildScopedSettings(data, user, context) {
+function buildScopedSettings(data, user) {
   if (!data || typeof data !== "object") return data;
   if (isPrivilegedUser(user)) return data;
 
@@ -241,8 +286,7 @@ function filterCollectionForUser(collection, data, user) {
   if (isPrivilegedUser(user)) return data;
 
   if (collection === "settings") {
-    const context = user.role === "professor" ? getProfessorAccessContext(user) : null;
-    return buildScopedSettings(data, user, context);
+    return buildScopedSettings(data, user);
   }
 
   if (user.role === "professor") {
@@ -328,6 +372,7 @@ function canWriteCollection(user, collection, payload) {
 
       const currentBase = { ...currentItem, presencas: undefined };
       const nextBase = { ...nextItem, presencas: undefined };
+
       if (JSON.stringify(currentBase) !== JSON.stringify(nextBase)) {
         return false;
       }
@@ -336,7 +381,11 @@ function canWriteCollection(user, collection, payload) {
     return [...nextById.keys()].every((id) => currentById.has(id));
   }
 
-  if ((user.role === "aluno" || user.role === "responsavel") && collection === "alunos" && Array.isArray(payload)) {
+  if (
+    (user.role === "aluno" || user.role === "responsavel") &&
+    collection === "alunos" &&
+    Array.isArray(payload)
+  ) {
     return payload.every((item) => item?.id === user.studentId);
   }
 
@@ -349,15 +398,14 @@ function isValidEmail(email) {
 
 function isStrongPassword(password) {
   return (
-    password.length >= 8 &&
-    /[A-Z]/.test(password) &&
-    /[a-z]/.test(password) &&
-    /\d/.test(password)
+    password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password)
   );
 }
 
 function normalizeCep(value) {
-  return String(value ?? "").replace(/\D/g, "").trim();
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .trim();
 }
 
 async function lookupAddressByCep(cep) {
@@ -392,7 +440,9 @@ async function lookupAddressByCep(cep) {
     rua: String(data?.logradouro ?? "").trim(),
     bairro: String(data?.bairro ?? "").trim(),
     cidade: String(data?.localidade ?? "").trim(),
-    estado: String(data?.uf ?? "").trim().toUpperCase(),
+    estado: String(data?.uf ?? "")
+      .trim()
+      .toUpperCase(),
   };
 }
 
@@ -408,13 +458,381 @@ function getAppBaseUrl(req) {
   return `http://${req.headers.host ?? `${HOST}:${PORT}`}`;
 }
 
-const server = createServer(async (req, res) => {
-  // ROTA PRINCIPAL
-if (req.url === "/" && req.method === "GET") {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ status: "J12 API ONLINE 🚀" }));
-  return;
+function getCollectionPayload(collection, user) {
+  const record = getCollection(collection);
+
+  if (!record) {
+    const fallbackData = collection === "settings" ? {} : [];
+
+    return {
+      data: fallbackData,
+      updatedAt: new Date().toISOString(),
+      initialized: false,
+    };
+  }
+
+  return {
+    data: filterCollectionForUser(collection, record.data, user),
+    updatedAt: record.updatedAt,
+    initialized: true,
+  };
 }
+
+function createCollectionRecordId(collection) {
+  const prefix = collection === "alunos" ? "a" : collection === "financeiro" ? "f" : "r";
+  return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;
+}
+
+function getCollectionArrayData(collection) {
+  const record = getCollection(collection);
+  return Array.isArray(record?.data) ? [...record.data] : [];
+}
+
+function createCollectionItem(collection, payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Payload invalido para criar registro.");
+  }
+
+  const items = getCollectionArrayData(collection);
+  const nextId = String(payload.id ?? "").trim() || createCollectionRecordId(collection);
+
+  if (items.some((item) => String(item?.id ?? "") === nextId)) {
+    throw new Error(`Ja existe um registro com o ID ${nextId}.`);
+  }
+
+  const nextItem = { ...payload, id: nextId };
+  const updatedAt = putCollection(collection, [nextItem, ...items]);
+
+  return {
+    item: nextItem,
+    updatedAt,
+  };
+}
+
+function updateCollectionItem(collection, itemId, payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Payload invalido para atualizar registro.");
+  }
+
+  const normalizedId = String(itemId ?? "").trim();
+  const items = getCollectionArrayData(collection);
+  const index = items.findIndex((item) => String(item?.id ?? "") === normalizedId);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const nextItem = {
+    ...items[index],
+    ...payload,
+    id: normalizedId,
+  };
+  const nextItems = items.map((item, currentIndex) => (currentIndex === index ? nextItem : item));
+  const updatedAt = putCollection(collection, nextItems);
+
+  return {
+    item: nextItem,
+    updatedAt,
+  };
+}
+
+function deleteCollectionItem(collection, itemId) {
+  const normalizedId = String(itemId ?? "").trim();
+  const items = getCollectionArrayData(collection);
+  const nextItems = items.filter((item) => String(item?.id ?? "") !== normalizedId);
+
+  if (nextItems.length === items.length) {
+    return null;
+  }
+
+  const updatedAt = putCollection(collection, nextItems);
+
+  if (collection === "alunos") {
+    const turmas = getCollectionArrayData("turmas");
+    const nextTurmas = turmas.map((turma) => {
+      if (!Array.isArray(turma?.alunoIds) || !turma.alunoIds.includes(normalizedId)) {
+        return turma;
+      }
+
+      return {
+        ...turma,
+        alunoIds: turma.alunoIds.filter((alunoId) => alunoId !== normalizedId),
+      };
+    });
+
+    if (JSON.stringify(nextTurmas) !== JSON.stringify(turmas)) {
+      putCollection("turmas", nextTurmas);
+    }
+  }
+
+  return { updatedAt };
+}
+
+function normalizeMoney(value) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? Number(number.toFixed(2)) : 0;
+}
+
+function normalizeDay(value, fallback = 10) {
+  const day = Number.parseInt(String(value ?? fallback), 10);
+
+  if (!Number.isFinite(day)) return fallback;
+  return Math.min(28, Math.max(1, day));
+}
+
+function normalizeReferenceMonth(value) {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})/);
+
+  if (match) {
+    return `${match[1]}-${match[2]}`;
+  }
+
+  return new Date().toISOString().slice(0, 7);
+}
+
+function getMonthStart(value) {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})/);
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  return new Date(year, month - 1, 1);
+}
+
+function monthDiff(start, end) {
+  return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+}
+
+function toIsoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function inferPeriodicidade(value) {
+  const normalized = normalizeComparable(value);
+  if (normalized.includes("bimes")) return "bimestral";
+  if (normalized.includes("trimes")) return "trimestral";
+  if (normalized.includes("semes")) return "semestral";
+  if (normalized.includes("anual")) return "anual";
+  return "mensal";
+}
+
+function resolveAlunoPlanoFinanceiro(planos, aluno) {
+  const planosAluno = Array.isArray(aluno?.planos)
+    ? aluno.planos.filter((item) => typeof item === "string" && item.trim())
+    : [];
+  const planoPrimario = String(aluno?.plano ?? planosAluno[0] ?? "").trim();
+  const planoMatch =
+    planos.find((plano) => String(plano?.id ?? "") === String(aluno?.financeiro?.planoId ?? "")) ??
+    planos.find(
+      (plano) =>
+        normalizeComparable(plano?.nome) === normalizeComparable(planoPrimario) ||
+        planosAluno.some(
+          (nomePlano) => normalizeComparable(plano?.nome) === normalizeComparable(nomePlano),
+        ),
+    ) ??
+    null;
+
+  return {
+    planId: aluno?.financeiro?.planoId ?? planoMatch?.id ?? null,
+    planName: planoMatch?.nome ?? planoPrimario,
+    valuePlan: normalizeMoney(aluno?.financeiro?.valorPlano ?? planoMatch?.precoMensal),
+    periodicidade:
+      aluno?.financeiro?.periodicidade ?? inferPeriodicidade(planoMatch?.nome ?? planoPrimario),
+  };
+}
+
+function shouldGenerateChargeForReference(startDate, periodicidade, referenceMonth) {
+  const start = getMonthStart(startDate);
+  const reference = getMonthStart(referenceMonth);
+  const step = PERIODICIDADE_MONTHS[periodicidade] ?? 1;
+
+  if (!start || !reference) return false;
+
+  const diff = monthDiff(start, reference);
+  if (diff < 0) return false;
+
+  return diff % step === 0;
+}
+
+function buildDueDate(referenceMonth, day) {
+  const reference = getMonthStart(referenceMonth);
+  if (!reference) {
+    return `${referenceMonth}-01`;
+  }
+
+  const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1, 0).getDate();
+  return toIsoDate(new Date(reference.getFullYear(), reference.getMonth(), Math.min(day, lastDay)));
+}
+
+function computeProRataAmount(value, startDate) {
+  const raw = String(startDate ?? "").trim();
+  const [year, month, day] = raw.split("-").map(Number);
+  if (!year || !month || !day) return value;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const remainingDays = Math.max(1, daysInMonth - day + 1);
+  return normalizeMoney((value / daysInMonth) * remainingDays);
+}
+
+function computeChargeValues(aluno, valuePlan, referenceMonth, startDate) {
+  const cobrarProporcional =
+    aluno?.financeiro?.cobrancaProporcional === true &&
+    String(startDate ?? "").slice(0, 7) === referenceMonth &&
+    String(startDate ?? "").slice(8, 10) !== "01";
+  const valorOriginal = cobrarProporcional
+    ? computeProRataAmount(valuePlan, startDate)
+    : normalizeMoney(valuePlan);
+  const descontoPercentual = normalizeMoney(aluno?.financeiro?.descontoPercentual);
+  const descontoValor = normalizeMoney(
+    aluno?.financeiro?.descontoValor + valorOriginal * (descontoPercentual / 100),
+  );
+  const bolsaPercentual = normalizeMoney(aluno?.financeiro?.bolsaPercentual);
+  const bolsaValor = normalizeMoney(
+    aluno?.financeiro?.bolsaValor + valorOriginal * (bolsaPercentual / 100),
+  );
+  const valorFinal = Math.max(0, normalizeMoney(valorOriginal - descontoValor - bolsaValor));
+
+  return {
+    valorOriginal,
+    descontoPercentual,
+    descontoValor,
+    bolsaPercentual,
+    bolsaValor,
+    valorFinal,
+  };
+}
+
+function generateMonthlyCharges(referenceInput) {
+  const referenceMonth = normalizeReferenceMonth(referenceInput);
+  const alunos = getCollectionArrayData("alunos");
+  const planos = getCollectionArrayData("planos");
+  const financeiro = getCollectionArrayData("financeiro");
+  const nextFinanceiro = [...financeiro];
+  let createdCount = 0;
+  let skippedCount = 0;
+
+  for (const aluno of alunos) {
+    const statusAluno = normalizeComparable(aluno?.status);
+    if (statusAluno && statusAluno !== "ativo" && statusAluno !== "experimental") {
+      skippedCount += 1;
+      continue;
+    }
+
+    const recorrenciaAtiva = aluno?.financeiro?.recorrenciaAtiva ?? true;
+    const cobrancaAutomatica = aluno?.financeiro?.cobrancaAutomatica ?? recorrenciaAtiva;
+
+    if (!recorrenciaAtiva || !cobrancaAutomatica) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const planoFinanceiro = resolveAlunoPlanoFinanceiro(planos, aluno);
+    if (!planoFinanceiro.planName || planoFinanceiro.valuePlan <= 0) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const startDate = String(
+      aluno?.financeiro?.dataInicioFinanceiro ?? aluno?.matriculaEm ?? `${referenceMonth}-01`,
+    ).trim();
+
+    if (
+      !shouldGenerateChargeForReference(startDate, planoFinanceiro.periodicidade, referenceMonth)
+    ) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const competencia = `${referenceMonth}:${planoFinanceiro.periodicidade}`;
+    const existingCharge = nextFinanceiro.some(
+      (transacao) =>
+        String(transacao?.alunoId ?? "") === String(aluno?.id ?? "") &&
+        String(transacao?.competencia ?? "") === competencia &&
+        String(transacao?.tipoCobranca ?? "avulsa") === "recorrente" &&
+        normalizeComparable(transacao?.status) !== "cancelada",
+    );
+
+    if (existingCharge) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const dueDate = buildDueDate(
+      referenceMonth,
+      normalizeDay(aluno?.financeiro?.diaVencimento ?? String(startDate).slice(8, 10) ?? 10),
+    );
+    const values = computeChargeValues(aluno, planoFinanceiro.valuePlan, referenceMonth, startDate);
+    const responsavel = aluno?.matricula?.responsavel ?? {};
+    const transacao = {
+      id: createCollectionRecordId("financeiro"),
+      alunoId: aluno.id,
+      alunoNome: aluno.nome ?? "Aluno",
+      descricao: `Mensalidade - ${planoFinanceiro.planName}`,
+      tipo: "mensalidade",
+      valor: values.valorFinal,
+      vencimento: dueDate,
+      pagoEm: null,
+      formaPagamento: undefined,
+      observacao: aluno?.financeiro?.observacoes ?? null,
+      responsavelFinanceiro:
+        responsavel.nomeCompleto ??
+        aluno?.responsavel ??
+        aluno?.nome ??
+        "Responsavel nao informado",
+      responsavelCpf: responsavel.cpf ?? null,
+      telefoneWhatsapp:
+        responsavel.whatsapp ?? aluno?.telefoneResponsavel ?? aluno?.telefone ?? null,
+      email: responsavel.email ?? aluno?.email ?? null,
+      unidade: Array.isArray(aluno?.unidades) ? (aluno.unidades[0] ?? "") : "",
+      modalidade: aluno?.modalidade ?? "",
+      turma: aluno?.turma ?? (Array.isArray(aluno?.turmas) ? (aluno.turmas[0] ?? "") : ""),
+      planoId: planoFinanceiro.planId,
+      planoNome: planoFinanceiro.planName,
+      periodicidade: planoFinanceiro.periodicidade,
+      competencia,
+      valorOriginal: values.valorOriginal,
+      descontoValor: values.descontoValor,
+      descontoPercentual: values.descontoPercentual,
+      bolsaValor: values.bolsaValor,
+      bolsaPercentual: values.bolsaPercentual,
+      multaPercentual: normalizeMoney(aluno?.financeiro?.multaPercentual),
+      jurosDiaPercentual: normalizeMoney(aluno?.financeiro?.jurosDiaPercentual),
+      valorFinal: values.valorFinal,
+      dataGeracao: new Date().toISOString().slice(0, 10),
+      dataPagamento: null,
+      status: "pendente",
+      tipoCobranca: "recorrente",
+      origem: "automatica",
+      ativo: true,
+    };
+
+    nextFinanceiro.unshift(transacao);
+    createdCount += 1;
+  }
+
+  if (createdCount > 0) {
+    putCollection("financeiro", nextFinanceiro);
+  }
+
+  return {
+    competencia: referenceMonth,
+    createdCount,
+    skippedCount,
+    message:
+      createdCount > 0
+        ? `${createdCount} mensalidade(s) gerada(s) e ${skippedCount} ignorada(s).`
+        : `Nenhuma nova mensalidade foi criada. ${skippedCount} registro(s) foram ignorados.`,
+  };
+}
+
+const server = createServer(async (req, res) => {
   setCorsHeaders(req, res);
   purgeExpiredPasswordResetTokens();
 
@@ -438,57 +856,11 @@ if (req.url === "/" && req.method === "GET") {
   const pathname = url.pathname;
 
   if (pathname === "/" && req.method === "GET") {
-    sendHtml(
-      req,
-      res,
-      200,
-      `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>J12 App</title>
-          <style>
-            body {
-              margin: 0;
-              font-family: Arial, sans-serif;
-              background: #111;
-              color: #fff;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-            }
-            .box {
-              text-align: center;
-              padding: 32px;
-              border-radius: 16px;
-              background: #1a1a1a;
-              box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
-              max-width: 560px;
-              width: calc(100% - 32px);
-            }
-            h1 {
-              color: #ff6b00;
-              margin: 0 0 12px;
-            }
-            p {
-              margin: 0;
-              color: #ddd;
-              line-height: 1.5;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="box">
-            <h1>🔥 J12 App Online com sucesso!</h1>
-            <p>Seu backend está funcionando corretamente.</p>
-          </div>
-        </body>
-      </html>
-      `,
-    );
+    sendJson(req, res, 200, {
+      status: "J12 API ONLINE 🚀",
+      port: PORT,
+      authBypassDev: DEV_AUTH_BYPASS,
+    });
     return;
   }
 
@@ -506,6 +878,7 @@ if (req.url === "/" && req.method === "GET") {
         databasePath: getDatabasePath(),
         collections: [...ALLOWED_COLLECTIONS],
         allowedOrigins: ALLOWED_ORIGINS,
+        authBypassDev: DEV_AUTH_BYPASS,
       };
     }
 
@@ -516,7 +889,9 @@ if (req.url === "/" && req.method === "GET") {
   if (pathname === "/auth/login" && req.method === "POST") {
     try {
       const body = await readJsonBody(req);
-      const email = String(body.email ?? "").trim().toLowerCase();
+      const email = String(body.email ?? body.login ?? body.identifier ?? "")
+        .trim()
+        .toLowerCase();
       const senha = String(body.senha ?? "");
 
       const user = authenticateUser(email, senha);
@@ -550,15 +925,74 @@ if (req.url === "/" && req.method === "GET") {
 
   if (pathname === "/auth/logout" && req.method === "POST") {
     const token = getTokenFromRequest(req);
-    if (token) deleteSession(token);
+    if (!token || !getAuthenticatedUser(req)) {
+      sendJson(req, res, 401, { message: "Sessao invalida ou expirada" });
+      return;
+    }
+
+    deleteSession(token);
     sendJson(req, res, 200, { ok: true });
+    return;
+  }
+
+  if (pathname === "/auth/change-password" && req.method === "POST") {
+    try {
+      const user = getAuthenticatedUser(req);
+
+      if (!user) {
+        sendJson(req, res, 401, { message: "Sessao invalida ou expirada" });
+        return;
+      }
+
+      const body = await readJsonBody(req);
+      const senhaAtual = String(body.senhaAtual ?? "");
+      const novaSenha = String(body.novaSenha ?? "");
+      const confirmarSenha = String(body.confirmarSenha ?? "");
+
+      if (!senhaAtual || !novaSenha) {
+        sendJson(req, res, 400, { message: "Preencha a senha atual e a nova senha." });
+        return;
+      }
+
+      if (novaSenha !== confirmarSenha) {
+        sendJson(req, res, 400, { message: "A confirmacao da nova senha nao confere." });
+        return;
+      }
+
+      changeUserPassword(user.id, senhaAtual, novaSenha);
+      sendJson(req, res, 200, { ok: true, message: "Senha alterada com sucesso." });
+    } catch (error) {
+      sendJson(req, res, 400, {
+        message: error instanceof Error ? error.message : "Falha ao alterar senha",
+      });
+    }
+    return;
+  }
+
+  if (pathname === "/auth/first-access" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req);
+      const user = completeStudentFirstAccess(body);
+
+      sendJson(req, res, 201, {
+        ok: true,
+        user,
+        message: "Primeiro acesso configurado. Agora voce ja pode entrar com seu e-mail e senha.",
+      });
+    } catch (error) {
+      sendJson(req, res, 400, {
+        message: error instanceof Error ? error.message : "Falha ao concluir primeiro acesso",
+      });
+    }
     return;
   }
 
   if (pathname === "/auth/forgot-password" && req.method === "POST") {
     try {
       const body = await readJsonBody(req);
-      const email = String(body.email ?? "").trim().toLowerCase();
+      const email = String(body.email ?? "")
+        .trim()
+        .toLowerCase();
 
       if (!isValidEmail(email)) {
         sendJson(req, res, 400, { message: "Informe um e-mail valido" });
@@ -588,10 +1022,7 @@ if (req.url === "/" && req.method === "GET") {
       });
     } catch (error) {
       sendJson(req, res, 400, {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Falha ao iniciar recuperacao de senha",
+        message: error instanceof Error ? error.message : "Falha ao iniciar recuperacao de senha",
       });
     }
     return;
@@ -706,9 +1137,7 @@ if (req.url === "/" && req.method === "GET") {
     } catch (error) {
       sendJson(req, res, 409, {
         message:
-          error instanceof Error
-            ? error.message
-            : "Nao foi possivel gerar a proxima matricula.",
+          error instanceof Error ? error.message : "Nao foi possivel gerar a proxima matricula.",
       });
     }
     return;
@@ -728,8 +1157,207 @@ if (req.url === "/" && req.method === "GET") {
     return;
   }
 
+  if (pathname === "/financeiro/gerar-mensalidades" && req.method === "POST") {
+    const user = getUserOrDevAdmin(req);
+
+    if (!user) {
+      sendJson(req, res, 401, { message: "Sessao invalida ou expirada" });
+      return;
+    }
+
+    if (!isPrivilegedUser(user)) {
+      sendJson(req, res, 403, {
+        message: "Apenas administradores e coordenadores podem gerar mensalidades.",
+      });
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(req);
+      const result = generateMonthlyCharges(body?.competencia ?? body?.referencia);
+      sendJson(req, res, 200, result);
+    } catch (error) {
+      sendJson(req, res, 400, {
+        message: error instanceof Error ? error.message : "Falha ao gerar mensalidades.",
+      });
+    }
+    return;
+  }
+
+  const directCollectionItemMatch = pathname.match(/^\/(alunos|financeiro)\/([^/]+)$/);
+  if (directCollectionItemMatch) {
+    const [, collection, rawItemId] = directCollectionItemMatch;
+    const itemId = decodeURIComponent(rawItemId);
+    const user = getUserOrDevAdmin(req);
+
+    if (!user) {
+      sendJson(req, res, 401, { message: "Sessao invalida ou expirada" });
+      return;
+    }
+
+    if (req.method === "GET") {
+      const payload = getCollectionPayload(collection, user);
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      const item = items.find((currentItem) => String(currentItem?.id ?? "") === itemId);
+
+      if (!item) {
+        sendJson(req, res, 404, { message: "Registro nao encontrado" });
+        return;
+      }
+
+      sendJson(req, res, 200, item);
+      return;
+    }
+
+    if (!isPrivilegedUser(user)) {
+      sendJson(req, res, 403, {
+        message: "Voce nao tem permissao para alterar este recurso.",
+      });
+      return;
+    }
+
+    if (req.method === "PUT") {
+      try {
+        const body = await readJsonBody(req);
+        const result = updateCollectionItem(collection, itemId, body);
+
+        if (!result) {
+          sendJson(req, res, 404, { message: "Registro nao encontrado" });
+          return;
+        }
+
+        sendJson(req, res, 200, result.item);
+      } catch (error) {
+        sendJson(req, res, 400, {
+          message: error instanceof Error ? error.message : "Falha ao atualizar registro.",
+        });
+      }
+      return;
+    }
+
+    if (req.method === "DELETE") {
+      try {
+        const result = deleteCollectionItem(collection, itemId);
+
+        if (!result) {
+          sendJson(req, res, 404, { message: "Registro nao encontrado" });
+          return;
+        }
+
+        sendJson(req, res, 200, { ok: true });
+      } catch (error) {
+        sendJson(req, res, 400, {
+          message: error instanceof Error ? error.message : "Falha ao remover registro.",
+        });
+      }
+      return;
+    }
+
+    sendJson(req, res, 405, { message: "Metodo nao permitido" });
+    return;
+  }
+
+  /**
+   * Rotas diretas usadas pelo front:
+   * /alunos
+   * /financeiro
+   * /turmas
+   * /professores
+   * /planos
+   * /contratos
+   * /settings
+   */
+  if (COLLECTION_ALIASES[pathname]) {
+    const collection = COLLECTION_ALIASES[pathname];
+    const user = getUserOrDevAdmin(req);
+
+    if (!user) {
+      sendJson(req, res, 401, { message: "Sessao invalida ou expirada" });
+      return;
+    }
+
+    if (!ALLOWED_COLLECTIONS.has(collection)) {
+      sendJson(req, res, 404, { message: "Colecao nao encontrada" });
+      return;
+    }
+
+    if (req.method === "GET") {
+      const payload = getCollectionPayload(collection, user);
+
+      /**
+       * Algumas partes do app esperam array direto em /alunos e /financeiro.
+       */
+      sendJson(req, res, 200, payload.data);
+      return;
+    }
+
+    if (req.method === "POST" && COLLECTION_ITEM_ROUTES.has(collection)) {
+      try {
+        const body = await readJsonBody(req);
+        const isWrappedCollectionPayload =
+          body && typeof body === "object" && !Array.isArray(body) && "data" in body;
+
+        if (
+          !isWrappedCollectionPayload &&
+          body &&
+          typeof body === "object" &&
+          !Array.isArray(body)
+        ) {
+          if (!isPrivilegedUser(user)) {
+            sendJson(req, res, 403, {
+              message: "Voce nao tem permissao para criar este recurso.",
+            });
+            return;
+          }
+
+          const result = createCollectionItem(collection, body);
+          sendJson(req, res, 201, result.item);
+          return;
+        }
+      } catch (error) {
+        sendJson(req, res, 400, {
+          message: error instanceof Error ? error.message : "Falha ao criar registro.",
+        });
+        return;
+      }
+    }
+
+    if (req.method === "PUT" || req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const nextData = "data" in body ? body.data : body;
+
+        if (!canWriteCollection(user, collection, nextData)) {
+          sendJson(req, res, 403, {
+            message: "Voce nao tem permissao para alterar esta colecao",
+          });
+          return;
+        }
+
+        const updatedAt = putCollection(collection, nextData);
+        sendJson(req, res, 200, { ok: true, updatedAt });
+      } catch (error) {
+        sendJson(req, res, 400, {
+          message: error instanceof Error ? error.message : "Falha ao salvar colecao",
+        });
+      }
+      return;
+    }
+
+    sendJson(req, res, 405, { message: "Metodo nao permitido" });
+    return;
+  }
+
+  /**
+   * Rotas padrão do app:
+   * /api/state/settings
+   * /api/state/turmas
+   * /api/state/professores
+   * /api/state/planos
+   * /api/state/contratos
+   */
   if (pathname.startsWith("/api/state/")) {
-    const user = getAuthenticatedUser(req);
+    const user = getUserOrDevAdmin(req);
 
     if (!user) {
       sendJson(req, res, 401, { message: "Sessao invalida ou expirada" });
@@ -744,16 +1372,12 @@ if (req.url === "/" && req.method === "GET") {
     }
 
     if (req.method === "GET") {
-      const record = getCollection(collection);
-
-      if (!record) {
-        sendJson(req, res, 404, { message: "Colecao ainda nao inicializada" });
-        return;
-      }
+      const payload = getCollectionPayload(collection, user);
 
       sendJson(req, res, 200, {
-        data: filterCollectionForUser(collection, record.data, user),
-        updatedAt: record.updatedAt,
+        data: payload.data,
+        updatedAt: payload.updatedAt,
+        initialized: payload.initialized,
       });
       return;
     }
@@ -788,9 +1412,16 @@ if (req.url === "/" && req.method === "GET") {
     return;
   }
 
-  sendJson(req, res, 404, { message: "Rota nao encontrada" });
+  sendJson(req, res, 404, {
+    message: "Rota nao encontrada",
+    path: pathname,
+  });
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`J12 API persistente pronta em http://${HOST}:${PORT}`);
+
+  if (DEV_AUTH_BYPASS) {
+    console.log("Modo desenvolvimento: leitura liberada sem token.");
+  }
 });

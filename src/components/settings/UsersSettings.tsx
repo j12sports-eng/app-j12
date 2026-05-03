@@ -67,7 +67,11 @@ export function UsersSettings() {
     [alunos],
   );
 
-  function updatePermission(role: SettingsUser["role"], field: "canViewSelfOnly" | "canEditSelfOnly", value: boolean) {
+  function updatePermission(
+    role: SettingsUser["role"],
+    field: "canViewSelfOnly" | "canEditSelfOnly",
+    value: boolean,
+  ) {
     settingsStore.savePermissions(
       settings.permissions.map((permission) =>
         permission.role === role ? { ...permission, [field]: value } : permission,
@@ -247,7 +251,10 @@ export function UsersSettings() {
                   user.role === "professor"
                     ? user.classIds.length || "—"
                     : user.role === "aluno"
-                      ? (() => { const aluno = alunos.find((item) => item.id === user.studentId); return aluno ? formatAlunoScope(getAlunoTurmas(aluno)) : "—"; })()
+                      ? (() => {
+                          const aluno = alunos.find((item) => item.id === user.studentId);
+                          return aluno ? formatAlunoScope(getAlunoTurmas(aluno)) : "—";
+                        })()
                       : "Acesso total";
 
                 return (
@@ -319,7 +326,7 @@ export function UsersSettings() {
               onChange={(value) => setForm((current) => ({ ...current, email: value }))}
             />
             <Field
-              label="Senha mock"
+              label="Senha inicial"
               value={form.senha}
               onChange={(value) => setForm((current) => ({ ...current, senha: value }))}
             />
@@ -423,8 +430,7 @@ export function UsersSettings() {
                 </select>
 
                 <p className="text-xs text-slate-500">
-                  Esse vinculo identifica qual cadastro de aluno corresponde ao login deste
-                  usuario.
+                  Esse vinculo identifica qual cadastro de aluno corresponde ao login deste usuario.
                 </p>
               </div>
 
@@ -487,4 +493,3 @@ function Field({
     </div>
   );
 }
-

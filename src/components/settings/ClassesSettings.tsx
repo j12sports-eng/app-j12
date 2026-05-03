@@ -61,6 +61,20 @@ export function ClassesSettings() {
   const [editingClass, setEditingClass] = useState<Turma | null>(null);
   const [form, setForm] = useState<ClassFormState>(defaultForm);
 
+  const modalidadeOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+            ...turmas.map((turma) => turma.modalidade),
+            ...MODALIDADES,
+          ].filter(Boolean),
+        ),
+      ] as Modalidade[],
+    [settings.modalities, turmas],
+  );
+
   const activeTeachers = useMemo(
     () => professores.filter((professor) => professor.status !== "inativo"),
     [professores],
@@ -78,7 +92,10 @@ export function ClassesSettings() {
   );
 
   useEffect(() => {
-    if (form.professorId && !compatibleTeachers.some((professor) => professor.id === form.professorId)) {
+    if (
+      form.professorId &&
+      !compatibleTeachers.some((professor) => professor.id === form.professorId)
+    ) {
       setForm((current) => ({ ...current, professorId: "" }));
     }
   }, [compatibleTeachers, form.professorId]);
@@ -87,12 +104,16 @@ export function ClassesSettings() {
     const defaultUnit = settings.units[0]?.nome ?? "";
     const defaultTeacher =
       activeTeachers.find((professor) =>
-        professorCanHandleClass(professor, { modalidade: defaultForm.modalidade, unidade: defaultUnit }),
+        professorCanHandleClass(professor, {
+          modalidade: modalidadeOptions[0] ?? defaultForm.modalidade,
+          unidade: defaultUnit,
+        }),
       )?.id ?? "";
 
     setEditingClass(null);
     setForm({
       ...defaultForm,
+      modalidade: modalidadeOptions[0] ?? defaultForm.modalidade,
       unidade: defaultUnit,
       professorId: defaultTeacher,
     });
@@ -266,7 +287,7 @@ export function ClassesSettings() {
                 }
                 className="j12-field h-10 w-full px-3 text-sm"
               >
-                {MODALIDADES.map((item) => (
+                {modalidadeOptions.map((item) => (
                   <option key={item} value={item}>
                     {item}
                   </option>
@@ -383,7 +404,12 @@ function Field({
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground">{label}</label>
-      <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="j12-field" />
+      <Input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="j12-field"
+      />
     </div>
   );
 }

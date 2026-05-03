@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MODALIDADES, type Modalidade } from "@/lib/alunos-store";
 import { useProfessores } from "@/lib/professores-store";
+import { useSettingsState } from "@/lib/settings/settings-store";
 import {
   TRIAL_CLASS_LEAD_SOURCES,
   TRIAL_CLASS_STATUS_OPTIONS,
@@ -66,6 +67,7 @@ export function TrialClassFormDialog({
   onSaved?: (item: TrialClass) => void;
 }) {
   const professores = useProfessores();
+  const settings = useSettingsState();
   const turmas = useTurmas();
   const [form, setForm] = useState<TrialClassInput>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -116,6 +118,17 @@ export function TrialClassFormDialog({
   );
 
   const age = useMemo(() => calculateTrialClassAge(form.birthDate), [form.birthDate]);
+  const modalityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+          ...turmas.map((turma) => turma.modalidade),
+          ...MODALIDADES,
+        ]),
+      ) as Modalidade[],
+    [settings.modalities, turmas],
+  );
   const isReschedule = mode === "reschedule";
   const isEdit = Boolean(trialClass) && mode === "edit";
 
@@ -390,7 +403,7 @@ export function TrialClassFormDialog({
                   }
                   className="mt-2 w-full rounded-lg border border-input bg-input/40 px-3 py-2 text-sm outline-none focus:border-primary"
                 >
-                  {MODALIDADES.map((item) => (
+                  {modalityOptions.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>

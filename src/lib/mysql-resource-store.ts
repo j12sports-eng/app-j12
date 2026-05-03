@@ -1,3 +1,5 @@
+import { formatApiErrorMessage } from "./api";
+import { hasStoredAuthToken } from "./auth-storage";
 import { mysqlApi } from "./mysql-api";
 
 type ResourceConfig<T extends { id: string }> = {
@@ -10,9 +12,13 @@ type ResourceConfig<T extends { id: string }> = {
   deleteEntity?: (id: string) => Promise<void>;
 };
 
-export function createMysqlResourceStore<T extends { id: string }>(
-  config: ResourceConfig<T>,
-) {
+type ResourceMeta = {
+  loading: boolean;
+  error: string | null;
+  initialized: boolean;
+};
+
+export function createMysqlResourceStore<T extends { id: string }>(config: ResourceConfig<T>) {
   const normalize = config.normalize ?? ((item: T) => item);
   const loadAll = config.loadAll ?? (() => mysqlApi.get<T[]>(config.endpoint));
   const createEntity =
@@ -22,8 +28,7 @@ export function createMysqlResourceStore<T extends { id: string }>(
     ((entity: T) => mysqlApi.put<T>(`${config.endpoint}/${entity.id}`, entity));
   const deleteEntity =
     config.deleteEntity ?? ((id: string) => mysqlApi.del(`${config.endpoint}/${id}`));
-  let state =
-    typeof window === "undefined" ? config.initialState.map(normalize) : ([] as T[]);
+  let state = typeof window === "undefined" ? config.initialState.map(normalize) : ([] as T[]);
   let initialized = typeof window === "undefined";
   let loading = false;
   let errorMessage: string | null = null;
@@ -31,6 +36,29 @@ export function createMysqlResourceStore<T extends { id: string }>(
   let mutationVersion = 0;
   let queue = Promise.resolve();
   const listeners = new Set<() => void>();
+  let metaSnapshot: ResourceMeta = {
+    loading,
+    error: errorMessage,
+    initialized,
+  };
+
+  function getMetaSnapshot(): ResourceMeta {
+    if (
+      metaSnapshot.loading === loading &&
+      metaSnapshot.error === errorMessage &&
+      metaSnapshot.initialized === initialized
+    ) {
+      return metaSnapshot;
+    }
+
+    metaSnapshot = {
+      loading,
+      error: errorMessage,
+      initialized,
+    };
+
+    return metaSnapshot;
+  }
 
   function emit() {
     listeners.forEach((listener) => listener());
@@ -61,8 +89,7 @@ export function createMysqlResourceStore<T extends { id: string }>(
         return;
       }
 
-      errorMessage =
-        caughtError instanceof Error ? caughtError.message : "Falha ao recarregar dados.";
+      errorMessage = formatApiErrorMessage(caughtError, "Falha ao recarregar dados.");
       console.error(`Falha ao recarregar ${config.endpoint}.`, caughtError);
     } finally {
       loading = false;
@@ -71,7 +98,7 @@ export function createMysqlResourceStore<T extends { id: string }>(
   }
 
   async function ensureLoaded() {
-    if (typeof window === "undefined" || initialized) return;
+    if (typeof window === "undefined" || initialized || !hasStoredAuthToken()) return;
     if (loadingPromise) return loadingPromise;
 
     const version = mutationVersion;
@@ -101,8 +128,7 @@ export function createMysqlResourceStore<T extends { id: string }>(
           return;
         }
 
-        errorMessage =
-          caughtError instanceof Error ? caughtError.message : "Falha ao carregar dados.";
+        errorMessage = formatApiErrorMessage(caughtError, "Falha ao carregar dados.");
         console.error(`Falha ao carregar ${config.endpoint}.`, caughtError);
       } finally {
         loading = false;
@@ -133,12 +159,10 @@ export function createMysqlResourceStore<T extends { id: string }>(
   }
 
   function enqueue(task: () => Promise<void>) {
-    queue = queue
-      .then(task)
-      .catch(async (error) => {
-        console.error(`Falha ao persistir ${config.endpoint}.`, error);
-        await reload();
-      });
+    queue = queue.then(task).catch(async (error) => {
+      console.error(`Falha ao persistir ${config.endpoint}.`, error);
+      await reload();
+    });
   }
 
   if (typeof window !== "undefined") {
@@ -154,7 +178,7 @@ export function createMysqlResourceStore<T extends { id: string }>(
   return {
     subscribe(listener: () => void) {
       listeners.add(listener);
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && hasStoredAuthToken()) {
         void ensureLoaded();
       }
       return () => listeners.delete(listener);
@@ -163,7 +187,7 @@ export function createMysqlResourceStore<T extends { id: string }>(
       return state;
     },
     getMeta() {
-      return { loading, error: errorMessage, initialized };
+      return getMetaSnapshot();
     },
     getState() {
       return state;

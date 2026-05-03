@@ -24,9 +24,14 @@ export function gerarContratoPDF(c: Contrato): jsPDF {
     doc.text("J12 SPORTS", margin, 24);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("CNPJ 28.665.452/0001-01 — Av. Paula Ferreira, 3262, Pirituba, SP", pageW - margin, 24, {
-      align: "right",
-    });
+    doc.text(
+      "CNPJ 28.665.452/0001-01 — Av. Paula Ferreira, 3262, Pirituba, SP",
+      pageW - margin,
+      24,
+      {
+        align: "right",
+      },
+    );
     doc.setTextColor(20, 20, 20);
   }
 
@@ -34,11 +39,7 @@ export function gerarContratoPDF(c: Contrato): jsPDF {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text(
-      `Contrato J12 — ${c.alunoNome}`,
-      margin,
-      pageH - 24,
-    );
+    doc.text(`Contrato J12 — ${c.alunoNome}`, margin, pageH - 24);
     doc.text(`Página ${pageNum} de ${totalPages}`, pageW - margin, pageH - 24, { align: "right" });
     doc.setTextColor(20, 20, 20);
   }

@@ -63,9 +63,7 @@ function ResetPasswordPage() {
         setValidation(data);
       } catch (error) {
         if (!active) return;
-        setTokenError(
-          error instanceof Error ? error.message : "Token inválido ou expirado.",
-        );
+        setTokenError(error instanceof Error ? error.message : "Token inválido ou expirado.");
       } finally {
         if (active) setLoadingToken(false);
       }
@@ -91,8 +89,7 @@ function ResetPasswordPage() {
       !/[a-z]/.test(senha) ||
       !/\d/.test(senha)
     ) {
-      nextErrors.senha =
-        "Use no mínimo 8 caracteres com letra maiúscula, minúscula e número.";
+      nextErrors.senha = "Use no mínimo 8 caracteres com letra maiúscula, minúscula e número.";
     }
 
     if (!confirmarSenha) {
@@ -227,11 +224,7 @@ function ResetPasswordPage() {
                 className="rounded-full p-1 text-white/45 transition hover:text-[#ff9f6b]"
                 aria-label={showConfirmPassword ? "Ocultar confirmação" : "Mostrar confirmação"}
               >
-                {showConfirmPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             }
           />

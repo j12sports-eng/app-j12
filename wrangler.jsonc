@@ -7,10 +7,10 @@
   "routes": [
     {
       "pattern": "app.j12sports.com.br",
-      "custom_domain": true
-    }
+      "custom_domain": true,
+    },
   ],
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

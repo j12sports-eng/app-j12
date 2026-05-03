@@ -1,6 +1,12 @@
+console.log("🔥 server.js executou");
+
 const { startServer } = require("./src/server");
 
-startServer().catch((error) => {
-  console.error("Falha ao iniciar a API J12:", error);
-  process.exit(1);
-});
+startServer()
+  .then(() => {
+    console.log("✅ startServer finalizado");
+  })
+  .catch((error) => {
+    console.error("❌ Erro ao iniciar API:", error);
+    process.exit(1);
+  });

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,11 +23,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useProfessores } from "@/lib/professores-store";
+import { useProfessores, useProfessoresStatus } from "@/lib/professores-store";
+import { useSettingsState } from "@/lib/settings/settings-store";
 import {
   TRIAL_CLASS_STATUS_OPTIONS,
   trialClassesStore,
   useTrialClasses,
+  useTrialClassesStatus,
   type TrialClass,
   type TrialClassStatus,
 } from "@/lib/trial-classes-store";
@@ -41,7 +44,10 @@ type PendingActionType = "attended" | "no-show" | "cancel";
 
 export function TrialClassPage() {
   const trialClasses = useTrialClasses();
+  const trialClassesStatus = useTrialClassesStatus();
   const professores = useProfessores();
+  const professoresStatus = useProfessoresStatus();
+  const settings = useSettingsState();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<TrialClassStatus | "todos">("todos");
@@ -73,6 +79,18 @@ export function TrialClassPage() {
       a.localeCompare(b),
     );
   }, [professores, trialClasses]);
+
+  const modalityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+          ...trialClasses.map((item) => item.modality),
+          ...MODALIDADES,
+        ]),
+      ),
+    [settings.modalities, trialClasses],
+  );
 
   const filtered = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -235,6 +253,19 @@ export function TrialClassPage() {
   return (
     <AppShell title="Aula Experimental">
       <div className="space-y-6">
+        <ResourceSyncBanner
+          status={trialClassesStatus}
+          resourceLabel="as aulas experimentais"
+          hasData={trialClasses.length > 0}
+        />
+        {professoresStatus.error ? (
+          <ResourceSyncBanner
+            status={professoresStatus}
+            resourceLabel="os professores da agenda"
+            hasData={professores.length > 0}
+          />
+        ) : null}
+
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-2xl font-bold">Aula Experimental</h2>
@@ -306,7 +337,7 @@ export function TrialClassPage() {
               className="j12-field px-3 py-2 text-sm"
             >
               <option value="todas">Todas modalidades</option>
-              {MODALIDADES.map((item) => (
+              {modalityOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>

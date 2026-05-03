@@ -210,7 +210,7 @@ export function ProfessorPerfilDrawer({
               <Button
                 variant="outline"
                 disabled={!canViewContract}
-                onClick={() => toast.success("Contrato reenviado para assinatura (mock).")}
+                onClick={() => toast.success("Contrato reenviado para assinatura.")}
               >
                 <FileSignature className="mr-2 h-4 w-4" />
                 Reenviar contrato

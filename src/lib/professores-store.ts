@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { MODALIDADES, type Modalidade } from "./alunos-store";
-import { createRemoteCollectionStore } from "./remote-collection";
+import { api } from "./api";
+import { createMysqlResourceStore } from "./mysql-resource-store";
 
 export type StatusProfessor = "ativo" | "f\u00E9rias" | "inativo";
 export type StatusContratoProfessor =
@@ -132,21 +133,13 @@ function dedupeStrings(values: string[]) {
 }
 
 function normalizeModalidades(values: unknown, fallback?: unknown): Modalidade[] {
-  const raw = Array.isArray(values)
-    ? values
-    : typeof fallback === "string"
-      ? [fallback]
-      : [];
+  const raw = Array.isArray(values) ? values : typeof fallback === "string" ? [fallback] : [];
   const normalized = dedupeStrings(raw.filter((item): item is string => typeof item === "string"));
   return normalized.length > 0 ? (normalized as Modalidade[]) : [MODALIDADES[0]];
 }
 
 function normalizeUnidades(values: unknown, fallback?: unknown): string[] {
-  const raw = Array.isArray(values)
-    ? values
-    : typeof fallback === "string"
-      ? [fallback]
-      : [];
+  const raw = Array.isArray(values) ? values : typeof fallback === "string" ? [fallback] : [];
   const normalized = dedupeStrings(raw.filter((item): item is string => typeof item === "string"));
   return normalized;
 }
@@ -392,6 +385,28 @@ function normalizeProfessor(professor: LegacyProfessor): Professor {
   };
 }
 
+function serializeProfessor(professor: Professor | ProfessorInput) {
+  return {
+    nome: professor.nome,
+    email: professor.email,
+    telefone: professor.telefone,
+    cpf: professor.cpf,
+    cref: professor.cref,
+    modalidades: professor.modalidades,
+    unidades: professor.unidades,
+    status: professor.status,
+    turmas: professor.turmas,
+    jornadaProfessor: professor.jornadaProfessor,
+    tipoContrato: professor.tipoContrato,
+    valorContrato: professor.valorContrato,
+    formaPagamentoProfessor: professor.formaPagamentoProfessor,
+    dataInicioContrato: professor.dataInicioContrato,
+    observacoesContrato: professor.observacoesContrato,
+    contrato: "contrato" in professor ? professor.contrato : createEmptyContract(),
+    historicoContratos: "historicoContratos" in professor ? professor.historicoContratos : [],
+  };
+}
+
 function seedData() {
   const base: Professor[] = [
     {
@@ -505,21 +520,47 @@ function seedData() {
   return base.map(normalizeProfessor);
 }
 
-function load() {
-  return seedData();
-}
-
-const professoresCollection = createRemoteCollectionStore<Professor[]>("professores", load());
-let state: Professor[] = professoresCollection.getSnapshot();
+const professoresResource = createMysqlResourceStore<Professor>({
+  endpoint: "/professores",
+  initialState: [],
+  normalize: normalizeProfessor,
+  loadAll: () => api.get<Professor[]>("/professores"),
+  createEntity: (entity) => api.post<Professor>("/professores", serializeProfessor(entity)),
+  updateEntity: (entity) =>
+    api.put<Professor>(`/professores/${entity.id}`, serializeProfessor(entity)),
+  deleteEntity: (id) => api.del(`/professores/${id}`),
+});
+let state: Professor[] = professoresResource.getSnapshot().map(normalizeProfessor);
 const listeners = new Set<() => void>();
 
-professoresCollection.subscribe(() => {
-  state = professoresCollection.getSnapshot();
+professoresResource.subscribe(() => {
+  state = professoresResource.getSnapshot().map(normalizeProfessor);
   listeners.forEach((listener) => listener());
 });
 
 function emit() {
-  professoresCollection.replaceState(state);
+  professoresResource.replaceState(state.map(normalizeProfessor));
+}
+
+function replaceById(targetId: string, nextProfessor: Professor) {
+  state = state.map((professor) =>
+    professor.id === targetId ? normalizeProfessor(nextProfessor) : professor,
+  );
+  emit();
+}
+
+async function reloadProfessores() {
+  await professoresResource.reload();
+}
+
+function persistProfessor(professor: Professor) {
+  void api.put<Professor>(`/professores/${professor.id}`, serializeProfessor(professor)).then(
+    (saved) => replaceById(professor.id, normalizeProfessor(saved as LegacyProfessor)),
+    async (error) => {
+      console.error("[professores-store] Falha ao salvar professor.", error);
+      await reloadProfessores();
+    },
+  );
 }
 
 function hasGeneratedContract(contract: ContratoProfessor) {
@@ -534,13 +575,17 @@ export const professoresStore = {
   getSnapshot() {
     return state;
   },
+  reload() {
+    return professoresResource.reload();
+  },
   getById(id: string) {
     return state.find((professor) => professor.id === id);
   },
   create(data: ProfessorInput) {
+    const optimisticId = `tmp-professor-${Date.now()}`;
     const novo: Professor = normalizeProfessor({
       ...data,
-      id: `pr${Date.now()}`,
+      id: optimisticId,
       contrato: createEmptyContract(),
       historicoContratos: [],
       criadoEm: nowIso(),
@@ -549,6 +594,19 @@ export const professoresStore = {
 
     state = [novo, ...state];
     emit();
+
+    void api
+      .post<Professor>("/professores", serializeProfessor(novo))
+      .then((saved) => {
+        const normalized = normalizeProfessor(saved as LegacyProfessor);
+        state = state.map((professor) => (professor.id === optimisticId ? normalized : professor));
+        emit();
+      })
+      .catch(async (error) => {
+        console.error("[professores-store] Falha ao criar professor.", error);
+        await reloadProfessores();
+      });
+
     return novo;
   },
   update(id: string, data: ProfessorInput) {
@@ -563,10 +621,18 @@ export const professoresStore = {
     );
 
     emit();
+    const updated = state.find((professor) => professor.id === id);
+    if (updated) {
+      persistProfessor(updated);
+    }
   },
   remove(id: string) {
     state = state.filter((professor) => professor.id !== id);
     emit();
+    void api.del(`/professores/${id}`).catch(async (error) => {
+      console.error("[professores-store] Falha ao remover professor.", error);
+      await reloadProfessores();
+    });
   },
   generateContract(id: string) {
     let generated: ContratoProfessor | null = null;
@@ -593,6 +659,10 @@ export const professoresStore = {
     });
 
     emit();
+    const updated = state.find((professor) => professor.id === id);
+    if (updated) {
+      persistProfessor(updated);
+    }
     return generated;
   },
   signContract(
@@ -651,6 +721,10 @@ export const professoresStore = {
     });
 
     emit();
+    const updated = state.find((professor) => professor.id === id);
+    if (updated && result.ok) {
+      persistProfessor(updated);
+    }
     return result;
   },
 };
@@ -660,6 +734,14 @@ export function useProfessores() {
     professoresStore.subscribe,
     professoresStore.getSnapshot,
     professoresStore.getSnapshot,
+  );
+}
+
+export function useProfessoresStatus() {
+  return useSyncExternalStore(
+    professoresStore.subscribe,
+    professoresResource.getMeta,
+    professoresResource.getMeta,
   );
 }
 
@@ -749,7 +831,7 @@ export function downloadProfessorContract(professor: Professor) {
 }
 
 export function resetProfessoresStore() {
-  state = seedData();
+  state = [];
   emit();
 }
 

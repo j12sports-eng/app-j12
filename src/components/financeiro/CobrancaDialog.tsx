@@ -101,7 +101,11 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
 
     if (!descricao.trim()) {
       const plano = alunoSelecionado.plano || alunoSelecionado.planos[0] || "Plano do aluno";
-      setDescricao(tipo === "mensalidade" ? `Mensalidade - ${plano}` : `${TIPOS.find((item) => item.v === tipo)?.label || "Cobranca"} - ${alunoSelecionado.nome}`);
+      setDescricao(
+        tipo === "mensalidade"
+          ? `Mensalidade - ${plano}`
+          : `${TIPOS.find((item) => item.v === tipo)?.label || "Cobranca"} - ${alunoSelecionado.nome}`,
+      );
     }
   }, [alunoSelecionado, descricao, tipo, transacao]);
 
@@ -122,7 +126,7 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     try {
-      const payload = {
+      const payload: Parameters<typeof financeiroStore.create>[0] = {
         alunoId,
         tipo,
         tipoCobranca,
@@ -134,7 +138,7 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
         vencimento,
         competencia: `${competencia}:${tipoCobranca === "recorrente" ? "mensal" : "avulsa"}`,
         pagoEm: jaPago ? new Date().toISOString().slice(0, 10) : null,
-        formaPagamento: jaPago ? "pix" : undefined,
+        formaPagamento: jaPago ? ("pix" as const) : undefined,
         planoNome: alunoSelecionado?.plano || alunoSelecionado?.planos[0] || "",
         origem: "manual" as const,
       };
@@ -174,7 +178,11 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className={labelClass}>Aluno *</label>
-            <select className={inputClass} value={alunoId} onChange={(event) => setAlunoId(event.target.value)}>
+            <select
+              className={inputClass}
+              value={alunoId}
+              onChange={(event) => setAlunoId(event.target.value)}
+            >
               {alunos.map((aluno) => (
                 <option key={aluno.id} value={aluno.id}>
                   {aluno.nome}
@@ -186,7 +194,11 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>Tipo *</label>
-              <select className={inputClass} value={tipo} onChange={(event) => setTipo(event.target.value as TipoCobranca)}>
+              <select
+                className={inputClass}
+                value={tipo}
+                onChange={(event) => setTipo(event.target.value as TipoCobranca)}
+              >
                 {TIPOS.map((item) => (
                   <option key={item.v} value={item.v}>
                     {item.label}

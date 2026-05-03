@@ -58,15 +58,23 @@ export function ProfessorFormDialog({ open, onOpenChange, professor }: Props) {
   const [saving, setSaving] = useState(false);
   const availableModalidades = useMemo(
     () =>
-      [...new Set([...settings.modalities.filter((item) => item.ativa).map((item) => item.nome), ...turmas.map((turma) => turma.modalidade)])].filter(Boolean),
+      [
+        ...new Set([
+          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+          ...turmas.map((turma) => turma.modalidade),
+        ]),
+      ].filter(Boolean),
     [settings.modalities, turmas],
   );
 
   const availableUnits = useMemo(
     () =>
-      [...new Set([...settings.units.map((unit) => unit.nome), ...turmas.map((turma) => turma.unidade)])].filter(
-        Boolean,
-      ),
+      [
+        ...new Set([
+          ...settings.units.map((unit) => unit.nome),
+          ...turmas.map((turma) => turma.unidade),
+        ]),
+      ].filter(Boolean),
     [settings.units, turmas],
   );
 
@@ -117,7 +125,8 @@ export function ProfessorFormDialog({ open, onOpenChange, professor }: Props) {
       );
 
       const sameLength = nextTurmas.length === current.turmas.length;
-      const sameValues = sameLength && nextTurmas.every((turma, index) => turma === current.turmas[index]);
+      const sameValues =
+        sameLength && nextTurmas.every((turma, index) => turma === current.turmas[index]);
 
       if (sameValues) return current;
 
@@ -231,8 +240,8 @@ export function ProfessorFormDialog({ open, onOpenChange, professor }: Props) {
             {isEdit ? "Editar professor" : "Novo professor"}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Cadastre dados operacionais, unidades, modalidades e contrato do professor sem perder
-            o padrÃ£o premium do mÃ³dulo J12.
+            Cadastre dados operacionais, unidades, modalidades e contrato do professor sem perder o
+            padrÃ£o premium do mÃ³dulo J12.
           </DialogDescription>
         </DialogHeader>
 
@@ -320,12 +329,17 @@ export function ProfessorFormDialog({ open, onOpenChange, professor }: Props) {
                 <div className={labelClassName}>Modalidades</div>
                 <div className="flex flex-wrap gap-2">
                   {form.modalidades.map((modalidade) => (
-                    <Badge key={modalidade} className="border-primary/30 bg-primary/15 text-primary">
+                    <Badge
+                      key={modalidade}
+                      className="border-primary/30 bg-primary/15 text-primary"
+                    >
                       {modalidade}
                     </Badge>
                   ))}
                   {form.modalidades.length === 0 ? (
-                    <span className="text-sm text-muted-foreground">Nenhuma modalidade selecionada.</span>
+                    <span className="text-sm text-muted-foreground">
+                      Nenhuma modalidade selecionada.
+                    </span>
                   ) : null}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -361,7 +375,9 @@ export function ProfessorFormDialog({ open, onOpenChange, professor }: Props) {
                     </Badge>
                   ))}
                   {form.unidades.length === 0 ? (
-                    <span className="text-sm text-muted-foreground">Nenhuma unidade selecionada.</span>
+                    <span className="text-sm text-muted-foreground">
+                      Nenhuma unidade selecionada.
+                    </span>
                   ) : null}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

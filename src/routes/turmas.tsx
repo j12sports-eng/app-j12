@@ -18,10 +18,17 @@ import {
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,9 +45,17 @@ import { PresencaDialog } from "@/components/turmas/PresencaDialog";
 import { TurmaDetalheDialog } from "@/components/turmas/TurmaDetalheDialog";
 import { AlunoPerfilDialog } from "@/components/alunos/AlunoPerfilDialog";
 import { ContratoVisualizarDialog } from "@/components/contratos/ContratoVisualizarDialog";
-import { formatDias, turmasStore, useTurmas, type Turma } from "@/lib/turmas-store";
+import {
+  formatDias,
+  turmasStore,
+  useTurmas,
+  useTurmasStatus,
+  type Turma,
+} from "@/lib/turmas-store";
 import { MODALIDADES, type Aluno, type Modalidade } from "@/lib/alunos-store";
 import type { Contrato } from "@/lib/contratos-store";
+import { useProfessoresStatus } from "@/lib/professores-store";
+import { useSettingsState } from "@/lib/settings/settings-store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/turmas")({
@@ -57,6 +72,9 @@ type StatusFiltro = "todas" | "ativas" | "inativas";
 
 function TurmasPage() {
   const turmas = useTurmas();
+  const turmasStatus = useTurmasStatus();
+  const professoresStatus = useProfessoresStatus();
+  const settings = useSettingsState();
   const [busca, setBusca] = useState("");
   const [modalidade, setModalidade] = useState<Modalidade | "todas">("todas");
   const [status, setStatus] = useState<StatusFiltro>("todas");
@@ -79,9 +97,7 @@ function TurmasPage() {
     const q = busca.trim().toLowerCase();
     return turmas
       .filter((t) => modalidade === "todas" || t.modalidade === modalidade)
-      .filter((t) =>
-        status === "todas" ? true : status === "ativas" ? t.ativa : !t.ativa,
-      )
+      .filter((t) => (status === "todas" ? true : status === "ativas" ? t.ativa : !t.ativa))
       .filter((t) => {
         if (!q) return true;
         return (
@@ -91,6 +107,18 @@ function TurmasPage() {
         );
       });
   }, [turmas, busca, modalidade, status]);
+
+  const modalidadeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+          ...turmas.map((turma) => turma.modalidade),
+          ...MODALIDADES,
+        ]),
+      ),
+    [settings.modalities, turmas],
+  );
 
   // Mantém turmaSelecionada sincronizada com a store (após editar/adicionar aluno/etc)
   const turmaAtualizada = useMemo(() => {
@@ -131,6 +159,19 @@ function TurmasPage() {
 
   return (
     <div className="space-y-5">
+      <ResourceSyncBanner
+        status={turmasStatus}
+        resourceLabel="as turmas"
+        hasData={turmas.length > 0}
+      />
+      {professoresStatus.error ? (
+        <ResourceSyncBanner
+          status={professoresStatus}
+          resourceLabel="os professores vinculados"
+          hasData={false}
+        />
+      ) : null}
+
       {/* Header / filtros */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -154,14 +195,22 @@ function TurmasPage() {
           />
         </div>
         <Select value={modalidade} onValueChange={(v) => setModalidade(v as Modalidade | "todas")}>
-          <SelectTrigger className="sm:w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas modalidades</SelectItem>
-            {MODALIDADES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+            {modalidadeOptions.map((m) => (
+              <SelectItem key={m} value={m}>
+                {m}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={status} onValueChange={(v) => setStatus(v as StatusFiltro)}>
-          <SelectTrigger className="sm:w-36"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="sm:w-36">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas</SelectItem>
             <SelectItem value="ativas">Ativas</SelectItem>
@@ -221,7 +270,9 @@ function TurmasPage() {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Clock className="h-3.5 w-3.5 shrink-0" />
-                    <span>{formatDias(t.diasSemana)} · {t.horarioInicio}–{t.horarioFim}</span>
+                    <span>
+                      {formatDias(t.diasSemana)} · {t.horarioInicio}–{t.horarioFim}
+                    </span>
                   </div>
                 </div>
 
@@ -259,7 +310,12 @@ function TurmasPage() {
 
                 {/* Ações */}
                 <div className="mt-4 flex flex-wrap gap-1 border-t border-border pt-3">
-                  <Button size="sm" variant="ghost" onClick={() => abrirDetalhe(t)} title="Ver turma">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => abrirDetalhe(t)}
+                    title="Ver turma"
+                  >
                     <Eye className="h-4 w-4" />
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => editarTurma(t)} title="Editar">
@@ -305,11 +361,7 @@ function TurmasPage() {
         onOpenChange={setAddAlunoOpen}
         turma={turmaAtualizada}
       />
-      <PresencaDialog
-        open={presencaOpen}
-        onOpenChange={setPresencaOpen}
-        turma={turmaAtualizada}
-      />
+      <PresencaDialog open={presencaOpen} onOpenChange={setPresencaOpen} turma={turmaAtualizada} />
       <TurmaDetalheDialog
         open={detalheOpen}
         onOpenChange={setDetalheOpen}
@@ -335,8 +387,8 @@ function TurmasPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir turma {confirmRemover?.nome}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação remove a turma permanentemente, incluindo o histórico de presenças.
-              Os alunos continuam cadastrados no sistema.
+              Esta ação remove a turma permanentemente, incluindo o histórico de presenças. Os
+              alunos continuam cadastrados no sistema.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

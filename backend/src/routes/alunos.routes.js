@@ -2,6 +2,7 @@ const express = require("express");
 const { getTokenFromRequest, getUserBySessionToken, requireAuth } = require("../../auth");
 const {
   getAlunos,
+  getAlunoById,
   createAluno,
   updateAluno,
   deleteAluno,
@@ -28,6 +29,7 @@ async function optionalAuth(req, res, next) {
 }
 
 router.get("/", optionalAuth, getAlunos);
+router.get("/:id", optionalAuth, getAlunoById);
 router.post("/", requireAuth, createAluno);
 router.put("/:id", requireAuth, updateAluno);
 router.delete("/:id", requireAuth, deleteAluno);

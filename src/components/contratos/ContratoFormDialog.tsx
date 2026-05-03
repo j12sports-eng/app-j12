@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAlunos } from "@/lib/alunos-store";
+import { MODALIDADES, useAlunos } from "@/lib/alunos-store";
 import {
   buildVariaveis,
   contratosStore,
@@ -29,6 +29,8 @@ import {
   type ContratoInput,
 } from "@/lib/contratos-store";
 import { CONTRATO_TEMPLATE_J12, renderTemplate } from "@/lib/contratos-template";
+import { useSettingsState } from "@/lib/settings/settings-store";
+import { useTurmas } from "@/lib/turmas-store";
 
 const MODALIDADES_DISPONIVEIS = ["Futsal", "Society", "Escolinha", "Goleiro"];
 const UNIDADES_DISPONIVEIS = [
@@ -46,10 +48,35 @@ interface Props {
 
 export function ContratoFormDialog({ open, onOpenChange, contrato }: Props) {
   const alunos = useAlunos();
+  const settings = useSettingsState();
+  const turmas = useTurmas();
   const [alunoId, setAlunoId] = useState("");
   const [form, setForm] = useState<ContratoInput | null>(null);
   const [conteudo, setConteudo] = useState("");
   const [editandoTexto, setEditandoTexto] = useState(false);
+
+  const modalidadeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+          ...turmas.map((turma) => turma.modalidade),
+          ...MODALIDADES,
+        ]),
+      ),
+    [settings.modalities, turmas],
+  );
+
+  const unidadeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...settings.units.map((unit) => unit.nome),
+          ...turmas.map((turma) => turma.unidade),
+        ]),
+      ),
+    [settings.units, turmas],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -238,7 +265,7 @@ export function ContratoFormDialog({ open, onOpenChange, contrato }: Props) {
                     <div className="md:col-span-2">
                       <Label>Modalidades (selecione uma ou mais)</Label>
                       <div className="j12-panel-section mt-1 flex flex-wrap gap-3 rounded-md p-3">
-                        {MODALIDADES_DISPONIVEIS.map((modalidade) => {
+                        {modalidadeOptions.map((modalidade) => {
                           const checked = form.plano.modalidades.includes(modalidade);
                           return (
                             <label key={modalidade} className="flex items-center gap-2 text-sm">
@@ -274,7 +301,7 @@ export function ContratoFormDialog({ open, onOpenChange, contrato }: Props) {
                     <div className="md:col-span-2">
                       <Label>Unidades (selecione uma ou mais)</Label>
                       <div className="j12-panel-section mt-1 flex flex-wrap gap-3 rounded-md p-3">
-                        {UNIDADES_DISPONIVEIS.map((unidade) => {
+                        {unidadeOptions.map((unidade) => {
                           const checked = form.plano.unidades.includes(unidade);
                           return (
                             <label key={unidade} className="flex items-center gap-2 text-sm">

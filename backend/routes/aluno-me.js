@@ -2,10 +2,12 @@ const express = require("express");
 const { query } = require("../db");
 const { requireAuth, requireRole, resolveScopedStudentId } = require("../auth");
 const { parseJson } = require("./helpers");
+const { loadStudentRows } = require("../src/controllers/alunos.controller");
+const { listCharges } = require("../services/student-finance");
 
 const router = express.Router();
 
-function mapAluno(row) {
+function mapLegacyAluno(row) {
   return {
     id: row.id,
     nome: row.nome,
@@ -35,35 +37,6 @@ function mapAluno(row) {
   };
 }
 
-function mapFinanceiro(row) {
-  return {
-    id: row.id,
-    alunoId: row.aluno_id,
-    alunoNome: row.aluno_nome,
-    descricao: row.descricao,
-    valor: Number(row.valor_final ?? row.valor ?? 0),
-    valorOriginal: Number(row.valor_original ?? row.valor ?? 0),
-    descontoValor: Number(row.desconto_valor ?? 0),
-    descontoPercentual: Number(row.desconto_percentual ?? 0),
-    bolsaValor: Number(row.bolsa_valor ?? 0),
-    bolsaPercentual: Number(row.bolsa_percentual ?? 0),
-    multaPercentual: Number(row.multa_percentual ?? 0),
-    jurosDiaPercentual: Number(row.juros_dia_percentual ?? 0),
-    vencimento: row.vencimento,
-    pagoEm: row.pago_em,
-    dataGeracao: row.data_geracao,
-    dataPagamento: row.data_pagamento,
-    status: row.status,
-    tipoCobranca: row.tipo_cobranca,
-    origem: row.origem,
-    formaPagamento: row.forma_pagamento,
-    planoNome: row.plano_nome,
-    periodicidade: row.periodicidade,
-    competencia: row.competencia,
-    observacao: row.observacao,
-  };
-}
-
 router.use(requireAuth);
 router.use(requireRole(["aluno", "responsavel"]));
 
@@ -74,12 +47,45 @@ router.get("/", async (req, res, next) => {
       return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
     }
 
+    const baseRows = await query("SELECT * FROM j12_alunos WHERE id = ? LIMIT 1", [studentId]);
+
+    if (Array.isArray(baseRows) && baseRows.length > 0) {
+      const { rows } = await loadStudentRows();
+      const portalAluno = (Array.isArray(rows) ? rows : []).find(
+        (row) => String(row.id) === String(studentId),
+      );
+
+      if (!portalAluno) {
+        return res.status(404).json({ message: "Aluno vinculado nao encontrado." });
+      }
+
+      const base = baseRows[0];
+      return res.json({
+        ...portalAluno,
+        numero_matricula: base.numero_matricula ?? portalAluno.numeroMatricula ?? "",
+        nome_completo: base.nome_completo ?? portalAluno.nome ?? "",
+        data_nascimento: base.data_nascimento ?? portalAluno.dataNascimento ?? "",
+        idade: base.idade ?? portalAluno.matricula?.dadosAluno?.idade ?? "",
+        cpf: base.cpf ?? portalAluno.cpf ?? "",
+        sexo: base.sexo ?? portalAluno.sexo ?? "",
+        colegio: base.colegio ?? portalAluno.matricula?.dadosAluno?.colegio ?? "",
+        periodo_escolar:
+          base.periodo_escolar ?? portalAluno.matricula?.dadosAluno?.periodoEscolar ?? "",
+        email_contato: base.email_contato ?? portalAluno.email ?? "",
+        telefone_contato: base.telefone_contato ?? portalAluno.telefone ?? "",
+        modalidade_principal: base.modalidade_principal ?? portalAluno.modalidade ?? "",
+        turma_principal: base.turma_principal ?? portalAluno.turma ?? "",
+        plano_principal: base.plano_principal ?? portalAluno.plano ?? "",
+        planos_json: parseJson(base.planos_json, portalAluno.planos ?? []),
+      });
+    }
+
     const rows = await query("SELECT * FROM alunos WHERE id = ? LIMIT 1", [studentId]);
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(404).json({ message: "Aluno vinculado nao encontrado." });
     }
 
-    res.json(mapAluno(rows[0]));
+    res.json(mapLegacyAluno(rows[0]));
   } catch (error) {
     next(error);
   }
@@ -92,12 +98,7 @@ router.get("/financeiro", async (req, res, next) => {
       return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
     }
 
-    const rows = await query(
-      "SELECT * FROM financeiro WHERE aluno_id = ? ORDER BY vencimento DESC, updated_at DESC",
-      [studentId],
-    );
-
-    res.json((Array.isArray(rows) ? rows : []).map(mapFinanceiro));
+    res.json(await listCharges({ studentId }));
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Plus,
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import { CobrancaDialog } from "@/components/financeiro/CobrancaDialog";
 import { BaixaDialog } from "@/components/financeiro/BaixaDialog";
 import {
@@ -44,6 +45,7 @@ import {
   listMonths,
   monthLabel,
   useRecorrenciasFinanceiras,
+  useFinanceiroStatus,
   useTransacoes,
   type StatusCobranca,
   type TipoLancamento,
@@ -95,7 +97,9 @@ function statusBadge(status: StatusCobranca) {
     parcial: "Parcial",
   }[status];
   return (
-    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", map[status])}>
+    <span
+      className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", map[status])}
+    >
       {label}
     </span>
   );
@@ -119,6 +123,7 @@ function FinanceiroPage() {
 function FinanceiroAdminPage() {
   const transacoes = useTransacoes();
   const recorrencias = useRecorrenciasFinanceiras();
+  const financeiroStatus = useFinanceiroStatus();
 
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<StatusCobranca | "todos">("todos");
@@ -132,9 +137,29 @@ function FinanceiroAdminPage() {
   const [toCancel, setToCancel] = useState<Transacao | null>(null);
   const [confirmLote, setConfirmLote] = useState(false);
 
-  useEffect(() => {
-    financeiroStore.processarRecorrenciaAutomatica();
+  const handleGenerateMensalidades = useCallback(async (showToast = true) => {
+    try {
+      const result = await financeiroStore.processarRecorrenciaAutomatica();
+      if (showToast) {
+        toast.success(
+          result.createdCount > 0
+            ? `${result.createdCount} mensalidade(s) gerada(s) e ${result.skippedCount} ignorada(s).`
+            : `Nenhuma nova mensalidade foi criada. ${result.skippedCount} registro(s) foram ignorados.`,
+        );
+      }
+    } catch (error) {
+      if (showToast) {
+        toast.error(
+          error instanceof Error ? error.message : "Nao foi possivel gerar mensalidades.",
+        );
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    if (!financeiroStatus.initialized || financeiroStatus.error) return;
+    void handleGenerateMensalidades(false);
+  }, [financeiroStatus.error, financeiroStatus.initialized, handleGenerateMensalidades]);
 
   const meses = useMemo(() => listMonths(transacoes), [transacoes]);
 
@@ -247,8 +272,7 @@ function FinanceiroAdminPage() {
     }
 
     financeiroStore.reativarRecorrencia(transacao.alunoId);
-    financeiroStore.processarRecorrenciaAutomatica();
-    toast.success("Recorrencia reativada.");
+    toast.success("Recorrencia reativada. Gere as mensalidades para refletir o ciclo atual.");
   }
 
   function handleQuickAction(action: "link" | "segunda-via" | "reenviar", transacao: Transacao) {
@@ -262,6 +286,12 @@ function FinanceiroAdminPage() {
 
   return (
     <AppShell title="Financeiro">
+      <ResourceSyncBanner
+        status={financeiroStatus}
+        resourceLabel="o financeiro"
+        hasData={transacoes.length > 0}
+      />
+
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <KpiCard
           label="Recebido no mes"
@@ -364,14 +394,11 @@ function FinanceiroAdminPage() {
         </select>
 
         <button
-          onClick={() => {
-            financeiroStore.processarRecorrenciaAutomatica();
-            toast.success("Recorrencias processadas.");
-          }}
+          onClick={() => void handleGenerateMensalidades()}
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
         >
           <Zap className="h-4 w-4" />
-          Gerar recorrencias
+          Gerar mensalidades
         </button>
 
         <button
@@ -412,7 +439,11 @@ function FinanceiroAdminPage() {
               <InfoPill label="Valor base" value={formatBRL(recorrencia.valorPlano)} />
               <InfoPill
                 label="Proxima"
-                value={recorrencia.proximaCobranca ? formatDate(recorrencia.proximaCobranca) : "A definir"}
+                value={
+                  recorrencia.proximaCobranca
+                    ? formatDate(recorrencia.proximaCobranca)
+                    : "A definir"
+                }
               />
             </div>
           </div>
@@ -445,13 +476,17 @@ function FinanceiroAdminPage() {
                       {transacao.responsavelFinanceiro || "Responsavel nao informado"}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">
-                      {[transacao.unidade, transacao.modalidade, transacao.turma].filter(Boolean).join(" · ")}
+                      {[transacao.unidade, transacao.modalidade, transacao.turma]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="font-medium">{transacao.planoNome || "Avulsa"}</div>
                     <div className="text-xs text-muted-foreground">
-                      {transacao.competencia ? transacao.competencia.replace(":", " · ") : "Sem competencia"}
+                      {transacao.competencia
+                        ? transacao.competencia.replace(":", " · ")
+                        : "Sem competencia"}
                     </div>
                     <div className="mt-1 flex gap-2">
                       <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
@@ -465,7 +500,8 @@ function FinanceiroAdminPage() {
                   <td className="px-4 py-3">
                     <div>{formatDate(transacao.vencimento)}</div>
                     <div className="text-xs text-muted-foreground">
-                      Gerada em {formatDate((transacao.dataGeracao || transacao.vencimento).slice(0, 10))}
+                      Gerada em{" "}
+                      {formatDate((transacao.dataGeracao || transacao.vencimento).slice(0, 10))}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -473,9 +509,10 @@ function FinanceiroAdminPage() {
                     <div className="text-xs text-muted-foreground">
                       Original {formatBRL(transacao.valorOriginal ?? transacao.valor)}
                     </div>
-                    {(transacao.descontoValor || transacao.bolsaValor) ? (
+                    {transacao.descontoValor || transacao.bolsaValor ? (
                       <div className="text-xs text-muted-foreground">
-                        Descontos {formatBRL((transacao.descontoValor ?? 0) + (transacao.bolsaValor ?? 0))}
+                        Descontos{" "}
+                        {formatBRL((transacao.descontoValor ?? 0) + (transacao.bolsaValor ?? 0))}
                       </div>
                     ) : null}
                   </td>
@@ -554,7 +591,11 @@ function FinanceiroAdminPage() {
                         <button
                           onClick={() => handlePauseOrResume(transacao)}
                           className="rounded-md p-1.5 text-muted-foreground hover:bg-accent/10"
-                          title={recorrencia?.recorrenciaAtiva ? "Pausar recorrencia" : "Reativar recorrencia"}
+                          title={
+                            recorrencia?.recorrenciaAtiva
+                              ? "Pausar recorrencia"
+                              : "Reativar recorrencia"
+                          }
                         >
                           {recorrencia?.recorrenciaAtiva ? (
                             <PauseCircle className="h-4 w-4" />
@@ -564,15 +605,16 @@ function FinanceiroAdminPage() {
                         </button>
                       )}
 
-                      {(transacao.tipoCobranca ?? "avulsa") === "recorrente" && status !== "pago" && (
-                        <button
-                          onClick={() => setToCancel(transacao)}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent/10"
-                          title="Cancelar cobranca futura"
-                        >
-                          <Ban className="h-4 w-4" />
-                        </button>
-                      )}
+                      {(transacao.tipoCobranca ?? "avulsa") === "recorrente" &&
+                        status !== "pago" && (
+                          <button
+                            onClick={() => setToCancel(transacao)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent/10"
+                            title="Cancelar cobranca futura"
+                          >
+                            <Ban className="h-4 w-4" />
+                          </button>
+                        )}
 
                       <button
                         onClick={() => setToDelete(transacao)}
@@ -622,7 +664,13 @@ function FinanceiroAdminPage() {
                 <InfoPill label="Valor final" value={formatBRL(getValorAtualizado(transacao))} />
                 <InfoPill
                   label="Recorrencia"
-                  value={recorrencia?.recorrenciaAtiva ? "Ativa" : transacao.tipoCobranca === "recorrente" ? "Pausada" : "Avulsa"}
+                  value={
+                    recorrencia?.recorrenciaAtiva
+                      ? "Ativa"
+                      : transacao.tipoCobranca === "recorrente"
+                        ? "Pausada"
+                        : "Avulsa"
+                  }
                 />
               </div>
 
@@ -724,7 +772,8 @@ function FinanceiroAdminPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar cobranca futura?</AlertDialogTitle>
             <AlertDialogDescription>
-              A cobranca selecionada sera mantida no historico, mas deixara de ficar ativa para cobranca e acompanhamento.
+              A cobranca selecionada sera mantida no historico, mas deixara de ficar ativa para
+              cobranca e acompanhamento.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -744,7 +793,8 @@ function FinanceiroAdminPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir cobranca?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acao remove o lancamento do financeiro. Use cancelamento se quiser preservar o historico sem apagar o registro.
+              Esta acao remove o lancamento do financeiro. Use cancelamento se quiser preservar o
+              historico sem apagar o registro.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -891,7 +941,10 @@ function FinanceiroSelfServicePage() {
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <InfoPill label="Vencimento" value={formatDate(transacao.vencimento)} />
-                    <InfoPill label="Valor final" value={formatBRL(getValorAtualizado(transacao))} />
+                    <InfoPill
+                      label="Valor final"
+                      value={formatBRL(getValorAtualizado(transacao))}
+                    />
                     <InfoPill
                       label="Pagamento"
                       value={
@@ -902,7 +955,11 @@ function FinanceiroSelfServicePage() {
                     />
                     <InfoPill
                       label="Origem"
-                      value={transacao.tipoCobranca === "recorrente" ? "Recorrencia automatica" : "Lancamento avulso"}
+                      value={
+                        transacao.tipoCobranca === "recorrente"
+                          ? "Recorrencia automatica"
+                          : "Lancamento avulso"
+                      }
                     />
                   </div>
                 </div>

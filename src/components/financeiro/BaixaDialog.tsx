@@ -38,7 +38,10 @@ export function BaixaDialog({ open, onOpenChange, transacoes }: Props) {
     await new Promise((r) => setTimeout(r, 250));
     try {
       if (isLote) {
-        const n = financeiroStore.baixarLote(transacoes.map((t) => t.id), forma);
+        const n = financeiroStore.baixarLote(
+          transacoes.map((t) => t.id),
+          forma,
+        );
         toast.success(`${n} cobrança${n === 1 ? "" : "s"} baixada${n === 1 ? "" : "s"}`);
       } else if (transacoes[0]) {
         financeiroStore.baixar(transacoes[0].id, forma);
@@ -88,7 +91,10 @@ export function BaixaDialog({ open, onOpenChange, transacoes }: Props) {
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <button onClick={() => onOpenChange(false)} className="rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80">
+          <button
+            onClick={() => onOpenChange(false)}
+            className="rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
+          >
             Cancelar
           </button>
           <button

@@ -1,9 +1,35 @@
 import { useMemo } from "react";
-import { Eye, UserMinus, UserPlus, CalendarCheck, Users, MapPin, Clock, GraduationCap, Trash2 } from "lucide-react";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Eye,
+  UserMinus,
+  UserPlus,
+  CalendarCheck,
+  Users,
+  MapPin,
+  Clock,
+  GraduationCap,
+  Trash2,
+} from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { alunosStore, type Aluno } from "@/lib/alunos-store";
 import { calcStatus, useTransacoes } from "@/lib/financeiro-store";
@@ -36,9 +62,7 @@ export function TurmaDetalheDialog({
 
   const alunos = useMemo(() => {
     if (!turma) return [];
-    return turma.alunoIds
-      .map((id) => alunosStore.getById(id))
-      .filter((a): a is Aluno => !!a);
+    return turma.alunoIds.map((id) => alunosStore.getById(id)).filter((a): a is Aluno => !!a);
   }, [turma]);
 
   const situacaoFinanceira = useMemo(() => {
@@ -97,7 +121,9 @@ export function TurmaDetalheDialog({
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" /> Horário
               </div>
-              <div className="mt-0.5 font-medium">{turma.horarioInicio}–{turma.horarioFim}</div>
+              <div className="mt-0.5 font-medium">
+                {turma.horarioInicio}–{turma.horarioFim}
+              </div>
             </div>
             <div className="rounded-lg border border-border bg-background p-2.5">
               <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -111,7 +137,12 @@ export function TurmaDetalheDialog({
               </div>
               <div className="mt-0.5 font-medium">
                 {turma.alunoIds.length}/{turma.capacidadeMaxima}{" "}
-                <span className={cn("text-xs", ocupacao >= 90 ? "text-destructive" : "text-muted-foreground")}>
+                <span
+                  className={cn(
+                    "text-xs",
+                    ocupacao >= 90 ? "text-destructive" : "text-muted-foreground",
+                  )}
+                >
                   ({ocupacao}%)
                 </span>
               </div>
@@ -119,10 +150,19 @@ export function TurmaDetalheDialog({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button size="sm" onClick={onAdicionarAluno} disabled={turma.alunoIds.length >= turma.capacidadeMaxima}>
+            <Button
+              size="sm"
+              onClick={onAdicionarAluno}
+              disabled={turma.alunoIds.length >= turma.capacidadeMaxima}
+            >
               <UserPlus className="mr-2 h-4 w-4" /> Adicionar aluno
             </Button>
-            <Button size="sm" variant="outline" onClick={onRegistrarPresenca} disabled={alunos.length === 0}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRegistrarPresenca}
+              disabled={alunos.length === 0}
+            >
               <CalendarCheck className="mr-2 h-4 w-4" /> Registrar presença
             </Button>
           </div>
@@ -145,12 +185,17 @@ export function TurmaDetalheDialog({
                     const sit = situacaoFinanceira[a.id];
                     const stats = statsPresencaAluno(turma, a.id);
                     return (
-                      <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                      <li
+                        key={a.id}
+                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                      >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate font-medium">{a.nome}</span>
                             {a.status !== "ativo" && (
-                              <Badge variant="outline" className="text-[10px] capitalize">{a.status}</Badge>
+                              <Badge variant="outline" className="text-[10px] capitalize">
+                                {a.status}
+                              </Badge>
                             )}
                             <Badge
                               variant="outline"
@@ -171,12 +216,23 @@ export function TurmaDetalheDialog({
                           </div>
                         </div>
                         <div className="flex shrink-0 gap-1">
-                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onAbrirAluno(a)} title="Ver perfil">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => onAbrirAluno(a)}
+                            title="Ver perfil"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" title="Remover da turma">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                title="Remover da turma"
+                              >
                                 <UserMinus className="h-4 w-4" />
                               </Button>
                             </AlertDialogTrigger>
@@ -184,7 +240,8 @@ export function TurmaDetalheDialog({
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Remover {a.nome} da turma?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  O aluno será removido apenas desta turma. O cadastro continua no sistema.
+                                  O aluno será removido apenas desta turma. O cadastro continua no
+                                  sistema.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -207,7 +264,8 @@ export function TurmaDetalheDialog({
           {/* Histórico de presença */}
           <section className="space-y-2">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <CalendarCheck className="h-4 w-4 text-primary" /> Histórico de presença ({sessoesPresenca})
+              <CalendarCheck className="h-4 w-4 text-primary" /> Histórico de presença (
+              {sessoesPresenca})
             </h3>
             {sessoesPresenca === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -218,9 +276,15 @@ export function TurmaDetalheDialog({
                 <ul className="max-h-72 divide-y divide-border overflow-y-auto">
                   {turma.presencas.map((s) => {
                     const presentes = s.registros.filter((r) => r.presente).length;
-                    const taxa = s.registros.length > 0 ? Math.round((presentes / s.registros.length) * 100) : 0;
+                    const taxa =
+                      s.registros.length > 0
+                        ? Math.round((presentes / s.registros.length) * 100)
+                        : 0;
                     return (
-                      <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                      <li
+                        key={s.id}
+                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                      >
                         <div>
                           <div className="font-medium">{fmtBRDate(s.data)}</div>
                           <div className="text-xs text-muted-foreground">

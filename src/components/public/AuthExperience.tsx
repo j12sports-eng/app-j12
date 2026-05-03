@@ -26,13 +26,19 @@ export function AuthExperience({
           <div>
             <div className="mb-10 flex items-center gap-4">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-black/40 shadow-[0_0_40px_-18px_rgba(255,107,0,0.9)]">
-                <img src={branding.logo} alt={`Logo ${branding.name}`} className="h-11 w-11 object-contain" />
+                <img
+                  src={branding.logo}
+                  alt={`Logo ${branding.name}`}
+                  className="h-11 w-11 object-contain"
+                />
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#ff8b45]">
                   {branding.name}
                 </p>
-                <h1 className="text-xl font-semibold text-white sm:text-2xl">{branding.subtitle}</h1>
+                <h1 className="text-xl font-semibold text-white sm:text-2xl">
+                  {branding.subtitle}
+                </h1>
               </div>
             </div>
 
@@ -46,7 +52,9 @@ export function AuthExperience({
                 <h2 className="max-w-xl text-4xl font-black leading-tight text-white sm:text-5xl">
                   {title}
                 </h2>
-                <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">{description}</p>
+                <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
+                  {description}
+                </p>
               </div>
             </div>
 
@@ -100,13 +108,7 @@ export function AuthExperience({
   );
 }
 
-export function AuthCardHeader({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+export function AuthCardHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="mb-8 space-y-3">
       <h3 className="text-3xl font-black text-white">{title}</h3>

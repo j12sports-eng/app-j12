@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
+import { modalidadesStore } from "../modalidades-store";
 import { createRemoteCollectionStore } from "../remote-collection";
+import { unidadesStore } from "../unidades-store";
 import { settingsService } from "./settingsService";
 import type {
   AppearanceSettingsData,
@@ -19,12 +21,61 @@ import type {
 const settingsCollection = createRemoteCollectionStore<SettingsState>(
   "settings",
   settingsService.load(),
+  {
+    emptyState: settingsService.normalize({
+      users: [],
+      units: [],
+      modalities: [],
+      contracts: [],
+      teacherAssets: [],
+    }),
+  },
 );
 let state: SettingsState = settingsService.normalize(settingsCollection.getSnapshot());
 const listeners = new Set<() => void>();
 
+function mapUnitsFromOfficialTables() {
+  return unidadesStore.getSnapshot().map((unit) => ({
+    id: unit.id,
+    nome: unit.nome,
+    endereco: unit.endereco,
+    telefone: unit.telefone,
+  }));
+}
+
+function mapModalitiesFromOfficialTables() {
+  return modalidadesStore.getSnapshot().map((item) => ({
+    id: item.id,
+    nome: item.nome,
+    descricao: item.descricao,
+    destaque: item.destaque,
+    ativa: item.ativa,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
+function syncStateFromSources() {
+  state = settingsService.normalize({
+    ...settingsCollection.getSnapshot(),
+    units: mapUnitsFromOfficialTables(),
+    modalities: mapModalitiesFromOfficialTables(),
+  });
+}
+
+syncStateFromSources();
+
 settingsCollection.subscribe(() => {
-  state = settingsService.normalize(settingsCollection.getSnapshot());
+  syncStateFromSources();
+  listeners.forEach((listener) => listener());
+});
+
+unidadesStore.subscribe(() => {
+  syncStateFromSources();
+  listeners.forEach((listener) => listener());
+});
+
+modalidadesStore.subscribe(() => {
+  syncStateFromSources();
   listeners.forEach((listener) => listener());
 });
 
@@ -40,6 +91,14 @@ export const settingsStore = {
 
   getSnapshot() {
     return state;
+  },
+
+  reload() {
+    return Promise.all([
+      settingsCollection.reload(),
+      unidadesStore.reload(),
+      modalidadesStore.reload(),
+    ]);
   },
 
   getUserById(id: string) {
@@ -103,56 +162,70 @@ export const settingsStore = {
   },
 
   createUnit(data: Omit<Unit, "id">) {
-    const unit = settingsService.createUnit(data);
-    state = {
-      ...state,
-      units: [unit, ...state.units],
-    };
+    const unit = unidadesStore.create({
+      ...data,
+      cidade: "",
+      estado: "",
+      ativa: true,
+      status: "ativo",
+    });
+    syncStateFromSources();
     emit();
-    return unit;
+    return {
+      id: unit.id,
+      nome: unit.nome,
+      endereco: unit.endereco,
+      telefone: unit.telefone,
+    };
   },
 
   updateUnit(id: string, data: Omit<Unit, "id">) {
-    state = {
-      ...state,
-      units: state.units.map((unit) => (unit.id === id ? { ...unit, ...data } : unit)),
-    };
+    unidadesStore.update(id, {
+      ...data,
+      cidade: "",
+      estado: "",
+      ativa: true,
+      status: "ativo",
+    });
+    syncStateFromSources();
     emit();
   },
 
   removeUnit(id: string) {
-    state = {
-      ...state,
-      units: state.units.filter((unit) => unit.id !== id),
-    };
+    unidadesStore.remove(id);
+    syncStateFromSources();
     emit();
   },
 
   createModality(data: Omit<ModalityItem, "id" | "updatedAt">) {
-    const modality = settingsService.createModality(data);
-    state = {
-      ...state,
-      modalities: [modality, ...state.modalities],
-    };
+    const modality = modalidadesStore.create({
+      ...data,
+      status: data.ativa ? "ativo" : "inativo",
+    });
+    syncStateFromSources();
     emit();
-    return modality;
+    return {
+      id: modality.id,
+      nome: modality.nome,
+      descricao: modality.descricao,
+      destaque: modality.destaque,
+      ativa: modality.ativa,
+      updatedAt: new Date().toISOString(),
+    };
   },
 
   updateModality(id: string, data: Omit<ModalityItem, "id" | "updatedAt">) {
-    state = {
-      ...state,
-      modalities: state.modalities.map((modality) =>
-        modality.id === id ? settingsService.updateModality(modality, data) : modality,
-      ),
-    };
+    modalidadesStore.update(id, {
+      ...data,
+      status: data.ativa ? "ativo" : "inativo",
+    });
+    syncStateFromSources();
     emit();
   },
 
   removeModality(id: string) {
-    state = {
-      ...state,
-      modalities: state.modalities.filter((modality) => modality.id !== id),
-    };
+    modalidadesStore.remove(id);
+    syncStateFromSources();
     emit();
   },
 
@@ -227,5 +300,13 @@ export function useSettingsState() {
     settingsStore.subscribe,
     settingsStore.getSnapshot,
     settingsStore.getSnapshot,
+  );
+}
+
+export function useSettingsStatus() {
+  return useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsCollection.getMeta,
+    settingsCollection.getMeta,
   );
 }

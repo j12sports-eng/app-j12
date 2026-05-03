@@ -1,5 +1,7 @@
+const bcrypt = require("bcryptjs");
 const { randomBytes, randomUUID, scryptSync, timingSafeEqual } = require("node:crypto");
 const { query, transaction } = require("./db");
+const { signJwt, verifyJwt } = require("./src/utils/jwt");
 
 const SESSION_TTL_DAYS = Number(process.env.AUTH_SESSION_TTL_DAYS || 30);
 const RESET_TTL_MINUTES = Number(process.env.AUTH_RESET_TTL_MINUTES || 30);
@@ -33,7 +35,9 @@ function formatSqlDateTime(date) {
 }
 
 function normalizeIdentifier(value) {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function hashPassword(password, salt = randomBytes(16).toString("hex")) {
@@ -67,20 +71,48 @@ function assertStrongPassword(password) {
 
 function sanitizeUser(row) {
   const classScope = safeJsonParse(row.class_scope_json, []);
+  const role = String(row.role ?? row.perfil ?? "aluno");
+  const studentId = row.aluno_id ?? row.linked_aluno_id ?? null;
+  const teacherId = row.professor_id ?? null;
+  const responsavelId = row.responsavel_id ?? null;
   return {
     id: String(row.id),
-    nome: String(row.name ?? ""),
+    nome: String(row.name ?? row.nome ?? ""),
     email: String(row.email ?? ""),
     login: String(row.login ?? row.email ?? ""),
-    role: String(row.role ?? "aluno"),
-    studentId: row.linked_aluno_id ?? row.aluno_id ?? null,
-    teacherId: row.professor_id ?? null,
-    responsavelId: row.responsavel_id ?? null,
+    role,
+    perfil: role,
+    studentId: studentId == null ? null : String(studentId),
+    aluno_id: studentId == null ? null : Number(studentId) || String(studentId),
+    alunoId: studentId == null ? null : String(studentId),
+    teacherId: teacherId == null ? null : String(teacherId),
+    professor_id: teacherId == null ? null : Number(teacherId) || String(teacherId),
+    responsavelId: responsavelId == null ? null : String(responsavelId),
+    responsavel_id: responsavelId == null ? null : Number(responsavelId) || String(responsavelId),
     status: String(row.status ?? "ativo"),
+    source: row.__source || (row.perfil != null ? "j12_usuarios" : "users"),
     classScope: Array.isArray(classScope)
       ? classScope.filter((item) => typeof item === "string" && item.trim())
       : [],
   };
+}
+
+function normalizeLegacyRole(value) {
+  const normalized = normalizeIdentifier(value);
+  if (normalized === "admin") return "admin";
+  if (normalized === "coordenador") return "coordenador";
+  if (normalized === "professor") return "professor";
+  if (normalized === "responsavel") return "responsavel";
+  return "aluno";
+}
+
+function normalizeLegacyUserStatus(value) {
+  const normalized = normalizeIdentifier(value);
+  return normalized === "inativo" ? "inativo" : "ativo";
+}
+
+function buildLegacyMirrorId(j12UserId) {
+  return `j12u-${String(j12UserId)}`;
 }
 
 async function cleanupExpiredSessions() {
@@ -100,9 +132,15 @@ async function findUserByIdentifier(identifier) {
       SELECT *
       FROM users
       WHERE LOWER(email) = ? OR LOWER(login) = ?
+      ORDER BY
+        CASE WHEN LOWER(status) = 'ativo' THEN 0 ELSE 1 END,
+        CASE WHEN LOWER(login) = ? THEN 0 ELSE 1 END,
+        CASE WHEN LOWER(email) = ? THEN 0 ELSE 1 END,
+        updated_at DESC,
+        created_at DESC
       LIMIT 1
     `,
-    [normalized, normalized],
+    [normalized, normalized, normalized, normalized],
   );
 
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
@@ -113,9 +151,254 @@ async function findUserById(userId) {
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
 
+async function findJ12UserById(userId) {
+  const rows = await query("SELECT * FROM j12_usuarios WHERE id = ? LIMIT 1", [Number(userId)]);
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+async function findJ12UserByIdentifier(identifier) {
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized) return null;
+
+  const rows = await query(
+    `
+      SELECT *
+      FROM j12_usuarios
+      WHERE LOWER(email) = ?
+      LIMIT 1
+    `,
+    [normalized],
+  );
+
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+async function maybeLinkJ12UserToStudent(userRow) {
+  if (!userRow || normalizeLegacyRole(userRow.perfil) !== "aluno" || userRow.aluno_id != null) {
+    return userRow;
+  }
+
+  const normalizedEmail = normalizeIdentifier(userRow.email);
+  if (!normalizedEmail) {
+    return userRow;
+  }
+
+  const alunoRows = await query(
+    `
+      SELECT id
+      FROM j12_alunos
+      WHERE LOWER(email_contato) = ?
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 1
+    `,
+    [normalizedEmail],
+  );
+
+  if (!Array.isArray(alunoRows) || alunoRows.length === 0) {
+    return userRow;
+  }
+
+  await query("UPDATE j12_usuarios SET aluno_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [
+    Number(alunoRows[0].id),
+    Number(userRow.id),
+  ]);
+
+  return {
+    ...userRow,
+    aluno_id: Number(alunoRows[0].id),
+  };
+}
+
+async function upsertJ12UserFromAppUser(user, password) {
+  const perfil = user?.role === "coordenador" ? "admin" : user?.role;
+  if (!["admin", "professor", "responsavel", "aluno"].includes(perfil)) {
+    return null;
+  }
+
+  const email = normalizeIdentifier(user?.email);
+  if (!email) return null;
+
+  const senhaHash = bcrypt.hashSync(String(password ?? ""), 10);
+  const alunoId = user?.studentId == null ? null : Number(user.studentId);
+  const professorId = user?.teacherId == null ? null : Number(user.teacherId);
+  const responsavelId = user?.responsavelId == null ? null : Number(user.responsavelId);
+  const lookupRows = await query(
+    `
+      SELECT *
+      FROM j12_usuarios
+      WHERE LOWER(email) = ? OR (perfil = 'aluno' AND aluno_id = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [email, alunoId == null ? -1 : alunoId],
+  );
+  const existing = Array.isArray(lookupRows) && lookupRows.length > 0 ? lookupRows[0] : null;
+
+  await transaction(async (connection) => {
+    if (existing) {
+      await connection.execute(
+        `
+          UPDATE j12_usuarios
+          SET
+            nome = ?,
+            email = ?,
+            senha_hash = ?,
+            perfil = ?,
+            aluno_id = ?,
+            professor_id = ?,
+            responsavel_id = ?,
+            status = ?,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [
+          user.nome || "Usuario J12",
+          email,
+          senhaHash,
+          perfil,
+          alunoId,
+          professorId,
+          responsavelId,
+          user.status === "inativo" ? "inativo" : "ativo",
+          Number(existing.id),
+        ],
+      );
+      return;
+    }
+
+    await connection.execute(
+      `
+        INSERT INTO j12_usuarios (
+          nome,
+          email,
+          senha_hash,
+          perfil,
+          aluno_id,
+          professor_id,
+          responsavel_id,
+          status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        user.nome || "Usuario J12",
+        email,
+        senhaHash,
+        perfil,
+        alunoId,
+        professorId,
+        responsavelId,
+        user.status === "inativo" ? "inativo" : "ativo",
+      ],
+    );
+  });
+
+  const row = await findJ12UserByIdentifier(email);
+  return row ? sanitizeUser({ ...row, __source: "j12_usuarios" }) : null;
+}
+
+async function upsertLegacyMirrorUser(legacyUser, password) {
+  const mirrorId = buildLegacyMirrorId(legacyUser.id);
+  const desiredEmail = normalizeIdentifier(legacyUser.email) || `${mirrorId}@j12.local`;
+  const desiredLogin = desiredEmail;
+  const desiredName = String(legacyUser.nome ?? desiredEmail).trim() || "Usuario J12";
+  const desiredRole = normalizeLegacyRole(legacyUser.perfil);
+  const desiredStatus = normalizeLegacyUserStatus(legacyUser.status);
+  const desiredAlunoId = legacyUser.aluno_id == null ? null : String(legacyUser.aluno_id);
+  const desiredProfessorId =
+    legacyUser.professor_id == null ? null : String(legacyUser.professor_id);
+  const desiredResponsavelId =
+    legacyUser.responsavel_id == null ? null : String(legacyUser.responsavel_id);
+  const existingRows = await query(
+    `
+      SELECT *
+      FROM users
+      WHERE id = ? OR LOWER(email) = ? OR LOWER(login) = ?
+      ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+      LIMIT 1
+    `,
+    [mirrorId, desiredEmail, desiredLogin, mirrorId],
+  );
+  const existingUser =
+    Array.isArray(existingRows) && existingRows.length > 0 ? existingRows[0] : null;
+  const nextPassword = String(password ?? "");
+  const passwordPayload = nextPassword ? hashPassword(nextPassword) : null;
+
+  await transaction(async (connection) => {
+    if (existingUser) {
+      const params = [
+        desiredName,
+        desiredEmail,
+        desiredLogin,
+        desiredRole,
+        desiredAlunoId,
+        desiredProfessorId,
+        desiredResponsavelId,
+        desiredStatus,
+        String(existingUser.id),
+      ];
+
+      let sql = `
+        UPDATE users
+        SET
+          name = ?,
+          email = ?,
+          login = ?,
+          role = ?,
+          aluno_id = ?,
+          professor_id = ?,
+          responsavel_id = ?,
+          status = ?,
+          updated_at = NOW()
+      `;
+
+      if (passwordPayload) {
+        sql += `,
+          password_hash = ?,
+          password_salt = ?
+        `;
+        params.splice(8, 0, passwordPayload.hash, passwordPayload.salt);
+      }
+
+      sql += " WHERE id = ?";
+      await connection.execute(sql, params);
+      return;
+    }
+
+    const generatedPassword = passwordPayload ?? hashPassword(randomUUID());
+
+    await connection.execute(
+      `
+        INSERT INTO users (
+          id, name, email, login, password_hash, password_salt, role, aluno_id,
+          professor_id, responsavel_id, linked_aluno_id, class_scope_json, phone_whatsapp, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '[]', NULL, ?)
+      `,
+      [
+        mirrorId,
+        desiredName,
+        desiredEmail,
+        desiredLogin,
+        generatedPassword.hash,
+        generatedPassword.salt,
+        desiredRole,
+        desiredAlunoId,
+        desiredProfessorId,
+        desiredResponsavelId,
+        desiredStatus,
+      ],
+    );
+  });
+
+  return findUserById(existingUser?.id ?? mirrorId);
+}
+
 async function seedBaseData() {
-  const [alunosCount] = await query("SELECT COUNT(*) AS total FROM alunos");
-  if (Number(alunosCount?.total || 0) === 0) {
+  const [j12AlunosCount] = await query("SELECT COUNT(*) AS total FROM j12_alunos");
+  const [legacyAlunosCount] = await query("SELECT COUNT(*) AS total FROM alunos");
+  const shouldSeedDemo =
+    Number(j12AlunosCount?.total || 0) === 0 && Number(legacyAlunosCount?.total || 0) === 0;
+
+  if (shouldSeedDemo) {
     await transaction(async (connection) => {
       await connection.execute(
         `
@@ -179,7 +462,7 @@ async function seedBaseData() {
   }
 
   const [financeiroCount] = await query("SELECT COUNT(*) AS total FROM financeiro");
-  if (Number(financeiroCount?.total || 0) === 0) {
+  if (shouldSeedDemo && Number(financeiroCount?.total || 0) === 0) {
     await transaction(async (connection) => {
       await connection.execute(
         `
@@ -230,7 +513,7 @@ async function seedBaseData() {
   }
 
   const [presencasCount] = await query("SELECT COUNT(*) AS total FROM student_presencas");
-  if (Number(presencasCount?.total || 0) === 0) {
+  if (shouldSeedDemo && Number(presencasCount?.total || 0) === 0) {
     await transaction(async (connection) => {
       await connection.execute(
         `
@@ -269,7 +552,7 @@ async function seedBaseData() {
   }
 
   const [contractsCount] = await query("SELECT COUNT(*) AS total FROM student_contracts");
-  if (Number(contractsCount?.total || 0) === 0) {
+  if (shouldSeedDemo && Number(contractsCount?.total || 0) === 0) {
     await transaction(async (connection) => {
       await connection.execute(
         `
@@ -294,7 +577,7 @@ async function seedBaseData() {
   }
 
   const [notificationsCount] = await query("SELECT COUNT(*) AS total FROM student_notifications");
-  if (Number(notificationsCount?.total || 0) === 0) {
+  if (shouldSeedDemo && Number(notificationsCount?.total || 0) === 0) {
     await transaction(async (connection) => {
       await connection.execute(
         `
@@ -336,6 +619,14 @@ async function seedBaseData() {
 async function ensureAuthSeedData() {
   await seedBaseData();
 
+  const [usersCount] = await query("SELECT COUNT(*) AS total FROM users");
+  if (Number(usersCount?.total || 0) > 0) {
+    return;
+  }
+
+  const demoStudentRows = await query("SELECT id FROM alunos WHERE id = 'a1' LIMIT 1");
+  const hasDemoStudent = Array.isArray(demoStudentRows) && demoStudentRows.length > 0;
+
   const defaults = [
     {
       id: "usr-admin",
@@ -367,52 +658,57 @@ async function ensureAuthSeedData() {
       status: "ativo",
       password: "123456",
     },
-    {
-      id: "usr-prof-ricardo",
-      name: "Ricardo Mendes",
-      email: "prof@j12.com",
-      login: "prof@j12.com",
-      role: "professor",
-      alunoId: null,
-      professorId: "pr1",
-      responsavelId: null,
-      linkedAlunoId: null,
-      classScope: ["Sub-11 Tarde", "Sub-9 Manha"],
-      phoneWhatsapp: null,
-      status: "ativo",
-      password: "123456",
-    },
-    {
-      id: "usr-aluno-lucas",
-      name: "Lucas Almeida",
-      email: "aluno@j12.com",
-      login: "aluno@j12.com",
-      role: "aluno",
-      alunoId: "a1",
-      professorId: null,
-      responsavelId: null,
-      linkedAlunoId: null,
-      classScope: [],
-      phoneWhatsapp: "(11) 98123-4567",
-      status: "ativo",
-      password: "123456",
-    },
-    {
-      id: "usr-resp-carla",
-      name: "Carla Almeida",
-      email: "responsavel@j12.com",
-      login: "responsavel@j12.com",
-      role: "responsavel",
-      alunoId: null,
-      professorId: null,
-      responsavelId: "resp-a1",
-      linkedAlunoId: "a1",
-      classScope: [],
-      phoneWhatsapp: "(11) 99888-1122",
-      status: "ativo",
-      password: "123456",
-    },
   ];
+
+  if (hasDemoStudent) {
+    defaults.push(
+      {
+        id: "usr-prof-ricardo",
+        name: "Ricardo Mendes",
+        email: "prof@j12.com",
+        login: "prof@j12.com",
+        role: "professor",
+        alunoId: null,
+        professorId: "pr1",
+        responsavelId: null,
+        linkedAlunoId: null,
+        classScope: ["Sub-11 Tarde", "Sub-9 Manha"],
+        phoneWhatsapp: null,
+        status: "ativo",
+        password: "123456",
+      },
+      {
+        id: "usr-aluno-lucas",
+        name: "Lucas Almeida",
+        email: "aluno@j12.com",
+        login: "aluno@j12.com",
+        role: "aluno",
+        alunoId: "a1",
+        professorId: null,
+        responsavelId: null,
+        linkedAlunoId: null,
+        classScope: [],
+        phoneWhatsapp: "(11) 98123-4567",
+        status: "ativo",
+        password: "123456",
+      },
+      {
+        id: "usr-resp-carla",
+        name: "Carla Almeida",
+        email: "responsavel@j12.com",
+        login: "responsavel@j12.com",
+        role: "responsavel",
+        alunoId: null,
+        professorId: null,
+        responsavelId: "resp-a1",
+        linkedAlunoId: "a1",
+        classScope: [],
+        phoneWhatsapp: "(11) 99888-1122",
+        status: "ativo",
+        password: "123456",
+      },
+    );
+  }
 
   await transaction(async (connection) => {
     for (const user of defaults) {
@@ -455,36 +751,103 @@ async function ensureAuthSeedData() {
 
 async function authenticateUser(identifier, password) {
   await cleanupExpiredSessions();
+  const j12Row = await maybeLinkJ12UserToStudent(await findJ12UserByIdentifier(identifier));
+  if (j12Row && normalizeLegacyUserStatus(j12Row.status) === "ativo") {
+    const legacyHash = String(j12Row.senha_hash ?? "");
+    if (legacyHash && bcrypt.compareSync(String(password ?? ""), legacyHash)) {
+      const mirroredUser = await upsertLegacyMirrorUser(j12Row, password);
+      return sanitizeUser({
+        ...(mirroredUser || {}),
+        ...j12Row,
+        __source: "j12_usuarios",
+      });
+    }
+  }
+
   const row = await findUserByIdentifier(identifier);
-  if (!row || String(row.status).toLowerCase() !== "ativo") return null;
-  if (!verifyPassword(password, row.password_salt, row.password_hash)) return null;
-  return sanitizeUser(row);
+  if (row && String(row.status).toLowerCase() === "ativo") {
+    if (verifyPassword(password, row.password_salt, row.password_hash)) {
+      const sanitized = sanitizeUser({ ...row, __source: "users" });
+      await upsertJ12UserFromAppUser(sanitized, password).catch(() => null);
+      return sanitized;
+    }
+  }
+
+  return null;
 }
 
-async function createSession(userId) {
-  await cleanupExpiredSessions();
-  const token = randomBytes(48).toString("hex");
-  const now = nowDate();
-  const expiresAt = addDays(now, SESSION_TTL_DAYS);
+async function resolveUserForTokenIssue(userOrId) {
+  if (userOrId && typeof userOrId === "object") {
+    return userOrId;
+  }
 
-  await query(
-    `
-      INSERT INTO user_sessions (token, user_id, created_at, expires_at, last_seen_at)
-      VALUES (?, ?, ?, ?, ?)
-    `,
-    [
-      token,
-      String(userId),
-      formatSqlDateTime(now),
-      formatSqlDateTime(expiresAt),
-      formatSqlDateTime(now),
-    ],
+  const appUser = await findUserById(userOrId);
+  if (appUser) {
+    return sanitizeUser({ ...appUser, __source: "users" });
+  }
+
+  const j12User = await findJ12UserById(userOrId);
+  if (j12User) {
+    return sanitizeUser({ ...j12User, __source: "j12_usuarios" });
+  }
+
+  return null;
+}
+
+function isJwtToken(token) {
+  return String(token || "").split(".").length === 3;
+}
+
+async function createSession(userOrId) {
+  const user = await resolveUserForTokenIssue(userOrId);
+  if (!user) {
+    const error = new Error("Usuario nao encontrado para autenticacao.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return signJwt(
+    {
+      sub: user.id,
+      source: user.source || "users",
+      role: user.role,
+      perfil: user.perfil || user.role,
+      nome: user.nome,
+      email: user.email,
+      aluno_id: user.aluno_id ?? user.studentId ?? null,
+      studentId: user.studentId ?? user.aluno_id ?? null,
+      teacherId: user.teacherId ?? null,
+      responsavelId: user.responsavelId ?? null,
+    },
+    {
+      expiresInSeconds: SESSION_TTL_DAYS * 24 * 60 * 60,
+    },
   );
-
-  return token;
 }
 
 async function getUserBySessionToken(token) {
+  if (!token) return null;
+
+  if (isJwtToken(token)) {
+    try {
+      const payload = verifyJwt(token);
+      if (payload?.source === "j12_usuarios") {
+        const j12User = await maybeLinkJ12UserToStudent(await findJ12UserById(payload.sub));
+        return j12User ? sanitizeUser({ ...j12User, __source: "j12_usuarios" }) : null;
+      }
+
+      const user = await findUserById(payload.sub);
+      if (user) {
+        return sanitizeUser({ ...user, __source: "users" });
+      }
+
+      const j12Fallback = await maybeLinkJ12UserToStudent(await findJ12UserById(payload.sub));
+      return j12Fallback ? sanitizeUser({ ...j12Fallback, __source: "j12_usuarios" }) : null;
+    } catch {
+      return null;
+    }
+  }
+
   await cleanupExpiredSessions();
   const rows = await query(
     `
@@ -499,11 +862,12 @@ async function getUserBySessionToken(token) {
 
   if (!Array.isArray(rows) || rows.length === 0) return null;
   await query("UPDATE user_sessions SET last_seen_at = NOW() WHERE token = ?", [String(token)]);
-  return sanitizeUser(rows[0]);
+  return sanitizeUser({ ...rows[0], __source: "users" });
 }
 
 async function deleteSession(token) {
   if (!token) return;
+  if (isJwtToken(token)) return;
   await query("DELETE FROM user_sessions WHERE token = ?", [String(token)]);
 }
 
@@ -564,10 +928,9 @@ async function resetPassword(token, password) {
       "UPDATE users SET password_hash = ?, password_salt = ?, updated_at = NOW() WHERE id = ?",
       [hash, salt, String(tokenRow.user_id)],
     );
-    await connection.execute(
-      "UPDATE password_reset_tokens SET used_at = NOW() WHERE token = ?",
-      [String(token)],
-    );
+    await connection.execute("UPDATE password_reset_tokens SET used_at = NOW() WHERE token = ?", [
+      String(token),
+    ]);
   });
 
   return sanitizeUser(tokenRow);
@@ -575,6 +938,24 @@ async function resetPassword(token, password) {
 
 async function changePassword(userId, currentPassword, nextPassword) {
   assertStrongPassword(nextPassword);
+  const j12Row = await findJ12UserById(userId);
+  if (j12Row && normalizeLegacyUserStatus(j12Row.status) === "ativo") {
+    const legacyHash = String(j12Row.senha_hash ?? "");
+    if (!legacyHash || !bcrypt.compareSync(String(currentPassword ?? ""), legacyHash)) {
+      const error = new Error("A senha atual esta incorreta.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const nextHash = bcrypt.hashSync(String(nextPassword ?? ""), 10);
+    await query(
+      "UPDATE j12_usuarios SET senha_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [nextHash, Number(userId)],
+    );
+
+    return sanitizeUser({ ...j12Row, senha_hash: nextHash, __source: "j12_usuarios" });
+  }
+
   const row = await findUserById(userId);
 
   if (!row) {
@@ -629,7 +1010,7 @@ async function completeStudentFirstAccess(payload) {
   const alunos = await query(
     `
       SELECT *
-      FROM alunos
+      FROM j12_alunos
       WHERE numero_matricula = ? AND data_nascimento = ?
       LIMIT 1
     `,
@@ -664,7 +1045,7 @@ async function completeStudentFirstAccess(payload) {
 
   const { hash, salt } = hashPassword(password);
   const basePayload = {
-    name: String(aluno.nome ?? "Aluno J12"),
+    name: String(aluno.nome_completo ?? "Aluno J12"),
     email,
     login,
     hash,
@@ -672,8 +1053,10 @@ async function completeStudentFirstAccess(payload) {
     role: "aluno",
     alunoId: String(aluno.id),
     linkedAlunoId: null,
-    phoneWhatsapp: String(aluno.telefone ?? ""),
+    phoneWhatsapp: String(aluno.telefone_contato ?? ""),
   };
+
+  const nextBcryptHash = bcrypt.hashSync(password, 10);
 
   await transaction(async (connection) => {
     if (Array.isArray(existingByStudent) && existingByStudent.length > 0) {
@@ -696,30 +1079,49 @@ async function completeStudentFirstAccess(payload) {
           String(existingByStudent[0].id),
         ],
       );
-      return;
+    } else {
+      await connection.execute(
+        `
+          INSERT INTO users (
+            id, name, email, login, password_hash, password_salt, role, aluno_id,
+            professor_id, responsavel_id, linked_aluno_id, class_scope_json, phone_whatsapp, status
+          ) VALUES (?, ?, ?, ?, ?, ?, 'aluno', ?, NULL, NULL, NULL, '[]', ?, 'ativo')
+        `,
+        [
+          `usr-${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+          basePayload.name,
+          basePayload.email,
+          basePayload.login,
+          basePayload.hash,
+          basePayload.salt,
+          basePayload.alunoId,
+          basePayload.phoneWhatsapp,
+        ],
+      );
     }
 
     await connection.execute(
       `
-        INSERT INTO users (
-          id, name, email, login, password_hash, password_salt, role, aluno_id,
-          professor_id, responsavel_id, linked_aluno_id, class_scope_json, phone_whatsapp, status
-        ) VALUES (?, ?, ?, ?, ?, ?, 'aluno', ?, NULL, NULL, NULL, '[]', ?, 'ativo')
+        INSERT INTO j12_usuarios (
+          nome, email, senha_hash, perfil, aluno_id, professor_id, responsavel_id, status
+        ) VALUES (?, ?, ?, 'aluno', ?, NULL, NULL, 'ativo')
+        ON DUPLICATE KEY UPDATE
+          nome = VALUES(nome),
+          email = VALUES(email),
+          senha_hash = VALUES(senha_hash),
+          perfil = 'aluno',
+          aluno_id = VALUES(aluno_id),
+          status = 'ativo',
+          updated_at = CURRENT_TIMESTAMP
       `,
-      [
-        `usr-${randomUUID().replace(/-/g, "").slice(0, 16)}`,
-        basePayload.name,
-        basePayload.email,
-        basePayload.login,
-        basePayload.hash,
-        basePayload.salt,
-        basePayload.alunoId,
-        basePayload.phoneWhatsapp,
-      ],
+      [basePayload.name, basePayload.email, nextBcryptHash, Number(basePayload.alunoId)],
     );
   });
 
-  const created = await findUserByIdentifier(login);
+  const created =
+    (await findJ12UserByIdentifier(login)) ||
+    (await maybeLinkJ12UserToStudent(await findJ12UserByIdentifier(email))) ||
+    (await findUserByIdentifier(login));
   return created ? sanitizeUser(created) : null;
 }
 
@@ -733,14 +1135,15 @@ async function requireAuth(req, res, next) {
   try {
     const token = getTokenFromRequest(req);
     if (!token) {
-      return res.status(401).json({ message: "Sessao invalida ou expirada." });
+      return res.status(401).json({ message: "Token não informado ou inválido" });
     }
 
     const user = await getUserBySessionToken(token);
     if (!user) {
-      return res.status(401).json({ message: "Sessao invalida ou expirada." });
+      return res.status(401).json({ message: "Token não informado ou inválido" });
     }
 
+    req.user = user;
     req.auth = user;
     req.authToken = token;
     next();
@@ -752,7 +1155,7 @@ async function requireAuth(req, res, next) {
 function requireRole(roles) {
   const allowed = new Set(roles);
   return (req, res, next) => {
-    const role = req.auth?.role;
+    const role = req.user?.role || req.auth?.role;
     if (!role || !allowed.has(role)) {
       return res.status(403).json({ message: "Acesso negado para este perfil." });
     }
@@ -763,13 +1166,13 @@ function requireRole(roles) {
 
 function resolveScopedStudentId(user) {
   if (!user) return null;
-  if (user.role === "aluno") return user.studentId ?? null;
-  if (user.role === "responsavel") return user.studentId ?? null;
+  if (user.role === "aluno") return user.studentId ?? user.aluno_id ?? null;
+  if (user.role === "responsavel") return user.studentId ?? user.aluno_id ?? null;
   return null;
 }
 
 function canManageSystem(user) {
-  return user?.role === "admin" || user?.role === "coordenador";
+  return user?.role === "admin" || user?.role === "coordenador" || user?.perfil === "admin";
 }
 
 module.exports = {

@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,7 @@ import {
   planoStatusClass,
   planoStatusLabel,
   usePlanos,
+  usePlanosStatus,
   type CategoriaPlano,
   type Plano,
   type PlanoInput,
@@ -99,8 +101,9 @@ const NEXT_ITERATION_ITEMS = [
     icon: FileText,
   },
   {
-    title: "Persistencia MySQL/API",
-    description: "Trocar o mock store por endpoints reais mantendo a mesma interface visual.",
+    title: "Catalogo em tempo real",
+    description:
+      "Planos sincronizados pela API real e prontos para refletir no restante do painel.",
     icon: Database,
   },
   {
@@ -128,6 +131,7 @@ const emptyPlanoForm: PlanoInput = {
 
 function PlanosPage() {
   const planos = usePlanos();
+  const planosStatus = usePlanosStatus();
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusPlano | "todos">("todos");
   const [categoria, setCategoria] = useState<CategoriaPlano | "todas">("todas");
@@ -186,11 +190,15 @@ function PlanosPage() {
     setDetailId(plano.id);
   }
 
-  function handleResetMocks() {
-    planosStore.reset();
-    setDetailId(null);
-    setEditingId(null);
-    toast.success("Estrutura mock de planos restaurada.");
+  async function handleReloadPlanos() {
+    try {
+      await planosStore.reload();
+      toast.success("Catalogo de planos sincronizado com a API.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Nao foi possivel sincronizar os planos.",
+      );
+    }
   }
 
   function handleSavePlano(payload: PlanoInput) {
@@ -241,6 +249,12 @@ function PlanosPage() {
   return (
     <AppShell title="Planos">
       <div className="space-y-6">
+        <ResourceSyncBanner
+          status={planosStatus}
+          resourceLabel="os planos"
+          hasData={planos.length > 0}
+        />
+
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-2xl font-bold">Planos</h2>
@@ -254,9 +268,9 @@ function PlanosPage() {
               <Layers3 className="mr-2 h-4 w-4" />
               Novo plano
             </Button>
-            <Button variant="outline" onClick={handleResetMocks}>
+            <Button variant="outline" onClick={handleReloadPlanos}>
               <RefreshCcw className="mr-2 h-4 w-4" />
-              Resetar mocks
+              Sincronizar API
             </Button>
           </div>
         </div>
@@ -489,13 +503,14 @@ function PlanosPage() {
                 done
               />
               <RoadmapRow
-                title="Store mock persistido"
-                description="Os dados agora sao sincronizados com a API persistente da plataforma."
+                title="Sincronizacao ativa"
+                description="Os dados do catalogo ficam persistidos e sincronizados pela API da plataforma."
                 done
               />
               <RoadmapRow
                 title="Camada API/MySQL"
-                description="O proximo passo e trocar o store local por servicos reais."
+                description="Catalogo pronto para abastecer contratos, financeiro e jornadas comerciais."
+                done
               />
               <RoadmapRow
                 title="Automacoes comerciais"
@@ -559,8 +574,8 @@ function PlanosPage() {
             <AlertDialogDescription>
               {deletePlano ? (
                 <>
-                  O plano <strong>{deletePlano.nome}</strong> sera removido do catalogo mock e essa
-                  acao nao podera ser desfeita automaticamente.
+                  O plano <strong>{deletePlano.nome}</strong> sera removido do catalogo e essa acao
+                  nao podera ser desfeita automaticamente.
                 </>
               ) : null}
             </AlertDialogDescription>

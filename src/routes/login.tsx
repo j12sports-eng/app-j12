@@ -63,7 +63,6 @@ function LoginPage() {
     try {
       await login(email.trim(), senha);
       toast.success("Bem-vindo de volta.");
-      navigate({ to: "/dashboard" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao entrar");
     } finally {
@@ -94,7 +93,8 @@ function LoginPage() {
             ))}
           </div>
           <p className="text-xs text-white/45">
-            Use as credenciais ativas do seu ambiente ou conclua o primeiro acesso para criar sua senha.
+            Use as credenciais ativas do seu ambiente ou conclua o primeiro acesso para criar sua
+            senha.
           </p>
         </div>
       }
@@ -106,10 +106,10 @@ function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <AuthInput
-          label="Login ou e-mail"
-          type="text"
+          label="E-mail"
+          type="email"
           inputMode="email"
-          autoComplete="username"
+          autoComplete="email"
           placeholder="seuemail@j12sports.com.br"
           value={email}
           onChange={(event) => {

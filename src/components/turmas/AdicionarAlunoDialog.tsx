@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
 import { Search, UserPlus } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +104,9 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
                             </div>
                           </div>
                           {a.status === "experimental" && (
-                            <Badge variant="outline" className="text-xs">Experimental</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              Experimental
+                            </Badge>
                           )}
                           {ativo && <UserPlus className="h-4 w-4 text-primary" />}
                         </button>
@@ -111,7 +120,9 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
           <Button onClick={adicionar} disabled={!selecionado || lotada}>
             <UserPlus className="mr-2 h-4 w-4" /> Adicionar
           </Button>

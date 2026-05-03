@@ -48,7 +48,9 @@ function PrimeiroAcessoPage() {
       toast.success("Primeiro acesso configurado. Agora voce ja pode entrar.");
       navigate({ to: "/login" });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Falha ao concluir primeiro acesso.");
+      setError(
+        submitError instanceof Error ? submitError.message : "Falha ao concluir primeiro acesso.",
+      );
     } finally {
       setSubmitting(false);
     }

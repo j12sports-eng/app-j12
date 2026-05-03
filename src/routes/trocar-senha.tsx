@@ -66,7 +66,8 @@ function TrocarSenhaPage() {
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div className="text-sm text-muted-foreground">
-              Use uma senha com pelo menos 8 caracteres, incluindo letra maiuscula, minuscula e numero.
+              Use uma senha com pelo menos 8 caracteres, incluindo letra maiuscula, minuscula e
+              numero.
             </div>
           </div>
 
@@ -77,12 +78,7 @@ function TrocarSenhaPage() {
               value={senhaAtual}
               onChange={setSenhaAtual}
             />
-            <Field
-              label="Nova senha"
-              type="password"
-              value={novaSenha}
-              onChange={setNovaSenha}
-            />
+            <Field label="Nova senha" type="password" value={novaSenha} onChange={setNovaSenha} />
             <Field
               label="Confirmar nova senha"
               type="password"

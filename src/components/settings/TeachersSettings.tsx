@@ -54,12 +54,25 @@ export function TeachersSettings() {
   const professores = useProfessores();
   const turmas = useTurmas();
   const settings = useSettingsState();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTeacher, setEditingTeacher] = useState<Professor | null>(null);
+  const [isProfessorDialogOpen, setIsProfessorDialogOpen] = useState(false);
+  const [editingProfessor, setEditingProfessor] = useState<Professor | null>(null);
   const [form, setForm] = useState<TeacherFormState>(defaultForm);
 
   const units = settings.units;
   const teacherAssets = settings.teacherAssets;
+  const modalidadeOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+            ...professores.flatMap((professor) => professor.modalidades),
+            ...MODALIDADES,
+          ].filter(Boolean),
+        ),
+      ] as Modalidade[],
+    [professores, settings.modalities],
+  );
 
   const compatibleTurmas = useMemo(
     () => turmas.filter((turma) => professorCanHandleClass(form, turma)),
@@ -67,28 +80,38 @@ export function TeachersSettings() {
   );
 
   useEffect(() => {
-    setForm((current) => ({
-      ...current,
-      turmaIds: current.turmaIds.filter((turmaId) =>
+    setForm((current) => {
+      const nextTurmaIds = current.turmaIds.filter((turmaId) =>
         compatibleTurmas.some((turma) => turma.id === turmaId),
-      ),
-    }));
+      );
+
+      const sameLength = nextTurmaIds.length === current.turmaIds.length;
+      const sameValues =
+        sameLength && nextTurmaIds.every((turmaId, index) => turmaId === current.turmaIds[index]);
+
+      if (sameValues) return current;
+
+      return {
+        ...current,
+        turmaIds: nextTurmaIds,
+      };
+    });
   }, [compatibleTurmas]);
 
-  function openCreate() {
-    setEditingTeacher(null);
+  function handleNovoProfessor() {
+    setEditingProfessor(null);
     setForm({
       ...defaultForm,
       unidades: units[0]?.nome ? [units[0].nome] : [],
     });
-    setDialogOpen(true);
+    setIsProfessorDialogOpen(true);
   }
 
   function openEdit(teacher: Professor) {
     const turmaIds = turmas
       .filter((turma) => turma.professorId === teacher.id)
       .map((turma) => turma.id);
-    setEditingTeacher(teacher);
+    setEditingProfessor(teacher);
     setForm({
       nome: teacher.nome,
       telefone: teacher.telefone,
@@ -98,7 +121,7 @@ export function TeachersSettings() {
       unidades: teacher.unidades,
       turmaIds,
     });
-    setDialogOpen(true);
+    setIsProfessorDialogOpen(true);
   }
 
   function toggleTurma(turmaId: string) {
@@ -163,9 +186,9 @@ export function TeachersSettings() {
       return;
     }
 
-    if (editingTeacher) {
-      professoresStore.update(editingTeacher.id, {
-        ...toProfessorInput(editingTeacher),
+    if (editingProfessor) {
+      professoresStore.update(editingProfessor.id, {
+        ...toProfessorInput(editingProfessor),
         nome: form.nome.trim(),
         telefone: form.telefone.trim(),
         email: form.email.trim(),
@@ -174,9 +197,11 @@ export function TeachersSettings() {
         unidades: form.unidades,
       });
 
-      const result = assignTeacherToTurmas(editingTeacher.id, form.nome.trim(), form.turmaIds);
+      const result = assignTeacherToTurmas(editingProfessor.id, form.nome.trim(), form.turmaIds);
       if (result.invalidClassIds.length > 0) {
-        toast.warning("Algumas turmas foram ignoradas por nao combinarem com as unidades/modalidades.");
+        toast.warning(
+          "Algumas turmas foram ignoradas por nao combinarem com as unidades/modalidades.",
+        );
       } else {
         toast.success("Professor atualizado.");
       }
@@ -201,14 +226,16 @@ export function TeachersSettings() {
 
       const result = assignTeacherToTurmas(novoProfessor.id, form.nome.trim(), form.turmaIds);
       if (result.invalidClassIds.length > 0) {
-        toast.warning("Professor criado, mas algumas turmas nao eram compatÃ­veis e nao foram vinculadas.");
+        toast.warning(
+          "Professor criado, mas algumas turmas nao eram compatÃ­veis e nao foram vinculadas.",
+        );
       } else {
         toast.success("Professor criado.");
       }
     }
 
     syncProfessorTurmaNames();
-    setDialogOpen(false);
+    setIsProfessorDialogOpen(false);
   }
 
   function handleDelete(teacher: Professor) {
@@ -227,7 +254,7 @@ export function TeachersSettings() {
         <div className="text-sm text-muted-foreground">
           {professores.length} professor(es) gerenciados com integracao ao modulo Professores.
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={handleNovoProfessor}>
           <Plus className="h-4 w-4" />
           Novo professor
         </Button>
@@ -256,14 +283,20 @@ export function TeachersSettings() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {teacher.modalidades.map((modalidade) => (
-                        <Badge key={modalidade} className="border-primary/30 bg-primary/15 text-primary">
+                        <Badge
+                          key={modalidade}
+                          className="border-primary/30 bg-primary/15 text-primary"
+                        >
                           {modalidade}
                         </Badge>
                       ))}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {teacher.unidades.map((unidade) => (
-                        <Badge key={unidade} className="border-border bg-card/70 text-foreground/80">
+                        <Badge
+                          key={unidade}
+                          className="border-border bg-card/70 text-foreground/80"
+                        >
                           {unidade}
                         </Badge>
                       ))}
@@ -271,7 +304,10 @@ export function TeachersSettings() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       {teacher.turmas.length > 0 ? (
                         teacher.turmas.map((turma) => (
-                          <Badge key={turma} className="border-border bg-card/70 text-foreground/80">
+                          <Badge
+                            key={turma}
+                            className="border-border bg-card/70 text-foreground/80"
+                          >
                             {turma}
                           </Badge>
                         ))
@@ -331,10 +367,10 @@ export function TeachersSettings() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={isProfessorDialogOpen} onOpenChange={setIsProfessorDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{editingTeacher ? "Editar professor" : "Novo professor"}</DialogTitle>
+            <DialogTitle>{editingProfessor ? "Editar professor" : "Novo professor"}</DialogTitle>
             <DialogDescription>
               Os vinculos definidos aqui atualizam o modulo Professores e o responsavel das turmas
               selecionadas.
@@ -375,7 +411,7 @@ export function TeachersSettings() {
                 ))}
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {MODALIDADES.map((modalidade) => {
+                {modalidadeOptions.map((modalidade) => {
                   const checked = form.modalidades.includes(modalidade);
                   return (
                     <button
@@ -454,11 +490,11 @@ export function TeachersSettings() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsProfessorDialogOpen(false)}>
               Cancelar
             </Button>
             <Button onClick={handleSave}>
-              {editingTeacher ? "Salvar professor" : "Criar professor"}
+              {editingProfessor ? "Salvar professor" : "Criar professor"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -479,7 +515,11 @@ function Field({
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground">{label}</label>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} className="j12-field" />
+      <Input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="j12-field"
+      />
     </div>
   );
 }

@@ -35,6 +35,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
   const editing = !!turma;
   const professores = useProfessores();
   const settings = useSettingsState();
+
   const [nome, setNome] = useState("");
   const [modalidade, setModalidade] = useState<Modalidade>("Futebol");
   const [unidade, setUnidade] = useState("");
@@ -50,6 +51,21 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
     [professores],
   );
 
+  const availableModalidades = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
+            ...(turma ? [turma.modalidade] : []),
+            modalidade,
+            ...MODALIDADES,
+          ].filter(Boolean),
+        ),
+      ] as Modalidade[],
+    [modalidade, settings.modalities, turma],
+  );
+
   const unitOptions = useMemo(
     () => [
       ...new Set(
@@ -57,17 +73,18 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
           ...settings.units.map((unit) => unit.nome),
           ...activeTeachers.flatMap((professor) => professor.unidades),
           unidade,
+          ...(turma ? [turma.unidade] : []),
         ].filter(Boolean),
       ),
     ],
-    [activeTeachers, settings.units, unidade],
+    [activeTeachers, settings.units, unidade, turma],
   );
 
   const compatibleTeachers = useMemo(
     () =>
       activeTeachers.filter(
         (professor) =>
-          unidade &&
+          unidade.trim() &&
           professorCanHandleClass(professor, {
             modalidade,
             unidade,
@@ -82,19 +99,19 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
     if (!open) return;
 
     if (turma) {
-      setNome(turma.nome);
-      setModalidade(turma.modalidade);
-      setUnidade(turma.unidade);
+      setNome(turma.nome ?? "");
+      setModalidade(turma.modalidade ?? "Futebol");
+      setUnidade(turma.unidade ?? "");
       setProfessorId(
         turma.professorId ??
           activeTeachers.find((professor) => professor.nome === turma.professor)?.id ??
           "",
       );
-      setDias(turma.diasSemana);
-      setHorarioInicio(turma.horarioInicio);
-      setHorarioFim(turma.horarioFim);
-      setCapacidadeMaxima(turma.capacidadeMaxima);
-      setAtiva(turma.ativa);
+      setDias(turma.diasSemana ?? []);
+      setHorarioInicio(turma.horarioInicio ?? "19:00");
+      setHorarioFim(turma.horarioFim ?? "20:30");
+      setCapacidadeMaxima(turma.capacidadeMaxima ?? 20);
+      setAtiva(turma.ativa ?? true);
       return;
     }
 
@@ -124,19 +141,20 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
   function salvar() {
     if (!nome.trim()) return toast.error("Informe o nome da turma");
     if (!unidade.trim()) return toast.error("Informe a unidade da turma");
-    if (!professorId) return toast.error("Selecione um professor responsavel");
+    if (!professorId) return toast.error("Selecione um professor responsável");
     if (dias.length === 0) return toast.error("Selecione pelo menos um dia da semana");
     if (capacidadeMaxima < 1) return toast.error("Capacidade deve ser maior que zero");
-    if (horarioFim <= horarioInicio) return toast.error("Horario fim deve ser apos o inicio");
+    if (horarioFim <= horarioInicio) return toast.error("Horário fim deve ser após o início");
+
     if (turma && capacidadeMaxima < turma.alunoIds.length) {
       return toast.error(
-        `Capacidade nao pode ser menor que ${turma.alunoIds.length} (alunos atuais)`,
+        `Capacidade não pode ser menor que ${turma.alunoIds.length} alunos atuais`,
       );
     }
 
     if (!selectedProfessor) {
       return toast.error(
-        "O professor selecionado nao atende esta combinacao de unidade e modalidade.",
+        "O professor selecionado não atende esta combinação de unidade e modalidade.",
       );
     }
 
@@ -170,7 +188,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
         <DialogHeader>
           <DialogTitle>{editing ? "Editar turma" : "Nova turma"}</DialogTitle>
           <DialogDescription>
-            Defina os dados da turma, horarios, capacidade e um professor compativel com a unidade e
+            Defina os dados da turma, horários, capacidade e um professor compatível com a unidade e
             a modalidade escolhidas.
           </DialogDescription>
         </DialogHeader>
@@ -197,7 +215,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MODALIDADES.map((item) => (
+                  {availableModalidades.map((item) => (
                     <SelectItem key={item} value={item}>
                       {item}
                     </SelectItem>
@@ -205,6 +223,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="unidade">Unidade</Label>
               <Input
@@ -223,7 +242,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label>Professor responsavel</Label>
+            <Label>Professor responsável</Label>
             <Select value={professorId} onValueChange={setProfessorId} disabled={!unidade.trim()}>
               <SelectTrigger>
                 <SelectValue
@@ -231,7 +250,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
                     unidade.trim()
                       ? compatibleTeachers.length > 0
                         ? "Selecione um professor"
-                        : "Nenhum professor compativel"
+                        : "Nenhum professor compatível"
                       : "Escolha a unidade primeiro"
                   }
                 />
@@ -244,6 +263,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
                 ))}
               </SelectContent>
             </Select>
+
             <div className="text-xs text-muted-foreground">
               Apenas professores com esta modalidade e esta unidade podem ser vinculados.
             </div>
@@ -276,7 +296,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label htmlFor="hi">Inicio</Label>
+              <Label htmlFor="hi">Início</Label>
               <Input
                 id="hi"
                 type="time"
@@ -284,6 +304,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
                 onChange={(e) => setHorarioInicio(e.target.value)}
               />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="hf">Fim</Label>
               <Input
@@ -293,8 +314,9 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
                 onChange={(e) => setHorarioFim(e.target.value)}
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="cap">Capacidade maxima</Label>
+              <Label htmlFor="cap">Capacidade máxima</Label>
               <Input
                 id="cap"
                 type="number"
@@ -311,7 +333,7 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
             <div>
               <div className="text-sm font-medium">Turma ativa</div>
               <div className="text-xs text-muted-foreground">
-                Turmas inativas nao recebem novos alunos.
+                Turmas inativas não recebem novos alunos.
               </div>
             </div>
             <Switch checked={ativa} onCheckedChange={setAtiva} />

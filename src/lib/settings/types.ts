@@ -1,6 +1,9 @@
 import type { Role } from "@/lib/auth";
 
-export type UserRole = Extract<Role, "admin" | "coordenador" | "professor" | "aluno" | "responsavel">;
+export type UserRole = Extract<
+  Role,
+  "admin" | "coordenador" | "professor" | "aluno" | "responsavel"
+>;
 export type SettingsSection =
   | "geral"
   | "aparencia"
@@ -14,10 +17,7 @@ export type SettingsSection =
   | "integracoes";
 
 export type ThemeMode = "dark" | "light";
-export type ContractDocumentType =
-  | "contrato_principal"
-  | "aditivo_contrato"
-  | "direito_uso_imagem";
+export type ContractDocumentType = "contrato_principal" | "aditivo_contrato" | "direito_uso_imagem";
 
 export interface SettingsUser {
   id: string;

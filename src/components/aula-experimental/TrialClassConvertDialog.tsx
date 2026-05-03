@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GraduationCap, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { PLANOS } from "@/lib/alunos-store";
+import { usePlanos } from "@/lib/planos-store";
 import {
   canConvertTrialClass,
   trialClassesStore,
@@ -29,18 +29,29 @@ export function TrialClassConvertDialog({
   trialClass: TrialClass | null;
   onConverted?: (trialClass: TrialClass) => void;
 }) {
-  const [plan, setPlan] = useState(PLANOS[0]);
+  const planos = usePlanos();
+  const [plan, setPlan] = useState("");
   const [converting, setConverting] = useState(false);
+
+  const availablePlanos = useMemo(() => {
+    const dynamicPlanos = planos
+      .filter((item) => item.status === "ativo")
+      .map((item) => item.nome.trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(dynamicPlanos));
+  }, [planos]);
 
   useEffect(() => {
     if (!open) return;
-    setPlan(PLANOS[0]);
-  }, [open]);
+    setPlan((current) => current || availablePlanos[0] || "");
+  }, [availablePlanos, open]);
 
   if (!trialClass) return null;
+  const currentTrialClass = trialClass;
 
   async function handleConvert() {
-    if (!canConvertTrialClass(trialClass)) {
+    if (!canConvertTrialClass(currentTrialClass)) {
       toast.error("Somente aulas com comparecimento podem ser convertidas.");
       return;
     }
@@ -49,7 +60,7 @@ export function TrialClassConvertDialog({
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     try {
-      const result = trialClassesStore.convertToAluno(trialClass.id, plan);
+      const result = trialClassesStore.convertToAluno(currentTrialClass.id, plan);
 
       if (!result.ok) {
         toast.error(result.reason);
@@ -78,7 +89,7 @@ export function TrialClassConvertDialog({
             Converter em aluno
           </DialogTitle>
           <DialogDescription className="text-slate-400">
-            Use os dados da aula experimental para criar o aluno no mock do App J12.
+            Use os dados da aula experimental para criar o aluno diretamente na base oficial.
           </DialogDescription>
         </DialogHeader>
 
@@ -88,13 +99,13 @@ export function TrialClassConvertDialog({
               Resumo do lead
             </div>
             <div className="mt-4 space-y-2 text-sm text-slate-300">
-              <div className="font-semibold text-white">{trialClass.studentName}</div>
-              <div>Responsavel: {trialClass.guardianName}</div>
-              <div>Modalidade: {trialClass.modality}</div>
-              <div>Turma: {trialClass.turma || "A definir"}</div>
-              <div>Professor: {trialClass.professor}</div>
+              <div className="font-semibold text-white">{currentTrialClass.studentName}</div>
+              <div>Responsavel: {currentTrialClass.guardianName}</div>
+              <div>Modalidade: {currentTrialClass.modality}</div>
+              <div>Turma: {currentTrialClass.turma || "A definir"}</div>
+              <div>Professor: {currentTrialClass.professor}</div>
               <div>
-                Agenda: {trialClass.date} as {trialClass.time}
+                Agenda: {currentTrialClass.date} as {currentTrialClass.time}
               </div>
             </div>
           </div>
@@ -112,7 +123,7 @@ export function TrialClassConvertDialog({
                   onChange={(event) => setPlan(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-input bg-input/40 px-3 py-2 text-sm outline-none focus:border-primary"
                 >
-                  {PLANOS.map((item) => (
+                  {availablePlanos.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
@@ -120,8 +131,8 @@ export function TrialClassConvertDialog({
                 </select>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                O aluno sera criado com status ativo, usando os dados do responsavel e mantendo o
-                vinculo com esta aula experimental.
+                O aluno sera criado com status ativo, usando o catalogo oficial de planos e mantendo
+                o vinculo com esta aula experimental.
               </div>
             </div>
           </div>
@@ -133,7 +144,12 @@ export function TrialClassConvertDialog({
           </Button>
           <Button
             onClick={handleConvert}
-            disabled={converting || !canConvertTrialClass(trialClass)}
+            disabled={
+              converting ||
+              !canConvertTrialClass(currentTrialClass) ||
+              !plan ||
+              availablePlanos.length === 0
+            }
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             {converting ? "Convertendo..." : "Converter em aluno"}

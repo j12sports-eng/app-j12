@@ -32,7 +32,11 @@ export function NotificationsSettings() {
       week: alunos.filter((aluno) => {
         if (!aluno.dataNascimento) return false;
         const birthDate = new Date(`${aluno.dataNascimento}T00:00:00`);
-        const currentYearBirthday = new Date(today.getFullYear(), birthDate.getMonth(), birthDate.getDate());
+        const currentYearBirthday = new Date(
+          today.getFullYear(),
+          birthDate.getMonth(),
+          birthDate.getDate(),
+        );
         const diffDays = Math.floor((currentYearBirthday.getTime() - today.getTime()) / 86400000);
         return diffDays >= 0 && diffDays <= 7;
       }).length,
@@ -100,7 +104,8 @@ export function NotificationsSettings() {
                 onChange={(value) =>
                   setDraft((current) => ({
                     ...current,
-                    birthdayReminderChannel: value as NotificationSettingsData["birthdayReminderChannel"],
+                    birthdayReminderChannel:
+                      value as NotificationSettingsData["birthdayReminderChannel"],
                   }))
                 }
                 options={[
@@ -191,7 +196,11 @@ export function NotificationsSettings() {
               }
             />
             <ChannelRow icon={MonitorSpeaker} label="Painel / Dashboard" checked />
-            <ChannelRow icon={Cake} label="Aniversário automático" checked={draft.birthdayReminderEnabled} />
+            <ChannelRow
+              icon={Cake}
+              label="Aniversário automático"
+              checked={draft.birthdayReminderEnabled}
+            />
           </div>
           <Button onClick={handleSave} className="mt-6 w-full">
             <BellRing className="h-4 w-4" />
@@ -242,7 +251,11 @@ function ChannelRow({
         <Icon className="h-4 w-4 text-primary" />
         {label}
       </div>
-      {onCheckedChange ? <Switch checked={checked} onCheckedChange={onCheckedChange} /> : <span className="text-xs text-muted-foreground">{checked ? "Ativo" : "Inativo"}</span>}
+      {onCheckedChange ? (
+        <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      ) : (
+        <span className="text-xs text-muted-foreground">{checked ? "Ativo" : "Inativo"}</span>
+      )}
     </div>
   );
 }
@@ -263,7 +276,11 @@ function Field({
   return (
     <div>
       <label className="mb-2 block text-sm font-medium text-foreground">{label}</label>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="j12-field h-10 w-full px-3 text-sm">
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="j12-field h-10 w-full px-3 text-sm"
+      >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

@@ -149,7 +149,10 @@ function ForgotPasswordPage() {
             )}
           </AuthButton>
 
-          <Link to="/login" className="inline-flex items-center gap-2 text-sm font-medium text-white/58 transition hover:text-[#ff9f6b]">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 text-sm font-medium text-white/58 transition hover:text-[#ff9f6b]"
+          >
             <ArrowLeft className="h-4 w-4" />
             Voltar para login
           </Link>

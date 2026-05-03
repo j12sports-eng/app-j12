@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -153,7 +153,10 @@ function maskCpf(value: string) {
 }
 
 function maskRg(value: string) {
-  const clean = value.toUpperCase().replace(/[^0-9X]/g, "").slice(0, 9);
+  const clean = value
+    .toUpperCase()
+    .replace(/[^0-9X]/g, "")
+    .slice(0, 9);
   if (clean.length <= 2) return clean;
   if (clean.length <= 5) return `${clean.slice(0, 2)}.${clean.slice(2)}`;
   if (clean.length <= 8) return `${clean.slice(0, 2)}.${clean.slice(2, 5)}.${clean.slice(5)}`;
@@ -308,29 +311,17 @@ function validateMatriculaForm(form: FormState): FieldErrors {
     form.esportivas.caracteristica,
     "Selecione a característica principal.",
   );
-  requireText(
-    "esportivas.objetivo",
-    form.esportivas.objetivo,
-    "Selecione o objetivo esportivo.",
-  );
+  requireText("esportivas.objetivo", form.esportivas.objetivo, "Selecione o objetivo esportivo.");
 
   requireText(
     "saude.restricaoMedica",
     form.saude.restricaoMedica,
     "Informe as restrições médicas.",
   );
-  requireText(
-    "saude.medicamentos",
-    form.saude.medicamentos,
-    "Informe os medicamentos em uso.",
-  );
+  requireText("saude.medicamentos", form.saude.medicamentos, "Informe os medicamentos em uso.");
   requireText("saude.alergias", form.saude.alergias, "Informe as alergias.");
   requireText("saude.lesoes", form.saude.lesoes, "Informe o histórico de lesões.");
-  requireText(
-    "saude.planoSaude",
-    form.saude.planoSaude,
-    "Informe o plano de saúde.",
-  );
+  requireText("saude.planoSaude", form.saude.planoSaude, "Informe o plano de saúde.");
   requireText(
     "saude.observacoesImportantes",
     form.saude.observacoesImportantes,
@@ -421,8 +412,7 @@ function MatriculaPage() {
         form.esportivas.modalidades.length === 0 ||
         form.esportivas.modalidades.includes(option.modalidade);
       const matchesUnidade =
-        form.esportivas.unidades.length === 0 ||
-        form.esportivas.unidades.includes(option.unidade);
+        form.esportivas.unidades.length === 0 || form.esportivas.unidades.includes(option.unidade);
       return matchesModalidade && matchesUnidade;
     });
   }, [horarioOptions, form.esportivas.modalidades, form.esportivas.unidades]);
@@ -454,9 +444,42 @@ function MatriculaPage() {
     }));
   }, [form.dadosAluno.dataNascimento, form.dadosAluno.idade]);
 
+  const loadEnrollmentNumber = useEffectEvent(async (force = false) => {
+    if (!force && form.dadosAluno.numeroMatricula) return;
+
+    setEnrollmentNumberStatus("loading");
+    setEnrollmentNumberMessage("Gerando o prÃ³ximo nÃºmero de matrÃ­cula disponÃ­vel...");
+
+    try {
+      const result = await getNextEnrollmentNumber();
+
+      setForm((current) => ({
+        ...current,
+        dadosAluno: {
+          ...current.dadosAluno,
+          numeroMatricula: result.numeroMatricula,
+        },
+      }));
+      setAssignedEnrollmentNumber(result.numeroMatricula);
+      setEnrollmentNumberStatus("success");
+      setEnrollmentNumberMessage(
+        result.strategy === "reused"
+          ? `NÃºmero automÃ¡tico reutilizado com seguranÃ§a a partir de matrÃ­cula ${result.reusedFrom === "inativo" ? "inativa" : "excluÃ­da"}.`
+          : "NÃºmero automÃ¡tico pronto. O backend confirma o valor final no salvamento para evitar conflitos.",
+      );
+    } catch (error) {
+      setEnrollmentNumberStatus("error");
+      setEnrollmentNumberMessage(
+        error instanceof Error
+          ? error.message
+          : "NÃ£o foi possÃ­vel gerar a matrÃ­cula agora. O backend confirmarÃ¡ no salvamento.",
+      );
+    }
+  });
+
   useEffect(() => {
     void loadEnrollmentNumber();
-  }, []);
+  }, [loadEnrollmentNumber]);
 
   useEffect(() => {
     return () => {
@@ -499,7 +522,7 @@ function MatriculaPage() {
     return touched[field] ? allErrors[field] : "";
   }
 
-  async function loadEnrollmentNumber(force = false) {
+  async function loadEnrollmentNumberLegacy(force = false) {
     if (!force && form.dadosAluno.numeroMatricula) return;
 
     setEnrollmentNumberStatus("loading");
@@ -578,11 +601,7 @@ function MatriculaPage() {
     markTouched(fieldsToTouch);
   }
 
-  function toggleSimpleArray(
-    key: "modalidades" | "unidades",
-    value: string,
-    fieldPath: string,
-  ) {
+  function toggleSimpleArray(key: "modalidades" | "unidades", value: string, fieldPath: string) {
     setForm((current) => {
       const currentValues = current.esportivas[key];
       const nextValues = currentValues.includes(value)
@@ -714,7 +733,9 @@ function MatriculaPage() {
     markTouched(fields);
 
     const messages = uniqueValues(
-      fields.map((field) => allErrors[field]).filter((message): message is string => Boolean(message)),
+      fields
+        .map((field) => allErrors[field])
+        .filter((message): message is string => Boolean(message)),
     );
 
     if (messages.length > 0) {
@@ -763,10 +784,18 @@ function MatriculaPage() {
 
     setSubmitting(true);
     try {
-      const result = await createPublicEnrollmentRequest({
-        ...form,
+      const enrollmentPayload = {
+        dadosAluno: { ...form.dadosAluno },
+        responsavel: { ...form.responsavel },
+        endereco: { ...form.endereco },
+        documentos: { ...form.documentos },
+        esportivas: { ...form.esportivas },
+        saude: { ...form.saude },
+        estrategicas: { ...form.estrategicas },
         submittedAt: new Date().toISOString(),
-      });
+      };
+
+      const result = await createPublicEnrollmentRequest(enrollmentPayload);
 
       setAssignedEnrollmentNumber(result.numeroMatricula);
       setForm((current) => ({
@@ -778,9 +807,13 @@ function MatriculaPage() {
       }));
       setProtocol(result.protocol);
       setSuccess(true);
-      toast.success(`Matrícula salva com sucesso sob o número ${result.numeroMatricula}.`);
+      toast.success("Matrícula enviada com sucesso!");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao registrar a matrícula.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a matrícula. Tente novamente em instantes.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -840,7 +873,11 @@ function MatriculaPage() {
         <div className="mb-6 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/35 shadow-[0_0_35px_-16px_rgba(255,107,0,0.85)]">
-              <img src={branding.logo} alt={`Logo ${branding.name}`} className="h-9 w-9 object-contain" />
+              <img
+                src={branding.logo}
+                alt={`Logo ${branding.name}`}
+                className="h-9 w-9 object-contain"
+              />
             </div>
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ff9f6b]">
@@ -921,7 +958,9 @@ function MatriculaPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-white">{item.title}</div>
-                        <div className="mt-1 text-xs leading-5 text-white/50">{item.description}</div>
+                        <div className="mt-1 text-xs leading-5 text-white/50">
+                          {item.description}
+                        </div>
                       </div>
                       <ChevronRight className="ml-auto mt-1 h-4 w-4 text-white/30" />
                     </div>
@@ -1016,7 +1055,11 @@ function MatriculaPage() {
                 />
               )}
               {step === 5 && (
-                <StepHealth form={form} updateSection={updateSection} getFieldError={getFieldError} />
+                <StepHealth
+                  form={form}
+                  updateSection={updateSection}
+                  getFieldError={getFieldError}
+                />
               )}
               {step === 6 && (
                 <StepStrategy
@@ -1120,9 +1163,9 @@ function InputField({
             ? "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/45"
             : readOnly
               ? "border-white/10 bg-white/[0.03] text-white"
-            : error
-              ? "border-rose-500/70 bg-rose-500/10 text-white focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10"
-              : "border-white/10 bg-[#101010] text-white focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15"
+              : error
+                ? "border-rose-500/70 bg-rose-500/10 text-white focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10"
+                : "border-white/10 bg-[#101010] text-white focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15"
         }`}
       />
       {helper ? <p className="text-xs text-white/40">{helper}</p> : null}
@@ -1243,7 +1286,9 @@ function MultiSelectCard({
         </div>
         <div className="min-w-0">
           <div className="text-sm font-semibold text-white">{label}</div>
-          {description ? <div className="mt-1 text-xs leading-5 text-white/45">{description}</div> : null}
+          {description ? (
+            <div className="mt-1 text-xs leading-5 text-white/45">{description}</div>
+          ) : null}
         </div>
       </div>
     </button>
@@ -1266,7 +1311,9 @@ function FileField({
   onChange: (file: File | null) => void;
 }) {
   return (
-    <label className={`block rounded-3xl border p-4 transition ${error ? "border-rose-500/60 bg-rose-500/10" : "border-dashed border-white/15 bg-white/[0.03] hover:border-[#ff6b00]/35"}`}>
+    <label
+      className={`block rounded-3xl border p-4 transition ${error ? "border-rose-500/60 bg-rose-500/10" : "border-dashed border-white/15 bg-white/[0.03] hover:border-[#ff6b00]/35"}`}
+    >
       <div className="mb-3 text-sm font-medium text-white">{label}</div>
       <input
         type="file"
@@ -1354,9 +1401,7 @@ function StepStudent({
         label="RG"
         required
         value={form.dadosAluno.rg}
-        onChange={(value) =>
-          updateSection("dadosAluno", { rg: maskRg(value) }, ["dadosAluno.rg"])
-        }
+        onChange={(value) => updateSection("dadosAluno", { rg: maskRg(value) }, ["dadosAluno.rg"])}
         error={getFieldError("dadosAluno.rg")}
       />
       <SelectField
@@ -1442,7 +1487,9 @@ function StepGuardian({
           required
           value={form.responsavel.whatsapp}
           onChange={(value) =>
-            updateSection("responsavel", { whatsapp: maskWhatsapp(value) }, ["responsavel.whatsapp"])
+            updateSection("responsavel", { whatsapp: maskWhatsapp(value) }, [
+              "responsavel.whatsapp",
+            ])
           }
           error={getFieldError("responsavel.whatsapp")}
         />
@@ -1509,9 +1556,7 @@ function StepAddress({
           label="CEP"
           required
           value={form.endereco.cep}
-          onChange={(value) =>
-            updateSection("endereco", { cep: maskCep(value) }, ["endereco.cep"])
-          }
+          onChange={(value) => updateSection("endereco", { cep: maskCep(value) }, ["endereco.cep"])}
           error={getFieldError("endereco.cep")}
           helper="Ao informar um CEP válido, rua, bairro, cidade e estado serão preenchidos automaticamente."
         />
@@ -1850,9 +1895,7 @@ function StepHealth({
         label="Plano de saúde"
         required
         value={form.saude.planoSaude}
-        onChange={(value) =>
-          updateSection("saude", { planoSaude: value }, ["saude.planoSaude"])
-        }
+        onChange={(value) => updateSection("saude", { planoSaude: value }, ["saude.planoSaude"])}
         error={getFieldError("saude.planoSaude")}
       />
       <div className="md:col-span-2">
@@ -1861,11 +1904,9 @@ function StepHealth({
           required
           value={form.saude.observacoesImportantes}
           onChange={(value) =>
-            updateSection(
-              "saude",
-              { observacoesImportantes: value },
-              ["saude.observacoesImportantes"],
-            )
+            updateSection("saude", { observacoesImportantes: value }, [
+              "saude.observacoesImportantes",
+            ])
           }
           error={getFieldError("saude.observacoesImportantes")}
         />
@@ -1912,11 +1953,9 @@ function StepStrategy({
         required
         value={form.estrategicas.observacoesGerais}
         onChange={(value) =>
-          updateSection(
-            "estrategicas",
-            { observacoesGerais: value },
-            ["estrategicas.observacoesGerais"],
-          )
+          updateSection("estrategicas", { observacoesGerais: value }, [
+            "estrategicas.observacoesGerais",
+          ])
         }
         error={getFieldError("estrategicas.observacoesGerais")}
       />
@@ -2014,13 +2053,16 @@ function StepReview({
   return (
     <div className="space-y-5">
       <div className="rounded-3xl border border-[#ff6b00]/20 bg-[#ff6b00]/8 px-4 py-4 text-sm leading-6 text-[#ffd2bb]">
-        Revise todas as informações. Ao finalizar, a matrícula será integrada ao perfil do aluno e
-        o status documental será calculado automaticamente.
+        Revise todas as informações. Ao finalizar, a matrícula será integrada ao perfil do aluno e o
+        status documental será calculado automaticamente.
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         {sections.map((section) => (
-          <div key={section.title} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+          <div
+            key={section.title}
+            className="rounded-3xl border border-white/10 bg-white/[0.03] p-4"
+          >
             <h3 className="mb-4 text-lg font-semibold text-white">{section.title}</h3>
             <div className="space-y-3 text-sm text-white/72">
               {section.items.map(([label, value]) => (

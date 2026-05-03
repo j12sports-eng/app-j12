@@ -1,9 +1,5 @@
 import type { AuthUser, Role } from "./auth";
-import {
-  professorCanHandleClass,
-  professoresStore,
-  type Professor,
-} from "./professores-store";
+import { professorCanHandleClass, professoresStore, type Professor } from "./professores-store";
 import { settingsStore } from "./settings/settings-store";
 import type { Turma } from "./turmas-store";
 
@@ -39,7 +35,7 @@ function isPrivileged(user: AuthUser | null) {
 function getLinkedTeacher(user: AuthUser) {
   const configuredUser = settingsStore.getUserById(user.id);
   const teacherId = configuredUser?.teacherId ?? user.teacherId ?? null;
-  return teacherId ? professoresStore.getById(teacherId) ?? null : null;
+  return teacherId ? (professoresStore.getById(teacherId) ?? null) : null;
 }
 
 function matchesTeacher(user: AuthUser, classItem: Turma, linkedTeacher: Professor | null) {
@@ -57,7 +53,11 @@ function matchesTeacher(user: AuthUser, classItem: Turma, linkedTeacher: Profess
     return user.teacherId === classItem.professorId;
   }
 
-  if (!classItem.professorId && linkedTeacher && professorCanHandleClass(linkedTeacher, classItem)) {
+  if (
+    !classItem.professorId &&
+    linkedTeacher &&
+    professorCanHandleClass(linkedTeacher, classItem)
+  ) {
     return true;
   }
 

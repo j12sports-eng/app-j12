@@ -57,9 +57,7 @@ export function AssinaturaDialog({ open, onOpenChange, contrato, parte = "respon
       parte,
     );
     if (parcelasGeradas > 0) {
-      toast.success(
-        `Contrato ativado! ${parcelasGeradas} parcelas geradas no Financeiro.`,
-      );
+      toast.success(`Contrato ativado! ${parcelasGeradas} parcelas geradas no Financeiro.`);
     } else if (atualizado?.status === "aguardando_assinatura") {
       toast.success(
         parte === "j12"
@@ -78,7 +76,8 @@ export function AssinaturaDialog({ open, onOpenChange, contrato, parte = "respon
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            Assinatura eletrônica — {isJ12 ? "J12 Sports (Contratada)" : "Responsável (Contratante)"}
+            Assinatura eletrônica —{" "}
+            {isJ12 ? "J12 Sports (Contratada)" : "Responsável (Contratante)"}
           </DialogTitle>
           <DialogDescription>
             Aceite com validade jurídica nos termos da MP nº 2.200-2/2001.
