@@ -326,28 +326,12 @@ export function getAlunoDocumentPendencies(
   const documentos = normalizeAlunoMatriculaData(matricula).documentos;
   const pendencies: string[] = [];
 
-  if (!hasDocument(documentos.fotoPerfilAluno)) {
-    pendencies.push(ALUNO_DOCUMENT_LABELS.fotoPerfilAluno);
-  }
-
-  if (!hasDocument(documentos.rgCpfAluno)) {
-    pendencies.push(ALUNO_DOCUMENT_LABELS.rgCpfAluno);
-  }
-
-  if (!hasDocument(documentos.rgCpfResponsavel)) {
-    pendencies.push(ALUNO_DOCUMENT_LABELS.rgCpfResponsavel);
-  }
-
-  if (!hasDocument(documentos.comprovanteEndereco)) {
-    pendencies.push(ALUNO_DOCUMENT_LABELS.comprovanteEndereco);
-  }
-
-  if (!hasDocument(documentos.atestadoMedico)) {
-    pendencies.push(ALUNO_DOCUMENT_LABELS.atestadoMedico);
-  } else if (isMedicalDocumentExpired(documentos.atestadoMedico)) {
-    pendencies.push("Atestado médico vencido");
-  } else if (isMedicalDocumentValidityInvalid(documentos.atestadoMedico)) {
-    pendencies.push("Validade do atestado médico acima de 1 ano");
+  if (hasDocument(documentos.atestadoMedico) && documentos.atestadoMedico.expiresAt) {
+    if (isMedicalDocumentExpired(documentos.atestadoMedico)) {
+      pendencies.push("Atestado médico vencido");
+    } else if (isMedicalDocumentValidityInvalid(documentos.atestadoMedico)) {
+      pendencies.push("Validade do atestado médico acima de 1 ano");
+    }
   }
 
   return pendencies;

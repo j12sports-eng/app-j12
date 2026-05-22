@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { MODALIDADES, type Modalidade } from "@/lib/alunos-store";
+import type { Modalidade } from "@/lib/alunos-store";
 import { professorCanHandleClass, useProfessores } from "@/lib/professores-store";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { DIAS_SEMANA, turmasStore, type DiaSemana, type Turma } from "@/lib/turmas-store";
@@ -59,7 +59,6 @@ export function TurmaFormDialog({ open, onOpenChange, turma }: Props) {
             ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
             ...(turma ? [turma.modalidade] : []),
             modalidade,
-            ...MODALIDADES,
           ].filter(Boolean),
         ),
       ] as Modalidade[],

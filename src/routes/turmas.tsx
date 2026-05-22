@@ -52,7 +52,7 @@ import {
   useTurmasStatus,
   type Turma,
 } from "@/lib/turmas-store";
-import { MODALIDADES, type Aluno, type Modalidade } from "@/lib/alunos-store";
+import { getAlunosDaTurma, useAlunos, type Aluno, type Modalidade } from "@/lib/alunos-store";
 import type { Contrato } from "@/lib/contratos-store";
 import { useProfessoresStatus } from "@/lib/professores-store";
 import { useSettingsState } from "@/lib/settings/settings-store";
@@ -72,6 +72,7 @@ type StatusFiltro = "todas" | "ativas" | "inativas";
 
 function TurmasPage() {
   const turmas = useTurmas();
+  const alunos = useAlunos();
   const turmasStatus = useTurmasStatus();
   const professoresStatus = useProfessoresStatus();
   const settings = useSettingsState();
@@ -114,7 +115,6 @@ function TurmasPage() {
         new Set([
           ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
           ...turmas.map((turma) => turma.modalidade),
-          ...MODALIDADES,
         ]),
       ),
     [settings.modalities, turmas],
@@ -231,8 +231,10 @@ function TurmasPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtradas.map((t) => {
-            const ocupacao = Math.round((t.alunoIds.length / t.capacidadeMaxima) * 100);
-            const lotada = t.alunoIds.length >= t.capacidadeMaxima;
+            const totalAlunos = getAlunosDaTurma(t, alunos).length;
+            const ocupacao =
+              t.capacidadeMaxima > 0 ? Math.round((totalAlunos / t.capacidadeMaxima) * 100) : 0;
+            const lotada = t.capacidadeMaxima > 0 && totalAlunos >= t.capacidadeMaxima;
             return (
               <article
                 key={t.id}
@@ -283,7 +285,7 @@ function TurmasPage() {
                       <Users className="h-3.5 w-3.5" /> Alunos
                     </div>
                     <span className={cn("font-medium", lotada && "text-destructive")}>
-                      {t.alunoIds.length}/{t.capacidadeMaxima}
+                      {totalAlunos}/{t.capacidadeMaxima}
                     </span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">

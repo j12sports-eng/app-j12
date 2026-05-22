@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MODALIDADES, type Modalidade } from "@/lib/alunos-store";
+import type { Modalidade } from "@/lib/alunos-store";
 import { settingsStore, useSettingsState } from "@/lib/settings/settings-store";
 import { syncProfessorTurmaNames } from "@/lib/settings/sync";
 import { professorCanHandleClass, useProfessores } from "@/lib/professores-store";
@@ -43,7 +43,7 @@ type ClassFormState = {
 
 const defaultForm: ClassFormState = {
   nome: "",
-  modalidade: MODALIDADES[0],
+  modalidade: "",
   unidade: "",
   professorId: "",
   diasSemana: ["seg", "qua"],
@@ -68,7 +68,6 @@ export function ClassesSettings() {
           [
             ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
             ...turmas.map((turma) => turma.modalidade),
-            ...MODALIDADES,
           ].filter(Boolean),
         ),
       ] as Modalidade[],

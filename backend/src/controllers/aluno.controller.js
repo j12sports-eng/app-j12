@@ -1,6 +1,7 @@
 const { loadStudentRows } = require("./alunos.controller");
 const { query } = require("../config/db");
 const { gerarMensalidadeDoAluno } = require("../services/financeiro.service");
+const { criarNotificacao } = require("../services/notificacao.service");
 
 function parseJson(value, fallback) {
   if (!value) return fallback;
@@ -74,7 +75,7 @@ async function getAlunoRelacionamentos(alunoId) {
         turma.modalidade AS turma_modalidade,
         turma.unidade AS turma_unidade,
         turma.professor_id AS turma_professor_id,
-        COALESCE(turma.dias_horarios, turma.horario) AS turma_dias_horarios,
+        COALESCE(turma.dias_semana, turma.horario) AS turma_dias_horarios,
         turma.status AS turma_status,
         responsavel.id AS responsavel_ref_id,
         responsavel.nome AS responsavel_nome_ref,
@@ -122,10 +123,7 @@ async function getMe(req, res, next) {
       plano: aluno.plano || relacionamento?.plano_nome || relacionamento?.plano_principal || null,
       turma: aluno.turma || relacionamento?.turma_nome || relacionamento?.turma_principal || null,
       responsavel:
-        aluno.responsavel ||
-        aluno.responsavel_nome ||
-        relacionamento?.responsavel_nome_ref ||
-        null,
+        aluno.responsavel || aluno.responsavel_nome || relacionamento?.responsavel_nome_ref || null,
       plano_detalhes: relacionamento?.plano_id
         ? {
             id: relacionamento.plano_id,
@@ -147,30 +145,29 @@ async function getMe(req, res, next) {
             status: relacionamento.turma_status,
           }
         : null,
-      responsavel_detalhes: relacionamento?.responsavel_ref_id || aluno.responsavel_nome
-        ? {
-            id: relacionamento?.responsavel_ref_id ?? aluno.responsavel_id ?? null,
-            nome:
-              relacionamento?.responsavel_nome_ref ??
-              aluno.responsavel_nome ??
-              aluno.responsavel ??
-              null,
-            email:
-              relacionamento?.responsavel_email_ref ??
-              aluno.responsavel_email ??
-              aluno.responsavelEmail ??
-              null,
-            telefone:
-              relacionamento?.responsavel_telefone_ref ??
-              aluno.responsavel_whatsapp ??
-              aluno.telefoneResponsavel ??
-              null,
-            parentesco:
-              relacionamento?.responsavel_parentesco_ref ??
-              aluno.responsavel_parentesco ??
-              null,
-          }
-        : null,
+      responsavel_detalhes:
+        relacionamento?.responsavel_ref_id || aluno.responsavel_nome
+          ? {
+              id: relacionamento?.responsavel_ref_id ?? aluno.responsavel_id ?? null,
+              nome:
+                relacionamento?.responsavel_nome_ref ??
+                aluno.responsavel_nome ??
+                aluno.responsavel ??
+                null,
+              email:
+                relacionamento?.responsavel_email_ref ??
+                aluno.responsavel_email ??
+                aluno.responsavelEmail ??
+                null,
+              telefone:
+                relacionamento?.responsavel_telefone_ref ??
+                aluno.responsavel_whatsapp ??
+                aluno.telefoneResponsavel ??
+                null,
+              parentesco:
+                relacionamento?.responsavel_parentesco_ref ?? aluno.responsavel_parentesco ?? null,
+            }
+          : null,
       relacionamentos: {
         plano: relacionamento?.plano_id
           ? {
@@ -273,6 +270,14 @@ async function getMeFinanceiro(req, res, next) {
         vencimento: row.vencimento,
         valor: Number(row.valor || 0),
         status,
+
+        pix_copia_cola:
+          "00020126580014BR.GOV.BCB.PIX5204000053039865405200.005802BR5920J12 SPORTS6009SAO PAULO62070503***6304ABCD",
+
+        qr_code_pix: "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PIX-J12",
+
+        boleto_url: "https://www.boletobancario.com/boletofacil/exemplo.pdf",
+
         forma_pagamento: row.forma_pagamento,
         formaPagamento: row.forma_pagamento,
         data_pagamento: row.data_pagamento,
@@ -311,6 +316,24 @@ async function getMeFinanceiro(req, res, next) {
         proximo_vencimento: null,
       },
     );
+
+    const mensalidadeVencida = mensalidades.find((item) => item.status === "vencido");
+
+    if (mensalidadeVencida) {
+      await criarNotificacao({
+        alunoId,
+        titulo: "Mensalidade em atraso",
+        mensagem: `Você possui uma mensalidade vencida no valor de R$ ${mensalidadeVencida.valor}`,
+        tipo: "financeiro",
+      });
+
+      if (global.io) {
+        global.io.emit("nova_notificacao", {
+          alunoId,
+          titulo: "Mensalidade em atraso",
+        });
+      }
+    }
 
     res.json({
       resumo: {
@@ -369,12 +392,38 @@ async function getMePresencas(req, res, next) {
         presentes,
         faltas,
         justificadas,
-        percentual_presenca: totalAulas > 0 ? Number(((presentes / totalAulas) * 100).toFixed(2)) : 0,
+        percentual_presenca:
+          totalAulas > 0 ? Number(((presentes / totalAulas) * 100).toFixed(2)) : 0,
       },
       presencas,
     });
   } catch (error) {
     next(error);
+  }
+}
+
+async function getMeDashboardResponsavel(req, res) {
+  try {
+    res.json({
+      aluno: {
+        nome: "Orlando",
+      },
+
+      financeiro: {
+        mensalidade: 200,
+        status: "Em dia",
+      },
+
+      presenca: {
+        percentual: 92,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao carregar dashboard",
+    });
   }
 }
 
@@ -390,6 +439,12 @@ async function getMeNotificacoes(req, res, next) {
       `,
       [String(alunoId)],
     );
+
+    if (global.io) {
+      global.io.emit("nova_notificacao", {
+        titulo: "Teste realtime",
+      });
+    }
 
     res.json(
       (Array.isArray(rows) ? rows : []).map((row) => ({
@@ -453,10 +508,63 @@ async function getMeContrato(req, res, next) {
   }
 }
 
+async function getMeDashboard(req, res) {
+  try {
+    res.json({
+      nome: "Orlando",
+
+      financeiro: {
+        mensalidade: 200,
+      },
+
+      presenca: {
+        percentual: 92,
+      },
+
+      plano: {
+        nome: "Futsal Kids",
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: "Erro ao carregar dashboard",
+    });
+  }
+}
+
+async function marcarNotificacaoComoLida(req, res, next) {
+  try {
+    const alunoId = resolveAlunoIdFromRequest(req);
+
+    const { id } = req.params;
+
+    await query(
+      `
+        UPDATE j12_notificacoes
+        SET lida = 1
+        WHERE id = ?
+        AND aluno_id = ?
+      `,
+      [Number(id), Number(alunoId)],
+    );
+
+    res.json({
+      success: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getMe,
   getMeFinanceiro,
   getMePresencas,
   getMeNotificacoes,
   getMeContrato,
+  getMeDashboard,
+  getMeDashboardResponsavel,
+  marcarNotificacaoComoLida,
 };

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { alunosStore } from "@/lib/alunos-store";
+import { getAlunosDaTurma, useAlunos } from "@/lib/alunos-store";
 import { turmasStore, type Turma } from "@/lib/turmas-store";
 import { cn } from "@/lib/utils";
 
@@ -23,15 +23,13 @@ interface Props {
 }
 
 export function PresencaDialog({ open, onOpenChange, turma }: Props) {
+  const alunosSnapshot = useAlunos();
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
   const [registros, setRegistros] = useState<Record<string, boolean>>({});
 
   const alunos = useMemo(() => {
-    if (!turma) return [];
-    return turma.alunoIds
-      .map((id) => alunosStore.getById(id))
-      .filter((a): a is NonNullable<typeof a> => !!a);
-  }, [turma]);
+    return getAlunosDaTurma(turma, alunosSnapshot);
+  }, [alunosSnapshot, turma]);
 
   useEffect(() => {
     if (open && turma) {

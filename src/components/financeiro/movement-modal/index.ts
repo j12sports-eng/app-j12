@@ -1,0 +1,1 @@
+export { FinancialMovementModal } from "./FinancialMovementModal";

@@ -9,7 +9,7 @@ const viteArgs = rawArgs.filter((arg) => arg !== "--skip-backend" && arg !== "--
 
 const BACKEND_HOST = process.env.HOST || "127.0.0.1";
 const BACKEND_PORT = Number(process.env.PORT || "3001");
-const FALLBACK_BACKEND_PORT = Number(process.env.J12_FALLBACK_PORT || "4001");
+const FALLBACK_BACKEND_PORT = Number(process.env.J12_FALLBACK_PORT || "3001");
 const DEFAULT_FRONTEND_HOST = "127.0.0.1";
 const DEFAULT_FRONTEND_PORT = "3000";
 
@@ -168,6 +168,11 @@ async function ensureBackend() {
   }
 
   const fallbackHandle = spawnManaged("backend-persistente", ["server/index.mjs"], {
+    env: {
+      ...process.env,
+      HOST: BACKEND_HOST,
+      PORT: String(FALLBACK_BACKEND_PORT),
+    },
     exitIsFatal: false,
   });
   const fallbackReady = await waitForPort(BACKEND_HOST, FALLBACK_BACKEND_PORT, 5000);

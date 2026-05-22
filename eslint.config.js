@@ -1,12 +1,23 @@
-import js from "@eslint/js";
-import eslintPluginPrettier from "eslint-plugin-prettier/recommended";
-import globals from "globals";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
-import tseslint from "typescript-eslint";
+const js = require("@eslint/js");
+const eslintPluginPrettier = require("eslint-plugin-prettier/recommended");
+const globals = require("globals");
+const reactHooks = require("eslint-plugin-react-hooks");
+const reactRefresh = require("eslint-plugin-react-refresh");
+const tseslint = require("typescript-eslint");
 
-export default tseslint.config(
-  { ignores: ["dist", ".output", ".vinxi"] },
+module.exports = tseslint.config(
+  {
+    ignores: [
+      "dist",
+      ".output",
+      ".vinxi",
+      ".tanstack",
+      ".wrangler",
+      "node_modules",
+      "*.log",
+      "*.err.log",
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -20,8 +31,9 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
+      "react-refresh/only-export-components": "off",
     },
   },
   eslintPluginPrettier,

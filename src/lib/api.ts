@@ -1,148 +1,262 @@
 import { clearAuthSession, getStoredAuthToken } from "./auth-storage";
 
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:3001";
 
-function resolveApiBaseUrl(value: unknown) {
-  if (typeof value !== "string") {
-    return DEFAULT_API_BASE_URL;
-  }
+type ApiEnvelope<T> = {
+  success?: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+};
 
-  const normalized = value.trim().replace(/\/+$/, "");
-  if (!normalized) {
-    return DEFAULT_API_BASE_URL;
-  }
-
-  try {
-    return new URL(normalized).toString().replace(/\/+$/, "");
-  } catch {
-    console.warn(`VITE_API_URL invalido (${normalized}). Usando fallback ${DEFAULT_API_BASE_URL}.`);
-    return DEFAULT_API_BASE_URL;
-  }
-}
-
-export const API_BASE_URL = resolveApiBaseUrl(
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:3001",
-);
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-type ApiFetchOptions = RequestInit & {
+type ApiRequestInit = Omit<RequestInit, "body"> & {
+  body?: unknown;
+  skipAuthHeader?: boolean;
   skipAuthRedirect?: boolean;
 };
 
-export function formatApiErrorMessage(
-  error: unknown,
-  fallback = "Nao foi possivel concluir a solicitacao na API.",
-) {
-  if (error instanceof ApiError) {
-    if (error.status === 0) return error.message || fallback;
-    if (error.status === 401) {
-      return "Sua sessao expirou. Faca login novamente para continuar.";
-    }
-    if (error.status === 403) {
-      return error.message || "Voce nao tem permissao para acessar este recurso.";
-    }
-    if (error.status === 404) {
-      return error.message || "Os dados solicitados nao foram encontrados na API.";
-    }
-    if (error.status >= 500) {
-      return "A API encontrou um problema interno. Tente novamente em instantes.";
-    }
-    return error.message || fallback;
-  }
+export class ApiError extends Error {
+  status: number;
+  data?: unknown;
 
-  if (error instanceof Error && error.message) {
-    return error.message;
+  constructor(message: string, status = 500, data?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
   }
-
-  return fallback;
 }
 
-export async function apiFetch<T = unknown>(
-  path: string,
-  options: ApiFetchOptions = {},
-): Promise<T> {
-  const { skipAuthRedirect = false, ...init } = options;
-  const token = getStoredAuthToken();
-  const headers = new Headers(init.headers);
+const DEFAULT_DEV_API_URL = "http://127.0.0.1:3001";
 
-  if (init.body != null && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+function normalizeApiBaseUrl(value: unknown) {
+  const configured = String(value ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (!configured || configured === "/" || configured === ".") {
+    return import.meta.env.DEV ? DEFAULT_DEV_API_URL : "/api";
   }
 
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
+  return configured;
+}
+
+const API_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL);
+
+export function getApiBaseUrl() {
+  return API_URL;
+}
+
+export function buildApiUrl(endpoint: string) {
+  const normalizedEndpoint = endpoint.trim().startsWith("/")
+    ? endpoint.trim()
+    : `/${endpoint.trim()}`;
+
+  if (/^https?:\/\//i.test(normalizedEndpoint)) {
+    return normalizedEndpoint;
   }
 
-  let res: Response;
+  if (API_URL === "/api" && normalizedEndpoint.startsWith("/api/")) {
+    return normalizedEndpoint;
+  }
+
+  return `${API_URL}${normalizedEndpoint}`;
+}
+
+function isBrowser() {
+  return typeof window !== "undefined";
+}
+
+function isFormData(value: unknown): value is FormData {
+  return isBrowser() && value instanceof FormData;
+}
+
+function buildHeaders(
+  headers: HeadersInit | undefined,
+  token: string | null,
+  skipAuthHeader: boolean,
+  body: BodyInit | null | undefined,
+) {
+  const normalized = new Headers(headers);
+
+  if (!isFormData(body) && !normalized.has("Content-Type")) {
+    normalized.set("Content-Type", "application/json");
+  }
+
+  if (!skipAuthHeader && token) {
+    normalized.set("Authorization", `Bearer ${token}`);
+  }
+
+  return normalized;
+}
+
+function serializeBody(body: unknown): BodyInit | undefined {
+  if (typeof body === "undefined" || body === null) {
+    return undefined;
+  }
+
+  if (
+    typeof body === "string" ||
+    isFormData(body) ||
+    body instanceof Blob ||
+    body instanceof URLSearchParams
+  ) {
+    return body;
+  }
+
+  return JSON.stringify(body);
+}
+
+function isApiEnvelope<T>(value: unknown): value is ApiEnvelope<T> {
+  return typeof value === "object" && value !== null;
+}
+
+export function extractApiData<T>(payload: T | ApiEnvelope<T>): T {
+  if (isApiEnvelope<T>(payload) && "data" in payload && typeof payload.data !== "undefined") {
+    return payload.data as T;
+  }
+
+  return payload as T;
+}
+
+async function parseResponseBody(response: Response) {
+  if (response.status === 204) {
+    return null;
+  }
+
+  const raw = await response.text();
+
+  if (!raw) {
+    return null;
+  }
 
   try {
-    res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
-  } catch (error) {
-    if (error instanceof TypeError) {
-      const target = API_BASE_URL || "API configurada";
-      throw new ApiError(
-        0,
-        `Nao foi possivel conectar a ${target}. Verifique se a API esta ativa e tente novamente em instantes.`,
-      );
-    }
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
 
-    throw error;
+function shouldRedirectOnUnauthorized(endpoint: string, options: ApiRequestInit) {
+  const normalizedEndpoint = endpoint.trim().startsWith("/")
+    ? endpoint.trim()
+    : `/${endpoint.trim()}`;
+  const isAuthEndpoint =
+    normalizedEndpoint.startsWith("/auth/") ||
+    normalizedEndpoint.startsWith("/api/auth/") ||
+    /^https?:\/\/[^/]+\/(?:api\/)?auth\//i.test(normalizedEndpoint);
+
+  return isBrowser() && !options.skipAuthRedirect && !isAuthEndpoint;
+}
+
+export async function apiFetch<T>(endpoint: string, options: ApiRequestInit = {}): Promise<T> {
+  const token = getStoredAuthToken();
+  const url = buildApiUrl(endpoint);
+  const body = serializeBody(options.body);
+
+  const response = await fetch(url, {
+    ...options,
+    body,
+    headers: buildHeaders(options.headers, token, Boolean(options.skipAuthHeader), body),
+  });
+
+  const data = await parseResponseBody(response);
+
+  if (response.status === 401) {
+    clearAuthSession();
+
+    if (shouldRedirectOnUnauthorized(endpoint, options)) {
+      window.location.assign("/login");
+    }
   }
 
-  const text = await res.text();
-  const data = text ? safeJsonParse(text) : null;
-
-  if (res.status === 401) {
-    if (!skipAuthRedirect) {
-      clearAuthSession({ redirectToLogin: true });
-    }
-
+  if (!response.ok) {
     throw new ApiError(
-      401,
-      (data && data.message) || "Sua sessao expirou. Faca login novamente para continuar.",
+      (data as ApiEnvelope<unknown>)?.error ||
+        (data as ApiEnvelope<unknown>)?.message ||
+        "Erro na API",
+      response.status,
+      data,
     );
   }
 
-  if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      (data && data.message) ||
-        formatApiErrorMessage(new ApiError(res.status, res.statusText), res.statusText),
-    );
-  }
   return data as T;
 }
 
+async function request<T>(endpoint: string, options: ApiRequestInit = {}) {
+  const payload = await apiFetch<T | ApiEnvelope<T>>(endpoint, options);
+
+  return extractApiData(payload);
+}
+
 export const api = {
-  get: <T>(path: string) => apiFetch<T>(path),
-  post: <T>(path: string, body: unknown, options: Omit<ApiFetchOptions, "body" | "method"> = {}) =>
-    apiFetch<T>(path, {
+  get<T = unknown>(endpoint: string, options?: Omit<ApiRequestInit, "method">) {
+    return request<T>(endpoint, {
+      ...options,
+      method: "GET",
+    });
+  },
+
+  post<T = unknown>(
+    endpoint: string,
+    body?: unknown,
+    options?: Omit<ApiRequestInit, "method" | "body">,
+  ) {
+    return request<T>(endpoint, {
       ...options,
       method: "POST",
-      body: body instanceof FormData ? body : JSON.stringify(body),
-    }),
-  put: <T>(path: string, body: unknown, options: Omit<ApiFetchOptions, "body" | "method"> = {}) =>
-    apiFetch<T>(path, {
+      body,
+    });
+  },
+
+  put<T = unknown>(
+    endpoint: string,
+    body?: unknown,
+    options?: Omit<ApiRequestInit, "method" | "body">,
+  ) {
+    return request<T>(endpoint, {
       ...options,
       method: "PUT",
-      body: body instanceof FormData ? body : JSON.stringify(body),
-    }),
-  del: <T>(path: string, options: Omit<ApiFetchOptions, "method"> = {}) =>
-    apiFetch<T>(path, { ...options, method: "DELETE" }),
+      body,
+    });
+  },
+
+  patch<T = unknown>(
+    endpoint: string,
+    body?: unknown,
+    options?: Omit<ApiRequestInit, "method" | "body">,
+  ) {
+    return request<T>(endpoint, {
+      ...options,
+      method: "PATCH",
+      body,
+    });
+  },
+
+  del<T = unknown>(endpoint: string, options?: Omit<ApiRequestInit, "method">) {
+    return request<T>(endpoint, {
+      ...options,
+      method: "DELETE",
+    });
+  },
+
+  delete<T = unknown>(endpoint: string, options?: Omit<ApiRequestInit, "method">) {
+    return request<T>(endpoint, {
+      ...options,
+      method: "DELETE",
+    });
+  },
 };
 
-function safeJsonParse(text: string) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
+export function formatApiErrorMessage(error: unknown, fallback = "Erro interno da API"): string {
+  if (error instanceof ApiError) {
+    const payload = error.data as ApiEnvelope<unknown> | null;
+
+    return payload?.error || payload?.message || error.message || fallback;
   }
+
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+
+  return fallback;
 }

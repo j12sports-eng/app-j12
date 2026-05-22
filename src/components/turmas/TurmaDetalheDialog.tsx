@@ -31,7 +31,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { alunosStore, type Aluno } from "@/lib/alunos-store";
+import { getAlunosDaTurma, useAlunos, type Aluno } from "@/lib/alunos-store";
 import { calcStatus, useTransacoes } from "@/lib/financeiro-store";
 import { formatDias, statsPresencaAluno, turmasStore, type Turma } from "@/lib/turmas-store";
 import { cn } from "@/lib/utils";
@@ -59,11 +59,11 @@ export function TurmaDetalheDialog({
   onAbrirAluno,
 }: Props) {
   const transacoes = useTransacoes();
+  const alunosSnapshot = useAlunos();
 
   const alunos = useMemo(() => {
-    if (!turma) return [];
-    return turma.alunoIds.map((id) => alunosStore.getById(id)).filter((a): a is Aluno => !!a);
-  }, [turma]);
+    return getAlunosDaTurma(turma, alunosSnapshot);
+  }, [alunosSnapshot, turma]);
 
   const situacaoFinanceira = useMemo(() => {
     const map: Record<string, "em_dia" | "atrasado"> = {};
@@ -77,7 +77,9 @@ export function TurmaDetalheDialog({
 
   if (!turma) return null;
 
-  const ocupacao = Math.round((turma.alunoIds.length / turma.capacidadeMaxima) * 100);
+  const totalAlunos = alunos.length;
+  const ocupacao =
+    turma.capacidadeMaxima > 0 ? Math.round((totalAlunos / turma.capacidadeMaxima) * 100) : 0;
   const sessoesPresenca = turma.presencas.length;
 
   function removerAluno(alunoId: string, nome: string) {
@@ -136,7 +138,7 @@ export function TurmaDetalheDialog({
                 <Users className="h-3.5 w-3.5" /> Vagas
               </div>
               <div className="mt-0.5 font-medium">
-                {turma.alunoIds.length}/{turma.capacidadeMaxima}{" "}
+                {totalAlunos}/{turma.capacidadeMaxima}{" "}
                 <span
                   className={cn(
                     "text-xs",
@@ -153,7 +155,7 @@ export function TurmaDetalheDialog({
             <Button
               size="sm"
               onClick={onAdicionarAluno}
-              disabled={turma.alunoIds.length >= turma.capacidadeMaxima}
+              disabled={turma.capacidadeMaxima > 0 && totalAlunos >= turma.capacidadeMaxima}
             >
               <UserPlus className="mr-2 h-4 w-4" /> Adicionar aluno
             </Button>

@@ -1,5 +1,6 @@
 export {
   AuthProvider,
+  getRoleHomePath,
   useAuth,
   type AuthContextValue,
   type AuthUser,

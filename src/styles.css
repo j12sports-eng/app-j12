@@ -4,20 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * Design system definition.
- *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
- *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
- *
- * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
- */
-
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -64,9 +50,9 @@
   --color-warning: var(--warning);
 }
 
-:root {
+:root,
+.dark {
   --radius: 0.625rem;
-  /* J12 Sports — dark theme + laranja flúor #FF4500 */
   --background: oklch(0.16 0.012 250);
   --foreground: oklch(0.97 0.005 250);
   --card: oklch(0.205 0.014 250);
@@ -96,10 +82,10 @@
   --button-brand: var(--primary);
   --button-brand-foreground: var(--primary-foreground);
   --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.62 0.2 250);
+  --chart-5: oklch(0.7 0.18 150);
   --sidebar: oklch(0.13 0.012 250);
   --sidebar-foreground: oklch(0.92 0.005 250);
   --sidebar-primary: oklch(0.68 0.24 36);
@@ -110,48 +96,26 @@
   --sidebar-ring: oklch(0.68 0.24 36);
 }
 
-.dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
-}
-
 @layer base {
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
   * {
     border-color: var(--color-border);
   }
 
   body {
     background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
     color: var(--color-foreground);
   }
 }
@@ -254,10 +218,34 @@
     background: color-mix(in srgb, var(--color-card) 84%, transparent);
     border-radius: 1rem;
   }
+
+  .j12-page-enter {
+    animation: j12-page-enter 240ms ease both;
+  }
+
+  .j12-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--color-muted) 72%, white 4%);
+    border-radius: 1rem;
+  }
+
+  .j12-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--color-primary) 12%, white 4%),
+      transparent
+    );
+    animation: j12-shimmer 1.4s infinite;
+  }
 }
 
 @layer utilities {
-  /* Legacy gray utility classes now follow the global text color settings. */
   .text-slate-400,
   .text-slate-500,
   .text-gray-400,
@@ -265,5 +253,43 @@
   .text-zinc-400,
   .text-zinc-500 {
     color: var(--color-muted-foreground);
+  }
+
+  .j12-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-primary) 55%, transparent) transparent;
+  }
+}
+
+@keyframes j12-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes j12-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
   }
 }

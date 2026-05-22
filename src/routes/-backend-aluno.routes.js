@@ -21,15 +21,11 @@ router.get("/me/financeiro", (req, res) => {
 });
 
 router.get("/me/presencas", (req, res) => {
-  res.json([
-    { data: "2026-05-01", status: "presente" },
-  ]);
+  res.json([{ data: "2026-05-01", status: "presente" }]);
 });
 
 router.get("/me/notificacoes", (req, res) => {
-  res.json([
-    { mensagem: "Bem-vindo!", data: new Date() },
-  ]);
+  res.json([{ mensagem: "Bem-vindo!", data: new Date() }]);
 });
 
 router.get("/me/contrato", (req, res) => {

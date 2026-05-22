@@ -13,23 +13,33 @@ import {
   Sparkles,
   UserCog,
   Users,
+  type LucideIcon,
 } from "lucide-react";
+import { type ReactNode } from "react";
 import { useAuth, type Role } from "@/lib/auth";
 import { branding } from "@/lib/branding";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { cn } from "@/lib/utils";
 
-type SectionKey = "overview" | "operation" | "revenue" | "account";
+export type AppSidebarSectionKey = "overview" | "operation" | "revenue" | "account";
 
-type Item = {
+export type AppSidebarNavItem = {
   to: string;
   label: string;
-  icon: typeof Users;
-  roles: Role[];
-  section: SectionKey;
+  icon: LucideIcon;
+  roles?: Role[];
+  section: AppSidebarSectionKey;
+  activePaths?: string[];
 };
 
-const ITEMS: Item[] = [
+export type AppSidebarAccount = {
+  label: string;
+  title: string;
+  subtitle?: string;
+  icon?: LucideIcon;
+};
+
+const ITEMS: AppSidebarNavItem[] = [
   {
     to: "/dashboard",
     label: "Dashboard",
@@ -59,7 +69,7 @@ const ITEMS: Item[] = [
     section: "operation",
   },
   {
-    to: "/presenca",
+    to: "/presencas",
     label: "Presenca",
     icon: CalendarCheck,
     roles: ["admin", "coordenador", "professor"],
@@ -102,7 +112,7 @@ const ITEMS: Item[] = [
   },
 ];
 
-const SELF_SERVICE_ITEMS: Item[] = [
+const SELF_SERVICE_ITEMS: AppSidebarNavItem[] = [
   {
     to: "/dashboard",
     label: "Meu Painel",
@@ -161,36 +171,58 @@ const SELF_SERVICE_ITEMS: Item[] = [
   },
 ];
 
-const SECTION_LABELS: Record<SectionKey, string> = {
+const SECTION_LABELS: Record<AppSidebarSectionKey, string> = {
   overview: "Workspace",
   operation: "Operacao",
   revenue: "Receita",
   account: "Conta",
 };
 
-export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
+type AppSidebarProps = {
+  onNavigate?: () => void;
+  items?: AppSidebarNavItem[];
+  workspaceTitle?: string;
+  workspaceDescription?: string;
+  account?: AppSidebarAccount;
+  contextControl?: ReactNode;
+};
+
+export function AppSidebar({
+  onNavigate,
+  items,
+  workspaceTitle,
+  workspaceDescription,
+  account,
+  contextControl,
+}: AppSidebarProps) {
   const { user, logout, hasRole, isSelfService } = useAuth();
   const settings = useSettingsState();
   const location = useLocation();
 
-  const baseItems = isSelfService ? SELF_SERVICE_ITEMS : ITEMS;
-  const visibleItems = baseItems.filter((item) => hasRole(...item.roles));
+  const baseItems = items ?? (isSelfService ? SELF_SERVICE_ITEMS : ITEMS);
+  const visibleItems = baseItems.filter((item) => !item.roles?.length || hasRole(...item.roles));
   const groupedItems = Object.entries(
-    visibleItems.reduce<Record<SectionKey, Item[]>>(
+    visibleItems.reduce<Record<AppSidebarSectionKey, AppSidebarNavItem[]>>(
       (groups, item) => {
         groups[item.section].push(item);
         return groups;
       },
       { overview: [], operation: [], revenue: [], account: [] },
     ),
-  ) as Array<[SectionKey, Item[]]>;
+  ) as Array<[AppSidebarSectionKey, AppSidebarNavItem[]]>;
+
+  const accountIcon = account?.icon;
+  const AccountIcon = accountIcon;
+  const accountTitle = account?.title || user?.nome || "Usuario J12";
+  const accountSubtitle = account?.subtitle ?? user?.email ?? user?.role;
+  const accountLabel = account?.label || "Conta";
 
   return (
     <aside
-      className="flex h-screen w-72 flex-col border-r border-white/10 bg-[linear-gradient(180deg,rgba(6,17,30,0.98),rgba(8,20,34,0.98))] text-sidebar-foreground"
+      className="flex h-screen w-72 flex-col border-r border-white/10 bg-[linear-gradient(180deg,rgba(7,7,8,0.98),rgba(16,16,18,0.98))] text-sidebar-foreground"
       style={{
         background:
-          "var(--app-menu-bg, linear-gradient(180deg, rgba(6,17,30,0.98), rgba(8,20,34,0.98)))",
+          "var(--app-menu-bg, linear-gradient(180deg, rgba(7,7,8,0.98), rgba(16,16,18,0.98)))",
         color: "var(--app-menu-foreground, var(--color-sidebar-foreground))",
       }}
     >
@@ -218,13 +250,21 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
             SaaS workspace
           </div>
           <div className="mt-2 text-sm font-medium text-white">
-            {isSelfService ? "Jornada do aluno" : "Central de operacao"}
+            {workspaceTitle ?? (isSelfService ? "Jornada do aluno" : "Central de operacao")}
           </div>
           <div className="mt-1 text-xs leading-5 text-slate-300">
-            Navegacao estruturada para rotina, receita e relacionamento.
+            {workspaceDescription ?? "Navegacao estruturada para rotina, receita e relacionamento."}
           </div>
         </div>
       </div>
+
+      {contextControl && (
+        <div className="border-b border-white/10 px-4 py-4">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
+            {contextControl}
+          </div>
+        </div>
+      )}
 
       <nav className="flex-1 overflow-y-auto px-4 py-5">
         {groupedItems.map(([section, items]) =>
@@ -235,8 +275,10 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
               </div>
               <div className="space-y-1.5">
                 {items.map((item) => {
-                  const active =
-                    location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
+                  const activePaths = [item.to, ...(item.activePaths || [])];
+                  const active = activePaths.some(
+                    (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+                  );
                   const Icon = item.icon;
 
                   return (
@@ -247,7 +289,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       className={cn(
                         "group flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-all",
                         active
-                          ? "border border-primary/25 bg-primary/12 text-white shadow-[0_12px_30px_rgba(14,165,233,0.12)]"
+                          ? "border border-primary/30 bg-primary/10 text-white shadow-[0_12px_30px_rgba(255,69,0,0.14)]"
                           : "border border-transparent text-slate-300 hover:border-white/8 hover:bg-white/5 hover:text-white",
                       )}
                     >
@@ -275,8 +317,12 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="border-t border-white/10 p-4">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-          <div className="truncate text-sm font-semibold text-white">{user?.nome}</div>
-          <div className="mt-1 text-xs capitalize text-slate-400">{user?.role}</div>
+          <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+            {AccountIcon && <AccountIcon className="h-4 w-4" />}
+            {accountLabel}
+          </div>
+          <div className="truncate text-sm font-semibold text-white">{accountTitle}</div>
+          <div className="mt-1 truncate text-xs capitalize text-slate-400">{accountSubtitle}</div>
           <button
             onClick={() => logout()}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-300 transition hover:border-rose-400/20 hover:bg-rose-500/10 hover:text-rose-200"

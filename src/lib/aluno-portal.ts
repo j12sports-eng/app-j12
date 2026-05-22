@@ -105,7 +105,7 @@ export function usePortalFinanceiro(enabled = true) {
           >;
         }
     >("/aluno/me/financeiro");
-    const transacoes = Array.isArray(response) ? response : response?.mensalidades ?? [];
+    const transacoes = Array.isArray(response) ? response : (response?.mensalidades ?? []);
     return Array.isArray(transacoes)
       ? transacoes.map((item) => ({
           ...item,
@@ -143,7 +143,7 @@ export function usePortalPresencas(enabled = true) {
           >;
         }
     >("/aluno/me/presencas");
-    const presencas = Array.isArray(response) ? response : response?.presencas ?? [];
+    const presencas = Array.isArray(response) ? response : (response?.presencas ?? []);
     return Array.isArray(presencas)
       ? presencas.map((item) => ({
           ...item,

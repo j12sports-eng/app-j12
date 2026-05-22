@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { useAlunos } from "@/lib/alunos-store";
+import { alunoPertenceATurma, getAlunosDaTurma, useAlunos } from "@/lib/alunos-store";
 import { turmasStore, type Turma } from "@/lib/turmas-store";
 import { cn } from "@/lib/utils";
 
@@ -29,11 +29,10 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
 
   const disponiveis = useMemo(() => {
     if (!turma) return [];
-    const matriculados = new Set(turma.alunoIds);
     const q = query.trim().toLowerCase();
     return alunos
       .filter((a) => a.status !== "inativo")
-      .filter((a) => !matriculados.has(a.id))
+      .filter((a) => !alunoPertenceATurma(a, turma))
       .filter((a) => !q || a.nome.toLowerCase().includes(q) || a.email.toLowerCase().includes(q))
       .slice(0, 50);
   }, [alunos, turma, query]);
@@ -50,7 +49,8 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
 
   if (!turma) return null;
 
-  const lotada = turma.alunoIds.length >= turma.capacidadeMaxima;
+  const totalMatriculados = getAlunosDaTurma(turma, alunos).length;
+  const lotada = turma.capacidadeMaxima > 0 && totalMatriculados >= turma.capacidadeMaxima;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -58,7 +58,7 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
         <DialogHeader>
           <DialogTitle>Adicionar aluno à turma</DialogTitle>
           <DialogDescription>
-            {turma.nome} · {turma.alunoIds.length}/{turma.capacidadeMaxima} vagas ocupadas
+            {turma.nome} · {totalMatriculados}/{turma.capacidadeMaxima} vagas ocupadas
           </DialogDescription>
         </DialogHeader>
 

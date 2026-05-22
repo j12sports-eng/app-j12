@@ -100,7 +100,7 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
     if (!alunoSelecionado || transacao) return;
 
     if (!descricao.trim()) {
-      const plano = alunoSelecionado.plano || alunoSelecionado.planos[0] || "Plano do aluno";
+      const plano = alunoSelecionado.plano || alunoSelecionado.planos?.[0] || "Plano do aluno";
       setDescricao(
         tipo === "mensalidade"
           ? `Mensalidade - ${plano}`
@@ -139,7 +139,7 @@ export function CobrancaDialog({ open, onOpenChange, transacao }: Props) {
         competencia: `${competencia}:${tipoCobranca === "recorrente" ? "mensal" : "avulsa"}`,
         pagoEm: jaPago ? new Date().toISOString().slice(0, 10) : null,
         formaPagamento: jaPago ? ("pix" as const) : undefined,
-        planoNome: alunoSelecionado?.plano || alunoSelecionado?.planos[0] || "",
+        planoNome: String(alunoSelecionado?.plano || alunoSelecionado?.planos?.[0] || ""),
         origem: "manual" as const,
       };
 

@@ -37,6 +37,7 @@ export interface Transacao {
   turma?: string;
   planoId?: string | null;
   planoNome?: string;
+  plano_nome?: string;
   periodicidade?: PeriodicidadeCobranca;
   competencia?: string;
   valorOriginal?: number;
@@ -202,11 +203,11 @@ function resolvePlanoFinanceiro(aluno: Aluno): {
     let matchedPlano: Plano | null = null;
 
     if (aluno?.plano_id) {
-      matchedPlano = planosStore.getById(aluno.plano_id);
+      matchedPlano = planosStore.getById(String(aluno.plano_id));
     }
 
     if (!matchedPlano && aluno?.planoId) {
-      matchedPlano = planosStore.getById(aluno.planoId);
+      matchedPlano = planosStore.getById(String(aluno.planoId));
     }
 
     if (!matchedPlano) {

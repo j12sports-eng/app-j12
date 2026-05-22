@@ -2,6 +2,7 @@ const { randomUUID } = require("node:crypto");
 const {
   allocateEnrollmentNumber,
   getNextEnrollmentNumberPreview,
+  pool,
   transaction,
   upsertEnrollmentNumberRegistry,
 } = require("../config/db");
@@ -31,6 +32,26 @@ function uniqueValues(values) {
         .filter(Boolean),
     ),
   );
+}
+
+async function hasActivePublicTurmas() {
+  const [rows] = await pool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM j12_turmas turma
+      WHERE LOWER(COALESCE(turma.status, 'ativa')) NOT IN (
+        'inativa',
+        'inativo',
+        'inactive',
+        'cancelada',
+        'cancelado',
+        'excluida',
+        'excluido'
+      )
+    `,
+  );
+
+  return Number(rows?.[0]?.total ?? 0) > 0;
 }
 
 function buildProtocol() {
@@ -122,79 +143,39 @@ function buildMatriculaFromPayload(payload) {
   };
 }
 
-function validatePublicEnrollment(matricula) {
+async function validatePublicEnrollment(matricula) {
   const requiredValues = [
     matricula?.dadosAluno?.nomeCompleto,
     matricula?.dadosAluno?.dataNascimento,
-    matricula?.dadosAluno?.cpf,
-    matricula?.dadosAluno?.rg,
     matricula?.dadosAluno?.sexo,
-    matricula?.dadosAluno?.colegio,
-    matricula?.dadosAluno?.periodoEscolar,
     matricula?.responsavel?.nomeCompleto,
     matricula?.responsavel?.cpf,
-    matricula?.responsavel?.rg,
     matricula?.responsavel?.whatsapp,
-    matricula?.responsavel?.email,
     matricula?.responsavel?.parentesco,
-    matricula?.endereco?.cep,
-    matricula?.endereco?.rua,
-    matricula?.endereco?.numero,
-    matricula?.endereco?.bairro,
-    matricula?.endereco?.cidade,
-    matricula?.endereco?.estado,
-    matricula?.esportivas?.nivel,
-    matricula?.esportivas?.treinouAntes,
-    matricula?.esportivas?.caracteristica,
-    matricula?.esportivas?.objetivo,
-    matricula?.saude?.restricaoMedica,
-    matricula?.saude?.medicamentos,
-    matricula?.saude?.alergias,
-    matricula?.saude?.lesoes,
-    matricula?.saude?.planoSaude,
-    matricula?.saude?.observacoesImportantes,
-    matricula?.estrategicas?.comoConheceu,
-    matricula?.estrategicas?.indicacaoQuem,
-    matricula?.estrategicas?.observacoesGerais,
   ];
 
   if (requiredValues.some((value) => !String(value ?? "").trim())) {
     return "Preencha os dados obrigatorios da matricula.";
   }
 
-  if (digitsOnly(matricula?.dadosAluno?.cpf).length !== 11) {
-    return "Digite um CPF valido para o aluno.";
-  }
-
   if (digitsOnly(matricula?.responsavel?.cpf).length !== 11) {
     return "Digite um CPF valido para o responsavel.";
   }
 
-  if (digitsOnly(matricula?.endereco?.cep).length !== 8) {
-    return "Digite um CEP valido com 8 numeros.";
-  }
-
   if (digitsOnly(matricula?.responsavel?.whatsapp).length < 10) {
-    return "Digite um WhatsApp valido com DDD.";
+    return "Digite um telefone principal valido com DDD.";
   }
 
   if (sanitizeIsoDate(matricula?.dadosAluno?.dataNascimento) === null) {
     return "Informe uma data de nascimento valida.";
   }
 
-  if (matricula?.esportivas?.modalidades?.length === 0) {
-    return "Selecione pelo menos uma modalidade.";
-  }
-
-  if (matricula?.esportivas?.unidades?.length === 0) {
-    return "Selecione pelo menos uma unidade.";
-  }
-
+  const shouldRequireTurma = await hasActivePublicTurmas();
   if (
-    matricula?.esportivas?.horarios?.length === 0 ||
-    matricula?.esportivas?.turmas?.length === 0
+    shouldRequireTurma &&
+    (!Array.isArray(matricula?.esportivas?.turmas) || matricula.esportivas.turmas.length === 0)
   ) {
-    return "Selecione pelo menos um horario disponivel.";
+    return "Selecione a categoria/turma.";
   }
 
   return null;
@@ -304,7 +285,7 @@ async function getNextEnrollmentNumber(_req, res, next) {
 async function createPublicEnrollment(req, res, next) {
   try {
     const matricula = buildMatriculaFromPayload(req.body);
-    const validationMessage = validatePublicEnrollment(matricula);
+    const validationMessage = await validatePublicEnrollment(matricula);
 
     if (validationMessage) {
       return res.status(400).json({ message: validationMessage });

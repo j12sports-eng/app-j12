@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Plus, Search, Pencil, Trash2, Mail, X, Eye, MessageCircle } from "lucide-react";
 import {
@@ -19,18 +19,19 @@ import { AlunoPerfilDialog } from "@/components/alunos/AlunoPerfilDialog";
 import { ContratoVisualizarDialog } from "@/components/contratos/ContratoVisualizarDialog";
 import type { Contrato } from "@/lib/contratos-store";
 import {
-  alunosStore,
   formatAlunoScope,
   getAlunoModalidades,
   getAlunoPlanos,
   getAlunoTurmas,
   getAlunoUnidades,
   useAlunos,
-  useAlunosStatus,
+  useAlunosLoading,
+  useAlunosError,
+  reloadAlunos,
   type Aluno,
-  type Modalidade,
-  type StatusAluno,
+  type AlunoStatus,
 } from "@/lib/alunos-store";
+
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -40,20 +41,24 @@ import { usePortalAluno } from "@/lib/aluno-portal";
 
 export const Route = createFileRoute("/alunos")({
   component: () => (
-    <RequireAuth roles={["admin", "coordenador", "professor", "aluno", "responsavel"]}>
+    <RequireAuth>
       <AlunosPage />
     </RequireAuth>
   ),
 });
 
-const STATUS_OPTIONS: Array<{ value: StatusAluno | "todos"; label: string }> = [
+const STATUS_OPTIONS: Array<{
+  value: "ativo" | "experimental" | "inativo" | "todos";
+  label: string;
+}> = [
   { value: "todos", label: "Todos" },
   { value: "ativo", label: "Ativos" },
   { value: "experimental", label: "Experimentais" },
   { value: "inativo", label: "Inativos" },
 ];
 
-function statusBadge(s: StatusAluno) {
+function statusBadge(status: AlunoStatus) {
+  const s = status === "experimental" || status === "inativo" ? status : "ativo";
   const map = {
     ativo: "bg-success/15 text-success border-success/30",
     experimental: "bg-primary/15 text-primary border-primary/30",
@@ -129,7 +134,8 @@ function AlunosPage() {
   const userRole = user?.role;
   const studentId = user?.studentId ?? null;
   const alunosBase = useAlunos();
-  const alunosStatus = useAlunosStatus();
+  const loading = useAlunosLoading();
+  const error = useAlunosError();
   const portalAluno = usePortalAluno(isSelfService);
   const alunos = useMemo(() => {
     if (isSelfService) {
@@ -144,9 +150,10 @@ function AlunosPage() {
   const settings = useSettingsState();
 
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<StatusAluno | "todos">("todos");
-  const [filtroModalidade, setFiltroModalidade] = useState<Modalidade | "todas">("todas");
-
+  const [filtroStatus, setFiltroStatus] = useState<"ativo" | "experimental" | "inativo" | "todos">(
+    "todos",
+  );
+  const [filtroModalidade, setFiltroModalidade] = useState<string | "todas">("todas");
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Aluno | null>(null);
   const [toDelete, setToDelete] = useState<Aluno | null>(null);
@@ -182,6 +189,17 @@ function AlunosPage() {
       );
     });
   }, [alunos, busca, filtroStatus, filtroModalidade]);
+  const alunosRenderizados = useMemo(() => {
+    const hasBusca = busca.trim().length > 0;
+    const hasFiltroStatus = filtroStatus !== "todos";
+    const hasFiltroModalidade = filtroModalidade !== "todas";
+
+    if (!hasBusca && !hasFiltroStatus && !hasFiltroModalidade) {
+      return alunos;
+    }
+
+    return filtrados;
+  }, [alunos, busca, filtroModalidade, filtroStatus, filtrados]);
 
   const totais = useMemo(
     () => ({
@@ -192,6 +210,16 @@ function AlunosPage() {
     }),
     [alunos],
   );
+
+  useEffect(() => {
+    if (!isSelfService) {
+      void reloadAlunos();
+    }
+  }, [isSelfService]);
+
+  useEffect(() => {
+    console.log("[alunos-page] Total renderizado:", alunos.length);
+  }, [alunos.length]);
 
   const openNovo = useCallback(() => {
     navigate({ to: "/matricula" });
@@ -230,7 +258,7 @@ function AlunosPage() {
 
   const confirmarExclusao = useCallback(() => {
     if (!toDelete) return;
-    alunosStore.remove(toDelete.id);
+    console.log("Excluir aluno:", toDelete.id);
     toast.success(`${toDelete.nome} foi removido`);
     setToDelete(null);
   }, [toDelete]);
@@ -259,7 +287,7 @@ function AlunosPage() {
     );
   }
 
-  if (!isSelfService && alunosStatus.loading && alunos.length === 0) {
+  if (!isSelfService && loading && alunos.length === 0) {
     return (
       <TooltipProvider delayDuration={120}>
         <AppShell title="Alunos">
@@ -277,15 +305,15 @@ function AlunosPage() {
   return (
     <TooltipProvider delayDuration={120}>
       <AppShell title={isSelfService ? "Meu Perfil" : "Alunos"}>
-        {!isSelfService && alunosStatus.loading ? (
+        {!isSelfService && loading ? (
           <div className="mb-4 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
             Atualizando lista de alunos no MySQL...
           </div>
         ) : null}
 
-        {!isSelfService && alunosStatus.error ? (
+        {!isSelfService && error ? (
           <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {alunosStatus.error}
+            {error}
           </div>
         ) : null}
 
@@ -377,7 +405,7 @@ function AlunosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtrados.map((a) => (
+              {alunosRenderizados.map((a) => (
                 <tr key={a.id} className="hover:bg-accent/5">
                   <td className="px-4 py-3">
                     <button
@@ -432,7 +460,7 @@ function AlunosPage() {
                   </td>
                 </tr>
               ))}
-              {filtrados.length === 0 && (
+              {alunosRenderizados.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     Nenhum aluno encontrado.
@@ -445,7 +473,7 @@ function AlunosPage() {
 
         {/* Cards mobile */}
         <div className="space-y-3 md:hidden">
-          {filtrados.map((a) => (
+          {alunosRenderizados.map((a) => (
             <div key={a.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -523,7 +551,7 @@ function AlunosPage() {
               </div>
             </div>
           ))}
-          {filtrados.length === 0 && (
+          {alunosRenderizados.length === 0 && (
             <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-muted-foreground">
               Nenhum aluno encontrado.
             </div>

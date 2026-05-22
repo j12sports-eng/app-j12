@@ -1,4 +1,5 @@
-import { ApiError, api, formatApiErrorMessage } from "./api";
+import { apiFetch, ApiError, formatApiErrorMessage } from "@/lib/api";
+
 import { hasStoredAuthToken } from "./auth-storage";
 
 function cloneValue<T>(value: T): T {
@@ -27,13 +28,21 @@ export function createRemoteCollectionStore<T>(
   let state = cloneValue(
     typeof window === "undefined" ? initialState : (options.emptyState ?? initialState),
   );
+
   let initialized = typeof window === "undefined";
+
   let loading = false;
+
   let errorMessage: string | null = null;
+
   let loadingPromise: Promise<void> | null = null;
+
   let mutationVersion = 0;
+
   let saveChain = Promise.resolve();
+
   const listeners = new Set<() => void>();
+
   let metaSnapshot: RemoteCollectionMeta = {
     loading,
     error: errorMessage,
@@ -63,16 +72,42 @@ export function createRemoteCollectionStore<T>(
   }
 
   async function persistSnapshot(snapshot: T) {
-    await api.put<{ updatedAt: string }>(`/api/state/${collection}`, {
-      data: snapshot,
-    });
+    // Enviar com wrapper 'data' conforme esperado pelo backend
+    const payload = { data: snapshot };
+    
+    console.log(`[RemoteCollection] Persistindo ${collection}:`, payload);
+    
+    try {
+      const response = await apiFetch(`/api/state/${collection}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      console.log(`[RemoteCollection] ✓ ${collection} persistido com sucesso`, response);
+      return response;
+    } catch (error: any) {
+      console.error(`[RemoteCollection] ✗ Falha ao persistir ${collection}:`, {
+        status: error?.status,
+        message: error?.message,
+        data: error?.data,
+      });
+      throw error;
+    }
   }
 
   function queuePersist(snapshot: T) {
     const payload = cloneValue(snapshot);
+
     saveChain = saveChain
       .then(() => persistSnapshot(payload))
-      .catch((error) => {
+      .catch((error: any) => {
+        // Não retry em erro 400 (dados inválidos)
+        if (error instanceof ApiError && error.status === 400) {
+          console.error(`[RemoteCollection] Erro 400 (dados inválidos) para ${collection}:`, error.data);
+          errorMessage = formatApiErrorMessage(error, "Dados inválidos para salvar.");
+          emit();
+          return; // Não tentar novamente
+        }
+
         errorMessage = formatApiErrorMessage(error, "Nao foi possivel salvar os dados na API.");
         emit();
         console.error(`Falha ao persistir a colecao ${collection}.`, error);
@@ -80,49 +115,76 @@ export function createRemoteCollectionStore<T>(
   }
 
   async function ensureLoaded() {
-    if (typeof window === "undefined" || initialized || !hasStoredAuthToken()) return;
-    if (loadingPromise) return loadingPromise;
+    if (typeof window === "undefined" || initialized || !hasStoredAuthToken()) {
+      return;
+    }
+
+    if (loadingPromise) {
+      return loadingPromise;
+    }
 
     const loadVersion = mutationVersion;
+
     loading = true;
+
     errorMessage = null;
+
     emit();
 
     loadingPromise = (async () => {
       try {
-        const response = await api.get<{ data: T }>(`/api/state/${collection}`);
+        const response: any = await apiFetch(`/api/state/${collection}`);
 
-        if (mutationVersion !== loadVersion) return;
+        if (mutationVersion !== loadVersion) {
+          return;
+        }
 
         state = response.data;
+
         initialized = true;
+
         errorMessage = null;
+
         emit();
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof ApiError && error.status === 404) {
-          if (mutationVersion !== loadVersion) return;
+          if (mutationVersion !== loadVersion) {
+            return;
+          }
 
           state = cloneValue(initialState);
+
           initialized = true;
+
           errorMessage = null;
+
           emit();
+
           queuePersist(state);
+
           return;
         }
 
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
           state = cloneValue(options.emptyState ?? initialState);
+
           initialized = true;
+
           errorMessage = error.message;
+
           emit();
+
           return;
         }
 
         errorMessage = formatApiErrorMessage(error, "Nao foi possivel sincronizar os dados.");
+
         console.error(`Falha ao carregar a colecao ${collection}.`, error);
       } finally {
         loading = false;
+
         loadingPromise = null;
+
         emit();
       }
     })();
@@ -132,10 +194,15 @@ export function createRemoteCollectionStore<T>(
 
   function replaceState(nextState: T, options: ReplaceOptions = {}) {
     mutationVersion += 1;
+
     state = nextState;
+
     initialized = true;
+
     loading = false;
+
     errorMessage = null;
+
     emit();
 
     if (typeof window !== "undefined" && options.persist !== false) {
@@ -146,15 +213,21 @@ export function createRemoteCollectionStore<T>(
   if (typeof window !== "undefined") {
     window.addEventListener("j12:session-ready", () => {
       initialized = false;
+
       void ensureLoaded();
     });
 
     window.addEventListener("j12:session-cleared", () => {
       mutationVersion += 1;
+
       state = cloneValue(options.emptyState ?? initialState);
+
       initialized = false;
+
       loading = false;
+
       errorMessage = null;
+
       emit();
     });
   }
@@ -169,21 +242,29 @@ export function createRemoteCollectionStore<T>(
 
       return () => listeners.delete(listener);
     },
+
     getSnapshot() {
       return state;
     },
+
     getMeta() {
       return getMetaSnapshot();
     },
+
     getState() {
       return state;
     },
+
     ensureLoaded,
+
     replaceState,
+
     async reload() {
       initialized = false;
+
       await ensureLoaded();
     },
+
     resetToInitialState() {
       replaceState(cloneValue(initialState));
     },

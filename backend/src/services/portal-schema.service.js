@@ -106,6 +106,12 @@ async function ensurePortalAlunoSchema() {
     )
   `);
   await ensureColumn("j12_presencas", "turma_id", "INT NULL");
+  await ensureColumn("j12_presencas", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  await ensureColumn(
+    "j12_presencas",
+    "updated_at",
+    "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+  );
   await ensureColumn(
     "j12_presencas",
     "status",
@@ -125,6 +131,11 @@ async function ensurePortalAlunoSchema() {
       KEY idx_j12_notificacoes_created (created_at)
     )
   `);
+  await ensureColumn(
+    "j12_notificacoes",
+    "created_at",
+    "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+  );
 
   await query(`
     CREATE TABLE IF NOT EXISTS j12_contratos (
@@ -140,6 +151,11 @@ async function ensurePortalAlunoSchema() {
       KEY idx_j12_contratos_status (status)
     )
   `);
+  await ensureColumn(
+    "j12_contratos",
+    "updated_at",
+    "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+  );
 }
 
 async function resolveUniqueStudentEmail(connection, student, existingId = null) {
@@ -269,7 +285,7 @@ async function syncPortalAlunoCompatibilityData() {
       )
       SELECT
         sp.id,
-        sp.aluno_id,
+        aluno_ref.id,
         turma.id,
         sp.data_aula,
         CASE
@@ -281,6 +297,7 @@ async function syncPortalAlunoCompatibilityData() {
         sp.created_at,
         sp.updated_at
       FROM student_presencas sp
+      INNER JOIN j12_alunos aluno_ref ON CAST(aluno_ref.id AS CHAR) = CAST(sp.aluno_id AS CHAR)
       LEFT JOIN j12_turmas turma ON LOWER(turma.nome) = LOWER(sp.turma)
       ON DUPLICATE KEY UPDATE
         aluno_id = VALUES(aluno_id),
@@ -304,14 +321,16 @@ async function syncPortalAlunoCompatibilityData() {
         created_at
       )
       SELECT
-        id,
-        aluno_id,
-        titulo,
-        mensagem,
-        tipo,
-        lida,
-        created_at
-      FROM student_notifications
+        sn.id,
+        aluno_ref.id,
+        sn.titulo,
+        sn.mensagem,
+        sn.tipo,
+        sn.lida,
+        sn.created_at
+      FROM student_notifications sn
+      INNER JOIN j12_alunos aluno_ref
+        ON CAST(aluno_ref.id AS CHAR) = CAST(sn.aluno_id AS CHAR)
       ON DUPLICATE KEY UPDATE
         aluno_id = VALUES(aluno_id),
         titulo = VALUES(titulo),
@@ -335,18 +354,20 @@ async function syncPortalAlunoCompatibilityData() {
         updated_at
       )
       SELECT
-        id,
-        aluno_id,
-        titulo,
-        status,
-        arquivo_pdf,
+        sc.id,
+        aluno_ref.id,
+        sc.titulo,
+        sc.status,
+        sc.arquivo_pdf,
         CASE
-          WHEN data_assinatura IS NOT NULL THEN CONCAT(data_assinatura, ' 00:00:00')
+          WHEN sc.data_assinatura IS NOT NULL THEN CONCAT(sc.data_assinatura, ' 00:00:00')
           ELSE NULL
         END,
-        created_at,
-        updated_at
-      FROM student_contracts
+        sc.created_at,
+        sc.updated_at
+      FROM student_contracts sc
+      INNER JOIN j12_alunos aluno_ref
+        ON CAST(aluno_ref.id AS CHAR) = CAST(sc.aluno_id AS CHAR)
       ON DUPLICATE KEY UPDATE
         aluno_id = VALUES(aluno_id),
         titulo = VALUES(titulo),

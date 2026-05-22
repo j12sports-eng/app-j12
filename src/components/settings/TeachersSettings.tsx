@@ -26,7 +26,7 @@ import {
   FORMA_PAGAMENTO_PROFESSOR_OPTIONS,
   type Professor,
 } from "@/lib/professores-store";
-import { MODALIDADES, type Modalidade } from "@/lib/alunos-store";
+import type { Modalidade } from "@/lib/alunos-store";
 import { useTurmas } from "@/lib/turmas-store";
 import { SettingsEmptyState, SettingsPanel } from "./shared";
 
@@ -45,7 +45,7 @@ const defaultForm: TeacherFormState = {
   telefone: "",
   email: "",
   cref: "",
-  modalidades: [MODALIDADES[0]],
+  modalidades: [],
   unidades: [],
   turmaIds: [],
 };
@@ -67,7 +67,6 @@ export function TeachersSettings() {
           [
             ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
             ...professores.flatMap((professor) => professor.modalidades),
-            ...MODALIDADES,
           ].filter(Boolean),
         ),
       ] as Modalidade[],

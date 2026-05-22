@@ -24,6 +24,7 @@ import {
   getAlunoDocumentPendencies,
   getAlunoDocumentStatus,
   getAlunoDocumentStatusLabel,
+  type AlunoMatriculaData,
 } from "@/lib/aluno-matricula";
 import {
   formatAlunoScope,
@@ -177,8 +178,9 @@ export function AlunoPerfilDialog({ open, onOpenChange, aluno, onAbrirContrato }
   const turmasAluno = getAlunoTurmas(aluno);
   const unidadesAluno = getAlunoUnidades(aluno);
   const horariosAluno = getAlunoHorarios(aluno);
-  const documentPendencies = getAlunoDocumentPendencies(matricula);
-  const documentStatus = getAlunoDocumentStatus(matricula);
+  const matriculaDocumental = matricula as Partial<AlunoMatriculaData> | null | undefined;
+  const documentPendencies = getAlunoDocumentPendencies(matriculaDocumental);
+  const documentStatus = getAlunoDocumentStatus(matriculaDocumental);
   const documentStatusLabel = getAlunoDocumentStatusLabel(documentStatus);
   const documentStatusTone =
     documentStatus === "documentacao_completa"
@@ -645,7 +647,7 @@ function ProfileSection({ title, children }: { title: string; children: ReactNod
   );
 }
 
-function ProfileRow({ label, value }: { label: string; value: string }) {
+function ProfileRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-2 text-sm last:border-b-0 last:pb-0">
       <span className="text-muted-foreground">{label}</span>

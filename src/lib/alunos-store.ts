@@ -1,589 +1,791 @@
-import { useSyncExternalStore } from "react";
-import {
-  buildEmptyAlunoMatricula,
-  calculateStudentAge,
-  normalizeAlunoMatriculaData,
-  type AlunoMatriculaData,
-} from "./aluno-matricula";
-import { createAluno, deleteAluno, getAlunos, updateAluno } from "./alunos-api";
-import { createMysqlResourceStore } from "./mysql-resource-store";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-export type StatusAluno = "ativo" | "inativo" | "experimental";
+export type AlunoStatus = "ativo" | "inativo" | "experimental" | string;
+export type StatusAluno = AlunoStatus;
 export type Modalidade = string;
-export type AlunoPeriodicidadeFinanceira =
-  | "mensal"
-  | "bimestral"
-  | "trimestral"
-  | "semestral"
-  | "anual";
 
-export interface AlunoFinanceiroConfig {
-  planoId?: string | null;
-  planoNome?: string | null;
-  valorPlano?: number | null;
-  periodicidade?: AlunoPeriodicidadeFinanceira | null;
-  diaVencimento?: number | null;
-  dataInicioFinanceiro?: string | null;
-  descontoValor?: number | null;
-  descontoPercentual?: number | null;
-  bolsaValor?: number | null;
-  bolsaPercentual?: number | null;
-  multaPercentual?: number | null;
-  jurosDiaPercentual?: number | null;
-  cobrancaAutomatica?: boolean | null;
-  recorrenciaAtiva?: boolean | null;
-  cobrancaProporcional?: boolean | null;
-  observacoes?: string | null;
-  unidade?: string | null;
-  modalidade?: string | null;
-  diasHorarios?: string[] | null;
-}
+/**
+ * DADOS DINÂMICOS - Importar de system-store
+ * Não usar valores hardcoded. Sempre usar hooks para dados em tempo real.
+ */
 
 export type TurmaCatalogo = {
+  id?: string;
   nome: string;
   modalidade: Modalidade;
   unidade: string;
 };
 
-export interface Aluno extends Record<string, unknown> {
+export type AlunoMatricula = {
+  dadosAluno: {
+    numeroMatricula?: string;
+    nomeCompleto?: string;
+    dataNascimento?: string;
+    idade?: string | number;
+    cpf?: string;
+    rg?: string;
+    sexo?: string;
+    colegio?: string;
+    periodoEscolar?: string;
+  };
+  responsavel: {
+    nomeCompleto?: string;
+    cpf?: string;
+    rg?: string;
+    whatsapp?: string;
+    email?: string;
+    parentesco?: string;
+  };
+  endereco: {
+    cep?: string;
+    rua?: string;
+    numero?: string;
+    complemento?: string;
+    bairro?: string;
+    cidade?: string;
+    estado?: string;
+  };
+  documentos: {
+    fotoPerfilAluno?: any;
+    rgCpfAluno?: any;
+    rgCpfResponsavel?: any;
+    comprovanteEndereco?: any;
+    atestadoMedico?: any;
+  };
+  esportivas: {
+    modalidades?: string[];
+    unidades?: string[];
+    horarios?: string[];
+    turmas?: string[];
+    nivel?: string;
+    treinouAntes?: string;
+    caracteristica?: string;
+    objetivo?: string;
+  };
+  saude?: any;
+  estrategias?: any;
+};
+
+export type Aluno = {
   id: string;
   nome: string;
+  nomeCompleto?: string;
   email: string;
   telefone: string;
-  dataNascimento: string;
-  responsavel?: string;
   telefoneResponsavel?: string;
-  modalidade: Modalidade;
-  unidades: string[];
-  turmas: string[];
-  planos: string[];
-  horarios?: string[];
+  responsavel?: string;
+  status: AlunoStatus;
+  modalidade: string;
   turma: string;
+  turmaId?: string | null;
+  turma_id?: string | number | null;
   plano: string;
-  status: StatusAluno;
+  unidade?: string;
   matriculaEm: string;
+  dataNascimento: string;
   numeroMatricula?: string;
-  cpf?: string;
-  rg?: string;
-  sexo?: string;
-  matricula?: AlunoMatriculaData;
-  origemCadastro?: string;
-  matriculaPublicaProtocolo?: string;
-  financeiro?: AlunoFinanceiroConfig;
-  planoId?: string | null;
-  planoNome?: string | null;
-  planoValor?: number | null;
-  plano_id?: string | null;
-  plano_nome?: string | null;
-  plano_valor?: number | null;
-  mensalidade?: number | null;
-  unidade?: string | null;
-  dias_horarios?: string[] | string | null;
+  matricula?: AlunoMatricula;
+  financeiro?: {
+    planoId?: string | number | null;
+    valorPlano?: number | string | null;
+    periodicidade?: any;
+    recorrenciaAtiva?: boolean;
+    cobrancaAutomatica?: boolean;
+    diaVencimento?: number | string | null;
+    dataInicioFinanceiro?: string | null;
+    descontoValor?: number | string | null;
+    descontoPercentual?: number | string | null;
+    bolsaValor?: number | string | null;
+    bolsaPercentual?: number | string | null;
+    multaPercentual?: number | string | null;
+    jurosDiaPercentual?: number | string | null;
+    cobrancaProporcional?: boolean;
+    observacoes?: string | null;
+  };
+  planoId?: string | number | null;
+  plano_id?: string | number | null;
+  planoNome?: string;
+  plano_nome?: string;
+  planoValor?: number | string | null;
+  plano_valor?: number | string | null;
+  mensalidade?: number | string | null;
+  planos?: Array<string | number>;
+  raw?: any;
+};
+
+let alunosState: Aluno[] = [];
+let loadingState = false;
+let errorState: string | null = null;
+
+const listeners = new Set<() => void>();
+
+function emit() {
+  listeners.forEach((listener) => listener());
 }
 
-export const MODALIDADES: Modalidade[] = ["Futebol", "Futsal", "Volei", "Basquete", "Natacao"];
-export const TURMA_CATALOGO: TurmaCatalogo[] = [
-  { nome: "Sub-9 Manha", modalidade: "Futebol", unidade: "Unidade Zona Norte" },
-  { nome: "Sub-11 Tarde", modalidade: "Futebol", unidade: "Unidade Centro" },
-  { nome: "Sub-13 Tarde", modalidade: "Volei", unidade: "Unidade Centro" },
-  { nome: "Sub-15 Noite", modalidade: "Futsal", unidade: "Unidade Zona Sul" },
-  { nome: "Adulto Noite", modalidade: "Basquete", unidade: "Unidade Centro" },
-];
-export const TURMAS = TURMA_CATALOGO.map((turma) => turma.nome);
-export const UNIDADES = Array.from(new Set(TURMA_CATALOGO.map((turma) => turma.unidade)));
+export function subscribe(listener: () => void) {
+  listeners.add(listener);
 
-type AlunoInput = Omit<Aluno, "id" | "matriculaEm"> & Record<string, unknown>;
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
-function uniqueValues(values: string[]) {
-  return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)));
+export function getSnapshot() {
+  return alunosState;
 }
 
-function numeric(value: unknown, fallback = 0) {
-  const parsed = Number(value ?? fallback);
-  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : fallback;
+export function getLoadingSnapshot() {
+  return loadingState;
 }
 
-function text(value: unknown) {
-  return String(value ?? "").trim();
+export function getErrorSnapshot() {
+  return errorState;
 }
 
-function safeJsonParse<T>(value: unknown, fallback: T): T {
-  if (value == null || value === "") return fallback;
-  if (typeof value === "object") return (value ?? fallback) as T;
+/**
+ * IMPORTANTE:
+ * Para a tela de alunos, vamos forçar a API MySQL real na porta 3001.
+ * Isso evita continuar lendo a API persistente 3001, que tinha só 6 alunos teste.
+ */
+function apiBaseUrl() {
+  const envUrl = String(import.meta.env.VITE_API_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (envUrl) {
+    return envUrl;
+  }
+
+  return "http://localhost:3001";
+}
+
+function safeJsonParse(value: any, fallback: any = null) {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
 
   try {
-    const parsed = JSON.parse(String(value)) as T;
-    if (parsed == null) return fallback;
-    if (Array.isArray(fallback)) {
-      return (Array.isArray(parsed) ? parsed : fallback) as T;
-    }
-    if (typeof fallback === "object") {
-      return (typeof parsed === "object" ? parsed : fallback) as T;
-    }
-    return parsed;
+    return JSON.parse(value);
   } catch {
     return fallback;
   }
 }
 
-function normalizeArrayField(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return uniqueValues(value.map((item) => String(item ?? "")));
+function arrayFromAny(value: any): string[] {
+  if (!value) return [];
+
+  const parsed = safeJsonParse(value, value);
+
+  if (Array.isArray(parsed)) {
+    return parsed.filter(Boolean).map(String);
   }
 
-  if (typeof value === "string") {
-    const normalized = value.trim();
-    if (!normalized) return [];
+  if (typeof parsed === "string") {
+    const trimmed = parsed.trim();
 
-    if (
-      (normalized.startsWith("[") && normalized.endsWith("]")) ||
-      (normalized.startsWith("{") && normalized.endsWith("}"))
-    ) {
-      try {
-        const parsed = JSON.parse(normalized);
-        return Array.isArray(parsed) ? uniqueValues(parsed.map((item) => String(item ?? ""))) : [];
-      } catch {
-        return uniqueValues(normalized.split(/[;,|]/g));
-      }
+    if (!trimmed) return [];
+
+    const jsonParsed = safeJsonParse(trimmed, null);
+
+    if (Array.isArray(jsonParsed)) {
+      return jsonParsed.filter(Boolean).map(String);
     }
 
-    return uniqueValues(normalized.split(/[;,|]/g));
+    return trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
-  return value == null ? [] : [String(value)];
+  return [];
 }
 
-function normalizeStudentStatus(value: unknown): StatusAluno {
-  const normalized = text(value).toLowerCase();
-  if (normalized === "inativo") return "inativo";
-  if (normalized === "experimental") return "experimental";
-  return "ativo";
+function normalizeComparable(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
-function normalizePeriodicidade(value: unknown): AlunoPeriodicidadeFinanceira | null {
-  const normalized = text(value).toLowerCase();
-  switch (normalized) {
-    case "mensal":
-    case "bimestral":
-    case "trimestral":
-    case "semestral":
-    case "anual":
-      return normalized;
-    default:
-      return null;
-  }
-}
-
-function normalizeFinanceiroConfig(
-  raw: unknown,
-  fallback: {
-    planoId?: string | null;
-    planoNome?: string | null;
-    planoValor?: number | null;
-    modalidade?: string | null;
-    unidade?: string | null;
-    diasHorarios?: string[];
-  },
-): AlunoFinanceiroConfig | undefined {
-  const parsed = safeJsonParse<Record<string, unknown>>(raw, {});
-  const planoId = text(parsed.planoId ?? fallback.planoId) || null;
-  const planoNome = text(parsed.planoNome ?? fallback.planoNome) || null;
-  const valorPlano = numeric(parsed.valorPlano ?? parsed.valor ?? fallback.planoValor, 0);
-  const diasHorarios = uniqueValues([
-    ...normalizeArrayField(parsed.diasHorarios),
-    ...normalizeArrayField(fallback.diasHorarios),
-  ]);
-
-  const output: AlunoFinanceiroConfig = {
-    planoId,
-    planoNome,
-    valorPlano: valorPlano > 0 ? valorPlano : null,
-    periodicidade: normalizePeriodicidade(parsed.periodicidade),
-    diaVencimento:
-      Number.isFinite(Number(parsed.diaVencimento)) && Number(parsed.diaVencimento) > 0
-        ? Math.trunc(Number(parsed.diaVencimento))
-        : null,
-    dataInicioFinanceiro: text(parsed.dataInicioFinanceiro) || null,
-    descontoValor: numeric(parsed.descontoValor, 0) || null,
-    descontoPercentual: numeric(parsed.descontoPercentual, 0) || null,
-    bolsaValor: numeric(parsed.bolsaValor, 0) || null,
-    bolsaPercentual: numeric(parsed.bolsaPercentual, 0) || null,
-    multaPercentual: numeric(parsed.multaPercentual, 0) || null,
-    jurosDiaPercentual: numeric(parsed.jurosDiaPercentual, 0) || null,
-    cobrancaAutomatica:
-      parsed.cobrancaAutomatica == null ? null : Boolean(parsed.cobrancaAutomatica),
-    recorrenciaAtiva: parsed.recorrenciaAtiva == null ? null : Boolean(parsed.recorrenciaAtiva),
-    cobrancaProporcional:
-      parsed.cobrancaProporcional == null ? null : Boolean(parsed.cobrancaProporcional),
-    observacoes: text(parsed.observacoes) || null,
-    unidade: text(parsed.unidade ?? fallback.unidade) || null,
-    modalidade: text(parsed.modalidade ?? fallback.modalidade) || null,
-    diasHorarios,
-  };
-
-  if (
-    !output.planoId &&
-    !output.planoNome &&
-    !output.valorPlano &&
-    !output.periodicidade &&
-    !output.unidade &&
-    !output.modalidade &&
-    output.diasHorarios?.length === 0
-  ) {
-    return undefined;
-  }
-
-  return output;
-}
-
-export function getUnidadesFromTurmas(turmas: string[]) {
-  return uniqueValues(
-    turmas
-      .map((turmaNome) => TURMA_CATALOGO.find((turma) => turma.nome === turmaNome)?.unidade)
-      .filter((unidade): unidade is string => Boolean(unidade)),
+function firstValue(...values: any[]) {
+  return values.find(
+    (value) => value !== undefined && value !== null && String(value).trim() !== "",
   );
 }
 
-export function getPrimaryModalidadeFromTurmas(
-  turmas: string[],
-  fallback: Modalidade = MODALIDADES[0] ?? "Futebol",
-): Modalidade {
+function isAlunoLike(value: any) {
   return (
-    turmas
-      .map((turmaNome) => TURMA_CATALOGO.find((turma) => turma.nome === turmaNome)?.modalidade)
-      .find((modalidade): modalidade is Modalidade => Boolean(modalidade)) ?? fallback
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value.id !== undefined ||
+      value.aluno_id !== undefined ||
+      value.nome !== undefined ||
+      value.nome_completo !== undefined ||
+      value.nomeCompleto !== undefined)
   );
 }
 
-export function getAlunoTurmas(aluno: Pick<Aluno, "turmas" | "turma">) {
-  return uniqueValues(aluno.turmas?.length ? aluno.turmas : [aluno.turma]);
+export function extractAlunoList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+
+  const candidates = [
+    payload?.data,
+    payload?.alunos,
+    payload?.items,
+    payload?.rows,
+    payload?.results,
+    payload?.data?.alunos,
+    payload?.data?.items,
+    payload?.data?.rows,
+    payload?.data?.results,
+    payload?.data?.data,
+    payload?.data?.data?.alunos,
+    payload?.data?.data?.items,
+    payload?.data?.data?.rows,
+    payload?.data?.data?.results,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+
+    if (isAlunoLike(candidate)) {
+      return [candidate];
+    }
+  }
+
+  if (isAlunoLike(payload)) {
+    return [payload];
+  }
+
+  return [];
 }
 
-export function getAlunoPlanos(
-  aluno: Pick<Aluno, "planos" | "plano" | "planoNome" | "plano_nome" | "financeiro">,
-) {
-  return uniqueValues(
-    aluno.planos?.length
-      ? aluno.planos
-      : [
-          aluno.plano,
-          aluno.planoNome ?? "",
-          aluno.plano_nome ?? "",
-          aluno.financeiro?.planoNome ?? "",
-        ],
-  );
+function normalizeStatus(status: any): AlunoStatus {
+  const value = String(status || "ativo").toLowerCase();
+
+  if (value.includes("experimental")) return "experimental";
+  if (value.includes("inativo")) return "inativo";
+  if (value.includes("ativo")) return "ativo";
+
+  return value || "ativo";
 }
 
-export function getAlunoUnidades(
-  aluno: Pick<Aluno, "unidades" | "turmas" | "turma" | "matricula" | "unidade" | "financeiro">,
-) {
-  const turmas = getAlunoTurmas(aluno);
-  const fromTurmas = getUnidadesFromTurmas(turmas);
-  const fromMatricula = aluno.matricula?.esportivas?.unidades ?? [];
-  const fromFinanceiro = aluno.financeiro?.unidade ? [aluno.financeiro.unidade] : [];
-
-  return uniqueValues(
-    aluno.unidades?.length
-      ? [...aluno.unidades, ...fromTurmas, ...fromMatricula, ...fromFinanceiro]
-      : [...fromTurmas, ...fromMatricula, ...fromFinanceiro, aluno.unidade ?? ""],
-  );
-}
-
-export function getAlunoHorarios(
-  aluno: Pick<Aluno, "horarios" | "matricula" | "dias_horarios" | "financeiro">,
-) {
-  return uniqueValues([
-    ...(aluno.horarios?.length ? aluno.horarios : []),
-    ...(aluno.matricula?.esportivas?.horarios ?? []),
-    ...normalizeArrayField(aluno.dias_horarios),
-    ...(aluno.financeiro?.diasHorarios ?? []),
-  ]);
-}
-
-export function getAlunoModalidades(aluno: Pick<Aluno, "modalidade" | "matricula" | "financeiro">) {
-  return uniqueValues(
-    aluno.matricula?.esportivas?.modalidades?.length
-      ? aluno.matricula.esportivas.modalidades
-      : [aluno.financeiro?.modalidade ?? "", aluno.modalidade],
-  );
-}
-
-export function formatAlunoScope(values: string[]) {
-  if (values.length === 0) return "-";
-  return values.join(", ");
-}
-
-function normalizeAluno(raw: Partial<Aluno> & Record<string, unknown>): Aluno {
-  const baseMatricula = normalizeAlunoMatriculaData(
-    raw.matricula ?? safeJsonParse(raw.matricula_snapshot_json ?? raw.matricula_json, {}),
-  );
-  const fallbackMatricula = buildEmptyAlunoMatricula();
-
-  const modalidades = uniqueValues([
-    ...normalizeArrayField(baseMatricula.esportivas?.modalidades ?? []),
-    ...normalizeArrayField(raw.modalidades_json ?? raw.modalidades),
-    text(raw.modalidade ?? raw.modalidade_principal),
-  ]);
-  const turmas = uniqueValues([
-    ...normalizeArrayField(baseMatricula.esportivas?.turmas ?? []),
-    ...normalizeArrayField(raw.turmas_json ?? raw.turmas),
-    text(raw.turma ?? raw.turma_principal),
-  ]);
-  const unidades = uniqueValues([
-    ...normalizeArrayField(baseMatricula.esportivas?.unidades ?? []),
-    ...normalizeArrayField(raw.unidades_json ?? raw.unidades),
-    text(raw.unidade ?? raw.unidade_principal),
-  ]);
-  const horarios = uniqueValues([
-    ...normalizeArrayField(baseMatricula.esportivas?.horarios ?? []),
-    ...normalizeArrayField(raw.horarios_json ?? raw.horarios),
-    ...normalizeArrayField(raw.dias_horarios_json ?? raw.dias_horarios),
-  ]);
-
-  const planoId = text(raw.planoId ?? raw.plano_id) || null;
-  const planoNome = text(raw.planoNome ?? raw.plano_nome ?? raw.plano ?? raw.plano_principal);
-  const planos = uniqueValues([...normalizeArrayField(raw.planos_json ?? raw.planos), planoNome]);
-  const planoValor = numeric(raw.planoValor ?? raw.plano_valor, 0) || null;
-
-  const modalidade =
-    modalidades[0] ||
-    text(baseMatricula.esportivas?.modalidades?.[0]) ||
-    text(raw.modalidade ?? raw.modalidade_principal) ||
-    getPrimaryModalidadeFromTurmas(turmas, MODALIDADES[0] ?? "Futebol");
-
-  const dataNascimento =
-    text(
-      raw.dataNascimento ??
-        raw.data_nascimento ??
-        baseMatricula.dadosAluno?.dataNascimento ??
-        raw.matricula?.dadosAluno?.dataNascimento,
-    ) || "";
-
-  const financeiro = normalizeFinanceiroConfig(raw.financeiro ?? raw.financeiro_json, {
-    planoId,
-    planoNome: planoNome || planos[0] || null,
-    planoValor,
-    modalidade,
-    unidade: unidades[0] ?? null,
-    diasHorarios: horarios,
-  });
-
-  const matricula: AlunoMatriculaData = {
-    ...fallbackMatricula,
-    ...baseMatricula,
-    dadosAluno: {
-      ...fallbackMatricula.dadosAluno,
-      ...baseMatricula.dadosAluno,
-      numeroMatricula:
-        text(
-          raw.numeroMatricula ?? raw.numero_matricula ?? baseMatricula.dadosAluno.numeroMatricula,
-        ) || "",
-      nomeCompleto:
-        text(raw.nome ?? raw.nome_completo ?? baseMatricula.dadosAluno.nomeCompleto) || "",
-      dataNascimento,
-      idade: calculateStudentAge(dataNascimento),
-      cpf: text(raw.cpf ?? baseMatricula.dadosAluno.cpf) || "",
-      rg: text(raw.rg ?? baseMatricula.dadosAluno.rg) || "",
-      sexo: text(raw.sexo ?? baseMatricula.dadosAluno.sexo) || "",
-      colegio: text(raw.colegio ?? baseMatricula.dadosAluno.colegio) || "",
-      periodoEscolar:
-        text(
-          raw.periodoEscolar ?? raw.periodo_escolar ?? baseMatricula.dadosAluno.periodoEscolar,
-        ) || "",
-    },
-    responsavel: {
-      ...fallbackMatricula.responsavel,
-      ...baseMatricula.responsavel,
-      nomeCompleto:
-        text(raw.responsavel ?? raw.responsavel_nome ?? baseMatricula.responsavel.nomeCompleto) ||
-        "",
-      whatsapp:
-        text(
-          raw.telefoneResponsavel ??
-            raw.telefone_responsavel ??
-            raw.responsavel_whatsapp ??
-            baseMatricula.responsavel.whatsapp,
-        ) || "",
-      email:
-        text(
-          raw.email ??
-            raw.email_contato ??
-            raw.responsavel_email ??
-            baseMatricula.responsavel.email,
-        ) || "",
-    },
-    esportivas: {
-      ...fallbackMatricula.esportivas,
-      ...baseMatricula.esportivas,
-      modalidades: modalidades.length > 0 ? modalidades : [modalidade],
-      unidades,
-      horarios,
-      turmas,
-    },
-  };
-
-  const nome = text(raw.nome ?? raw.nome_completo) || matricula.dadosAluno.nomeCompleto || "Aluno";
-  const email =
-    text(raw.email ?? raw.email_contato ?? matricula.responsavel.email ?? raw.responsavel_email) ||
-    "";
-  const telefone =
-    text(raw.telefone ?? raw.telefone_contato ?? matricula.responsavel.whatsapp) || "";
-  const status = normalizeStudentStatus(raw.status);
-  const matriculaEm =
-    text(raw.matriculaEm ?? raw.matricula_em ?? raw.created_at).slice(0, 10) || todayISO();
+function buildMatricula(raw: any): AlunoMatricula {
+  const snapshot = safeJsonParse(raw.matricula_snapshot_json, {});
+  const dadosAluno = snapshot?.dadosAluno || {};
+  const responsavel = snapshot?.responsavel || {};
+  const endereco = snapshot?.endereco || {};
+  const documentos = snapshot?.documentos || {};
+  const esportivas = snapshot?.esportivas || {};
 
   return {
-    ...raw,
-    id: text(raw.id) || `aluno-${Date.now()}`,
-    nome,
-    email,
-    telefone,
-    dataNascimento,
-    responsavel:
-      text(raw.responsavel ?? raw.responsavel_nome) || matricula.responsavel.nomeCompleto,
-    telefoneResponsavel:
-      text(raw.telefoneResponsavel ?? raw.telefone_responsavel ?? raw.responsavel_whatsapp) ||
-      matricula.responsavel.whatsapp,
-    modalidade,
-    unidades,
-    turmas,
-    planos,
-    horarios,
-    turma: text(raw.turma ?? raw.turma_principal) || turmas[0] || "",
-    plano: text(raw.plano ?? raw.plano_principal) || planoNome || planos[0] || "",
-    status,
-    matriculaEm,
-    numeroMatricula: matricula.dadosAluno.numeroMatricula || undefined,
-    cpf: matricula.dadosAluno.cpf || undefined,
-    rg: matricula.dadosAluno.rg || undefined,
-    sexo: matricula.dadosAluno.sexo || undefined,
-    matricula,
-    origemCadastro: text(raw.origemCadastro ?? raw.origem_cadastro) || undefined,
-    matriculaPublicaProtocolo:
-      text(raw.matriculaPublicaProtocolo ?? raw.matricula_publica_protocolo) || undefined,
-    financeiro,
-    planoId: planoId ?? financeiro?.planoId ?? null,
-    planoNome: planoNome || financeiro?.planoNome || planos[0] || null,
-    planoValor: planoValor ?? financeiro?.valorPlano ?? null,
-    plano_id: planoId ?? financeiro?.planoId ?? null,
-    plano_nome: planoNome || financeiro?.planoNome || planos[0] || null,
-    plano_valor: planoValor ?? financeiro?.valorPlano ?? null,
-    unidade: unidades[0] ?? financeiro?.unidade ?? null,
-    dias_horarios: horarios,
+    dadosAluno: {
+      numeroMatricula: firstValue(
+        dadosAluno.numeroMatricula,
+        raw.numero_matricula,
+        raw.matricula_numero,
+      ),
+      nomeCompleto: firstValue(dadosAluno.nomeCompleto, raw.nome_completo, raw.nome),
+      dataNascimento: firstValue(dadosAluno.dataNascimento, raw.data_nascimento),
+      idade: firstValue(dadosAluno.idade, raw.idade),
+      cpf: firstValue(dadosAluno.cpf, raw.cpf),
+      rg: firstValue(dadosAluno.rg, raw.rg),
+      sexo: firstValue(dadosAluno.sexo, raw.sexo),
+      colegio: firstValue(dadosAluno.colegio, raw.colegio),
+      periodoEscolar: firstValue(dadosAluno.periodoEscolar, raw.periodo_escolar),
+    },
+    responsavel: {
+      nomeCompleto: firstValue(responsavel.nomeCompleto, raw.responsavel_nome, raw.responsavel),
+      cpf: firstValue(responsavel.cpf, raw.responsavel_cpf),
+      rg: firstValue(responsavel.rg, raw.responsavel_rg),
+      whatsapp: firstValue(
+        responsavel.whatsapp,
+        raw.responsavel_whatsapp,
+        raw.telefone_responsavel,
+      ),
+      email: firstValue(responsavel.email, raw.responsavel_email, raw.email_contato),
+      parentesco: firstValue(responsavel.parentesco, raw.responsavel_parentesco),
+    },
+    endereco: {
+      cep: firstValue(endereco.cep, raw.cep),
+      rua: firstValue(endereco.rua, raw.rua),
+      numero: firstValue(endereco.numero, raw.numero),
+      complemento: firstValue(endereco.complemento, raw.complemento),
+      bairro: firstValue(endereco.bairro, raw.bairro),
+      cidade: firstValue(endereco.cidade, raw.cidade),
+      estado: firstValue(endereco.estado, raw.estado),
+    },
+    documentos: {
+      fotoPerfilAluno: documentos.fotoPerfilAluno || raw.foto_perfil_aluno_json,
+      rgCpfAluno: documentos.rgCpfAluno || raw.rg_cpf_aluno_json,
+      rgCpfResponsavel: documentos.rgCpfResponsavel || raw.rg_cpf_responsavel_json,
+      comprovanteEndereco: documentos.comprovanteEndereco || raw.comprovante_endereco_json,
+      atestadoMedico: documentos.atestadoMedico || raw.atestado_medico_json,
+    },
+    esportivas: {
+      modalidades: arrayFromAny(
+        firstValue(esportivas.modalidades, raw.modalidades_json, raw.modalidade_principal),
+      ),
+      unidades: arrayFromAny(
+        firstValue(esportivas.unidades, raw.unidades_json, raw.unidade_principal),
+      ),
+      horarios: arrayFromAny(
+        firstValue(esportivas.horarios, raw.dias_horarios_json, raw.dias_horarios),
+      ),
+      turmas: arrayFromAny(firstValue(esportivas.turmas, raw.turmas_json, raw.turma_principal)),
+      nivel: firstValue(esportivas.nivel, raw.nivel),
+      treinouAntes: firstValue(esportivas.treinouAntes, raw.treinou_antes),
+      caracteristica: firstValue(esportivas.caracteristica, raw.caracteristica),
+      objetivo: firstValue(esportivas.objetivo, raw.objetivo),
+    },
+    saude: snapshot?.saude || {},
+    estrategias: snapshot?.estrategias || {},
   };
 }
 
-const alunosResource = createMysqlResourceStore<Aluno>({
-  endpoint: "/alunos",
-  initialState: [],
-  normalize: normalizeAluno,
-  loadAll: getAlunos,
-  createEntity: createAluno,
-  updateEntity: updateAluno,
-  deleteEntity: deleteAluno,
-});
+function normalizeAluno(raw: any): Aluno {
+  const matricula = buildMatricula(raw);
 
-let state: Aluno[] = alunosResource.getSnapshot();
-const listeners = new Set<() => void>();
+  const nome = firstValue(
+    raw.nome,
+    raw.nome_completo,
+    raw.nomeCompleto,
+    matricula.dadosAluno.nomeCompleto,
+    "Aluno sem nome",
+  );
 
-alunosResource.subscribe(() => {
-  state = alunosResource.getSnapshot();
-  listeners.forEach((listener) => listener());
-});
+  const modalidade = firstValue(
+    raw.modalidade,
+    raw.modalidade_principal,
+    raw.modalidade_nome,
+    matricula.esportivas.modalidades?.[0],
+    "",
+  );
 
-function replaceState(nextState: Aluno[]) {
-  alunosResource.replaceState(nextState.map((item) => normalizeAluno(item)));
+  const turma = firstValue(
+    raw.turma,
+    raw.turma_principal,
+    raw.turma_nome,
+    matricula.esportivas.turmas?.[0],
+    "",
+  );
+
+  const plano = firstValue(raw.plano, raw.plano_nome, raw.plano_principal, raw.planoNome, "");
+
+  return {
+    id: String(raw.id ?? raw.aluno_id ?? raw.codigo ?? crypto.randomUUID()),
+    nome: String(nome),
+    nomeCompleto: String(firstValue(raw.nome_completo, raw.nomeCompleto, nome)),
+    email: String(firstValue(raw.email, raw.email_contato, raw.responsavel_email, "")),
+    telefone: String(firstValue(raw.telefone, raw.telefone_contato, raw.whatsapp, "")),
+    telefoneResponsavel: String(firstValue(raw.telefone_responsavel, raw.responsavel_whatsapp, "")),
+    responsavel: String(
+      firstValue(raw.responsavel, raw.responsavel_nome, matricula.responsavel.nomeCompleto, ""),
+    ),
+    status: normalizeStatus(raw.status),
+    modalidade: String(modalidade),
+    turma: String(turma),
+    turmaId:
+      firstValue(raw.turmaId, raw.turma_id, raw.id_turma, raw.turma_codigo, null) == null
+        ? null
+        : String(firstValue(raw.turmaId, raw.turma_id, raw.id_turma, raw.turma_codigo)),
+    turma_id: firstValue(raw.turma_id, raw.turmaId, raw.id_turma, raw.turma_codigo, null),
+    plano: String(plano),
+    planoId: raw.planoId ?? raw.plano_id ?? raw.financeiro?.planoId ?? null,
+    plano_id: raw.plano_id ?? raw.planoId ?? raw.financeiro?.planoId ?? null,
+    planoNome: String(firstValue(raw.planoNome, raw.plano_nome, plano)),
+    plano_nome: String(firstValue(raw.plano_nome, raw.planoNome, plano)),
+    planoValor: raw.planoValor ?? raw.plano_valor ?? raw.mensalidade ?? raw.financeiro?.valorPlano,
+    plano_valor: raw.plano_valor ?? raw.planoValor ?? raw.mensalidade ?? raw.financeiro?.valorPlano,
+    mensalidade: raw.mensalidade ?? raw.plano_valor ?? raw.planoValor ?? raw.financeiro?.valorPlano,
+    financeiro: raw.financeiro,
+    planos: arrayFromAny(firstValue(raw.planos, raw.planos_json, raw.plano, plano)),
+    unidade: String(
+      firstValue(raw.unidade, raw.unidade_principal, matricula.esportivas.unidades?.[0], ""),
+    ),
+    matriculaEm: String(firstValue(raw.matricula_em, raw.created_at, raw.data_matricula, "")),
+    dataNascimento: String(
+      firstValue(raw.data_nascimento, matricula.dadosAluno.dataNascimento, ""),
+    ),
+    numeroMatricula: String(
+      firstValue(raw.numero_matricula, matricula.dadosAluno.numeroMatricula, ""),
+    ),
+    matricula,
+    raw,
+  };
 }
 
-function replaceById(targetId: string, nextAluno: Aluno) {
-  replaceState(
-    alunosResource
-      .getSnapshot()
-      .map((item) => (item.id === targetId ? normalizeAluno(nextAluno) : item)),
-  );
+export async function loadAlunos(): Promise<Aluno[]> {
+  loadingState = true;
+
+  errorState = null;
+
+  emit();
+
+  try {
+    const token = localStorage.getItem("j12_auth_token") || "";
+
+    const response = await fetch(`${apiBaseUrl()}/api/alunos`, {
+      method: "GET",
+
+      headers: {
+        "Content-Type": "application/json",
+
+        Authorization: `Bearer ${token}`,
+      },
+
+      cache: "no-store",
+    });
+
+    console.log("[alunos-store] STATUS:", response.status);
+
+    const data = await response.json();
+
+    console.log("[alunos-store] DATA:", data);
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `Erro ${response.status} ao carregar alunos`);
+    }
+
+    const lista = extractAlunoList(data);
+
+    console.log("[alunos-store] TOTAL:", lista.length);
+
+    const normalizados = lista.map((item) => normalizeAluno(item));
+
+    alunosState = normalizados;
+
+    emit();
+
+    return normalizados;
+  } catch (error: any) {
+    console.error("[alunos-store] ERRO:", error);
+
+    errorState = error?.message || "Erro ao carregar alunos";
+
+    alunosState = [];
+
+    emit();
+
+    return [];
+  } finally {
+    loadingState = false;
+
+    emit();
+  }
+}
+
+function serializeAlunoMutation(aluno: Partial<Aluno> & Record<string, unknown>) {
+  return {
+    nome_completo: String(aluno.nomeCompleto ?? aluno.nome ?? "").trim(),
+    email_contato: String(aluno.email ?? "").trim(),
+    telefone_contato: String(aluno.telefone ?? "").trim(),
+  };
+}
+
+export async function reloadAlunos(): Promise<Aluno[]> {
+  return loadAlunos();
 }
 
 export const alunosStore = {
-  subscribe(listener: () => void) {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  },
+  subscribe,
+
   getSnapshot() {
-    return state;
+    return alunosState;
   },
-  reload() {
-    return alunosResource.reload();
-  },
-  getById(id: string) {
-    return state.find((aluno) => aluno.id === id);
-  },
-  create(data: AlunoInput) {
-    const optimisticId = `tmp-${Date.now()}`;
-    const novo = normalizeAluno({
-      ...data,
-      id: optimisticId,
-      matriculaEm: todayISO(),
+
+  getById: getAlunoById,
+
+  load: loadAlunos,
+
+  reload: reloadAlunos,
+
+  create(payload: Partial<Aluno> & Record<string, unknown>) {
+    const next = normalizeAluno({
+      ...payload,
+      id: `tmp-aluno-${Date.now()}`,
+      nome: payload.nome ?? payload.nomeCompleto ?? "Aluno",
+      nome_completo: payload.nomeCompleto ?? payload.nome,
+      email_contato: payload.email,
+      telefone_contato: payload.telefone,
+      status: payload.status ?? "ativo",
+      created_at: new Date().toISOString(),
     });
 
-    replaceState([novo, ...alunosResource.getSnapshot()]);
+    alunosState = [next, ...alunosState];
 
-    void createAluno(novo)
-      .then((saved) => {
-        replaceById(optimisticId, normalizeAluno(saved as Record<string, unknown>));
-      })
-      .catch(async (error) => {
-        console.error("[alunos-store] Falha ao criar aluno.", error);
-        await alunosResource.reload();
-      });
+    emit();
 
-    return novo;
+    return next;
   },
-  update(id: string, data: Partial<Aluno> & Record<string, unknown>) {
-    const current = state.find((aluno) => aluno.id === id);
-    if (!current) return null;
 
-    const next = normalizeAluno({ ...current, ...data, id });
-    replaceState(alunosResource.getSnapshot().map((aluno) => (aluno.id === id ? next : aluno)));
+  update(id: string | number, payload: Partial<Aluno> & Record<string, unknown>) {
+    const current = getAlunoById(id);
 
-    void updateAluno(next)
-      .then((saved) => {
-        replaceById(id, normalizeAluno(saved as Record<string, unknown>));
+    if (!current) {
+      return null;
+    }
+
+    const next = normalizeAluno({
+      ...current,
+      ...payload,
+      id: current.id,
+    });
+
+    alunosState = alunosState.map((aluno) => {
+      return String(aluno.id) === String(id) ? next : aluno;
+    });
+
+    emit();
+
+    fetch(`${apiBaseUrl()}/api/alunos/${id}`, {
+      method: "PUT",
+
+      headers: {
+        "Content-Type": "application/json",
+
+        Authorization: `Bearer ${localStorage.getItem("j12_auth_token") || ""}`,
+      },
+
+      body: JSON.stringify(
+        serializeAlunoMutation({
+          ...current,
+          ...payload,
+        }),
+      ),
+    })
+      .then(() => {
+        reloadAlunos();
       })
-      .catch(async (error) => {
-        console.error("[alunos-store] Falha ao atualizar aluno.", error);
-        await alunosResource.reload();
+      .catch(() => {
+        reloadAlunos();
       });
 
     return next;
   },
-  remove(id: string) {
-    if (!state.some((aluno) => aluno.id === id)) return;
-
-    replaceState(alunosResource.getSnapshot().filter((aluno) => aluno.id !== id));
-
-    void deleteAluno(id).catch(async (error) => {
-      console.error("[alunos-store] Falha ao remover aluno.", error);
-      await alunosResource.reload();
-    });
-  },
 };
 
+export function useAlunosError() {
+  const [error, setError] = useState(errorState);
+
+  useEffect(() => {
+    const unsubscribe = subscribe(() => {
+      setError(errorState);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return error;
+}
+
 export function useAlunos(): Aluno[] {
-  return useSyncExternalStore(
-    alunosStore.subscribe,
-    alunosStore.getSnapshot,
-    alunosStore.getSnapshot,
+  const alunos = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  useEffect(() => {
+    if (!alunosState.length && !loadingState) {
+      loadAlunos();
+    }
+  }, []);
+
+  return alunos;
+}
+
+export function useAlunosLoading(): boolean {
+  return useSyncExternalStore(subscribe, getLoadingSnapshot, getLoadingSnapshot);
+}
+
+export function formatAlunoScope(
+  values: Array<string | undefined | null> | string | undefined | null,
+) {
+  if (!values) return "—";
+
+  if (Array.isArray(values)) {
+    const clean = values.filter(Boolean).map(String);
+    return clean.length ? clean.join(", ") : "—";
+  }
+
+  return String(values).trim() || "—";
+}
+
+export function getAlunoModalidades(aluno: Aluno | null | undefined): string[] {
+  if (!aluno) return [];
+
+  return aluno.matricula?.esportivas?.modalidades?.length
+    ? aluno.matricula.esportivas.modalidades
+    : arrayFromAny(aluno.modalidade);
+}
+
+export function getAlunoTurmas(aluno: Aluno | null | undefined): string[] {
+  if (!aluno) return [];
+
+  return aluno.matricula?.esportivas?.turmas?.length
+    ? aluno.matricula.esportivas.turmas
+    : arrayFromAny(aluno.turma);
+}
+
+export function getAlunoTurmaIds(aluno: Aluno | null | undefined): string[] {
+  if (!aluno) return [];
+
+  return arrayFromAny(
+    firstValue(
+      aluno.turmaId,
+      aluno.turma_id,
+      aluno.raw?.turmaId,
+      aluno.raw?.turma_id,
+      aluno.raw?.id_turma,
+      aluno.raw?.turma_codigo,
+      aluno.raw?.turma_ids,
+      aluno.raw?.turma_ids_json,
+    ),
   );
 }
 
-export function useAlunosStatus() {
-  return useSyncExternalStore(
-    alunosStore.subscribe,
-    alunosResource.getMeta,
-    alunosResource.getMeta,
-  );
+export function alunoPertenceATurma(
+  aluno: Aluno | null | undefined,
+  turma: { id?: string | number | null; nome?: string | null; alunoIds?: Array<string | number> } | null | undefined,
+) {
+  if (!aluno || !turma) return false;
+
+  const alunoId = String(aluno.id);
+  const turmaAlunoIds = new Set((turma.alunoIds ?? []).map((id) => String(id)));
+  if (turmaAlunoIds.has(alunoId)) return true;
+
+  const turmaId = String(turma.id ?? "").trim();
+  if (turmaId && getAlunoTurmaIds(aluno).some((id) => String(id) === turmaId)) return true;
+
+  const turmaNome = normalizeComparable(turma.nome);
+  if (!turmaNome) return false;
+
+  const nomesDoAluno = [
+    ...getAlunoTurmas(aluno),
+    aluno.turma,
+    aluno.raw?.turma,
+    aluno.raw?.turma_nome,
+    aluno.raw?.turma_principal,
+    aluno.raw?.nome_turma,
+  ];
+
+  return nomesDoAluno.some((nome) => normalizeComparable(nome) === turmaNome);
+}
+
+export function getAlunosDaTurma<
+  T extends { id?: string | number | null; nome?: string | null; alunoIds?: Array<string | number> },
+>(turma: T | null | undefined, lista: Aluno[] = alunosState) {
+  if (!turma) return [];
+
+  return lista
+    .filter((aluno) => alunoPertenceATurma(aluno, turma))
+    .sort((left, right) => left.nome.localeCompare(right.nome, "pt-BR"));
+}
+
+export function getAlunoUnidades(aluno: Aluno | null | undefined): string[] {
+  if (!aluno) return [];
+
+  return aluno.matricula?.esportivas?.unidades?.length
+    ? aluno.matricula.esportivas.unidades
+    : arrayFromAny(aluno.unidade);
+}
+
+export function getAlunoHorarios(aluno: Aluno | null | undefined): string[] {
+  if (!aluno) return [];
+
+  return aluno.matricula?.esportivas?.horarios || [];
+}
+
+export function getAlunoPlanos(aluno: Aluno | null | undefined): string[] {
+  if (!aluno) return [];
+
+  return arrayFromAny(aluno.plano);
+}
+
+export function getAlunoById(id: string | number) {
+  return alunosState.find((aluno) => String(aluno.id) === String(id)) ?? null;
+}
+
+export function alunoStatusClass(status: AlunoStatus) {
+  switch (normalizeStatus(status)) {
+    case "ativo":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+    case "experimental":
+      return "border-orange-500/30 bg-orange-500/10 text-orange-300";
+    case "inativo":
+      return "border-slate-500/30 bg-slate-500/10 text-slate-300";
+    default:
+      return "border-white/10 bg-white/5 text-white";
+  }
+}
+
+export function alunoStatusLabel(status: AlunoStatus) {
+  switch (normalizeStatus(status)) {
+    case "ativo":
+      return "Ativo";
+    case "experimental":
+      return "Experimental";
+    case "inativo":
+      return "Inativo";
+    default:
+      return String(status || "—");
+  }
+}
+
+/**
+ * DINÂMICOS - Dados carregados do backend
+ * Importação lazada para evitar circular dependencies
+ */
+
+export function useModalidadesDinamicas() {
+  try {
+    const { useModalidades } = require("./modalidades-store");
+    return useModalidades();
+  } catch {
+    return [];
+  }
+}
+
+export function useUnidadesDinamicas() {
+  try {
+    const { useUnidades } = require("./unidades-store");
+    return useUnidades();
+  } catch {
+    return [];
+  }
+}
+
+export function useTurmasDinamicas() {
+  try {
+    const { useTurmas } = require("./turmas-store");
+    return useTurmas();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Legacy exports para compatibilidade
+ * DEPRECATED: Use hooks dinâmicos acima
+ */
+export function getModalidadesLegacy(): Modalidade[] {
+  try {
+    const { modalidadesStore } = require("./modalidades-store");
+    const snapshot = modalidadesStore.getSnapshot();
+    return snapshot
+      .filter((m: any) => m.ativa !== false)
+      .map((m: any) => m.nome || String(m.id));
+  } catch {
+    // Fallback para dados estáticos se store não inicializado
+    return [];
+  }
+}
+
+export function getUnidadesLegacy(): string[] {
+  try {
+    const { unidadesStore } = require("./unidades-store");
+    const snapshot = unidadesStore.getSnapshot();
+    return snapshot.map((u: any) => u.nome || String(u.id));
+  } catch {
+    return [];
+  }
 }

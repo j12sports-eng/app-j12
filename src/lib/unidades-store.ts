@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api } from "./api";
+import { apiFetch } from "./api";
 import { createMysqlResourceStore } from "./mysql-resource-store";
 
 export interface Unidade {
@@ -24,14 +24,23 @@ function text(value: unknown, max = 255) {
 
 function normalizeAtiva(value: unknown, fallback = true) {
   if (typeof value === "boolean") return value;
+
   const normalized = text(value, 30).toLowerCase();
-  if (["inativo", "inativa", "false", "0"].includes(normalized)) return false;
-  if (["ativo", "ativa", "true", "1"].includes(normalized)) return true;
+
+  if (["inativo", "inativa", "false", "0"].includes(normalized)) {
+    return false;
+  }
+
+  if (["ativo", "ativa", "true", "1"].includes(normalized)) {
+    return true;
+  }
+
   return fallback;
 }
 
 function normalizeUnidade(raw: RawUnidade): Unidade {
   const ativa = normalizeAtiva(raw.ativa ?? raw.status, true);
+
   return {
     id: text(raw.id, 64) || `unidade-${Date.now()}`,
     nome: text(raw.nome, 191),
@@ -58,19 +67,38 @@ function serializeUnidade(unidade: Unidade | UnidadeInput) {
 
 const resource = createMysqlResourceStore<Unidade>({
   endpoint: "/unidades",
+
   initialState: [],
+
   normalize: (item) => normalizeUnidade(item as RawUnidade),
-  loadAll: () => api.get<Unidade[]>("/unidades"),
-  createEntity: (entity) => api.post<Unidade>("/unidades", serializeUnidade(entity)),
-  updateEntity: (entity) => api.put<Unidade>(`/unidades/${entity.id}`, serializeUnidade(entity)),
-  deleteEntity: (id) => api.del(`/unidades/${id}`),
+
+  loadAll: () => apiFetch<Unidade[]>("/unidades"),
+
+  createEntity: (entity) =>
+    apiFetch<Unidade>("/unidades", {
+      method: "POST",
+      body: serializeUnidade(entity),
+    }),
+
+  updateEntity: (entity) =>
+    apiFetch<Unidade>(`/unidades/${entity.id}`, {
+      method: "PUT",
+      body: serializeUnidade(entity),
+    }),
+
+  deleteEntity: (id) =>
+    apiFetch(`/unidades/${id}`, {
+      method: "DELETE",
+    }),
 });
 
-let state: Unidade[] = resource.getSnapshot();
+let state: Unidade[] = resource.getSnapshot().map((item) => normalizeUnidade(item as RawUnidade));
+
 const listeners = new Set<() => void>();
 
 resource.subscribe(() => {
   state = resource.getSnapshot().map((item) => normalizeUnidade(item as RawUnidade));
+
   listeners.forEach((listener) => listener());
 });
 
@@ -85,51 +113,87 @@ function replaceById(targetId: string, nextItem: Unidade) {
 export const unidadesStore = {
   subscribe(listener: () => void) {
     listeners.add(listener);
+
     return () => listeners.delete(listener);
   },
+
   getSnapshot() {
     return state;
   },
+
   load() {
     return resource.reload();
   },
+
   reload() {
     return resource.reload();
   },
+
   getById(id: string) {
     return state.find((item) => item.id === String(id)) ?? null;
   },
+
   create(data: UnidadeInput) {
     const optimisticId = `tmp-unidade-${Date.now()}`;
-    const next = normalizeUnidade({ ...data, id: optimisticId });
+
+    const next = normalizeUnidade({
+      ...data,
+      id: optimisticId,
+    });
+
     replaceState([next, ...resource.getSnapshot()]);
-    void api
-      .post<Unidade>("/unidades", serializeUnidade(next))
+
+    void apiFetch<Unidade>("/unidades", {
+      method: "POST",
+      body: serializeUnidade(next),
+    })
       .then((saved) => replaceById(optimisticId, normalizeUnidade(saved as RawUnidade)))
       .catch(async (error) => {
         console.error("[unidades-store] Falha ao criar unidade.", error);
+
         await resource.reload();
       });
+
     return next;
   },
+
   update(id: string, data: Partial<UnidadeInput>) {
     const current = state.find((item) => item.id === String(id));
-    if (!current) return null;
-    const next = normalizeUnidade({ ...current, ...data, id });
+
+    if (!current) {
+      return null;
+    }
+
+    const next = normalizeUnidade({
+      ...current,
+      ...data,
+      id,
+    });
+
     replaceState(resource.getSnapshot().map((item) => (item.id === id ? next : item)));
-    void api
-      .put<Unidade>(`/unidades/${id}`, serializeUnidade(next))
+
+    void apiFetch<Unidade>(`/unidades/${id}`, {
+      method: "PUT",
+      body: serializeUnidade(next),
+    })
       .then((saved) => replaceById(id, normalizeUnidade(saved as RawUnidade)))
       .catch(async (error) => {
         console.error("[unidades-store] Falha ao atualizar unidade.", error);
+
         await resource.reload();
       });
+
     return next;
   },
+
   remove(id: string) {
     replaceState(resource.getSnapshot().filter((item) => item.id !== String(id)));
-    void api.del(`/unidades/${id}`).catch(async (error) => {
+
+    void apiFetch(`/unidades/${id}`, {
+      method: "DELETE",
+    }).catch(async (error) => {
       console.error("[unidades-store] Falha ao remover unidade.", error);
+
       await resource.reload();
     });
   },

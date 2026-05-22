@@ -1,31 +1,31 @@
-import { useEffect, type ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { type ReactNode } from "react";
+
+import { Navigate } from "@tanstack/react-router";
+
 import { useAuth, type Role } from "@/lib/auth";
 
-export function ProtectedRoute({ children, roles }: { children: ReactNode; roles?: Role[] }) {
-  const { loading, isAuthenticated, hasRole } = useAuth();
-  const navigate = useNavigate();
-  const hasAllowedRole = !roles?.length || hasRole(...roles);
+type Props = {
+  children: ReactNode;
+  roles?: Role[];
+};
 
-  useEffect(() => {
-    if (loading) return;
+export function ProtectedRoute({ children, roles }: Props) {
+  const { loading, isAuthenticated, user, hasRole, homePath } = useAuth();
 
-    if (!isAuthenticated) {
-      navigate({ to: "/login" });
-      return;
-    }
-
-    if (!hasAllowedRole) {
-      navigate({ to: "/dashboard" });
-    }
-  }, [hasAllowedRole, isAuthenticated, loading, navigate]);
-
-  if (loading || !isAuthenticated || !hasAllowedRole) {
+  if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="text-sm font-medium text-muted-foreground">Carregando...</div>
+      <div className="flex min-h-screen items-center justify-center bg-black text-white">
+        Carregando...
       </div>
     );
+  }
+
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" />;
+  }
+
+  if (roles?.length && !hasRole(...roles)) {
+    return <Navigate to={homePath} />;
   }
 
   return <>{children}</>;

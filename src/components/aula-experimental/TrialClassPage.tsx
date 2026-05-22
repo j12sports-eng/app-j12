@@ -33,7 +33,7 @@ import {
   type TrialClass,
   type TrialClassStatus,
 } from "@/lib/trial-classes-store";
-import { MODALIDADES, type Modalidade } from "@/lib/alunos-store";
+import type { Modalidade } from "@/lib/alunos-store";
 import { TrialClassConvertDialog } from "./TrialClassConvertDialog";
 import { TrialClassDetailsDrawer } from "./TrialClassDetailsDrawer";
 import { TrialClassFormDialog } from "./TrialClassFormDialog";
@@ -80,16 +80,12 @@ export function TrialClassPage() {
     );
   }, [professores, trialClasses]);
 
-  const modalityOptions = useMemo(
+  const modalidadeOptions = useMemo(
     () =>
-      Array.from(
-        new Set([
-          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
-          ...trialClasses.map((item) => item.modality),
-          ...MODALIDADES,
-        ]),
-      ),
-    [settings.modalities, trialClasses],
+      (settings?.modalities || [])
+        .filter((item) => item.ativa)
+        .map((item) => item.nome),
+    [settings?.modalities],
   );
 
   const filtered = useMemo(() => {
@@ -337,7 +333,7 @@ export function TrialClassPage() {
               className="j12-field px-3 py-2 text-sm"
             >
               <option value="todas">Todas modalidades</option>
-              {modalityOptions.map((item) => (
+              {modalidadeOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>

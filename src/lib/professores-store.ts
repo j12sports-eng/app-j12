@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { MODALIDADES, type Modalidade } from "./alunos-store";
+import type { Modalidade } from "./alunos-store";
 import { api } from "./api";
 import { createMysqlResourceStore } from "./mysql-resource-store";
 
@@ -135,7 +135,7 @@ function dedupeStrings(values: string[]) {
 function normalizeModalidades(values: unknown, fallback?: unknown): Modalidade[] {
   const raw = Array.isArray(values) ? values : typeof fallback === "string" ? [fallback] : [];
   const normalized = dedupeStrings(raw.filter((item): item is string => typeof item === "string"));
-  return normalized.length > 0 ? (normalized as Modalidade[]) : [MODALIDADES[0]];
+  return normalized;
 }
 
 function normalizeUnidades(values: unknown, fallback?: unknown): string[] {

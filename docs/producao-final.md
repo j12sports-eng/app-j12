@@ -60,7 +60,7 @@ Para a API Node, crie `.env.api.production` com base em `.env.api.production.exa
 ```env
 NODE_ENV=production
 HOST=127.0.0.1
-PORT=4001
+PORT=3001
 CORS_ALLOWED_ORIGINS=https://app.j12sports.com.br
 HEALTH_SHOW_DETAILS=false
 ```
@@ -143,7 +143,7 @@ server {
     client_max_body_size 4m;
 
     location / {
-        proxy_pass http://127.0.0.1:4001;
+        proxy_pass http://localhost:3001;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

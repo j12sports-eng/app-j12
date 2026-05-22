@@ -1,3 +1,4 @@
+import { api } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MODALIDADES, useAlunos } from "@/lib/alunos-store";
+import { useAlunos } from "@/lib/alunos-store";
 import {
   buildVariaveis,
   contratosStore,
@@ -32,13 +33,6 @@ import { CONTRATO_TEMPLATE_J12, renderTemplate } from "@/lib/contratos-template"
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { useTurmas } from "@/lib/turmas-store";
 
-const MODALIDADES_DISPONIVEIS = ["Futsal", "Society", "Escolinha", "Goleiro"];
-const UNIDADES_DISPONIVEIS = [
-  "Pirituba â€” SP",
-  "Lapa â€” SP",
-  "Freguesia do Ã“ â€” SP",
-  "Perus â€” SP",
-];
 
 interface Props {
   open: boolean;
@@ -56,16 +50,20 @@ export function ContratoFormDialog({ open, onOpenChange, contrato }: Props) {
   const [editandoTexto, setEditandoTexto] = useState(false);
 
   const modalidadeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
-          ...turmas.map((turma) => turma.modalidade),
-          ...MODALIDADES,
-        ]),
-      ),
-    [settings.modalities, turmas],
-  );
+  () =>
+    Array.from(
+      new Set([
+        ...settings.modalities
+          .filter((item) => item.ativa)
+          .map((item) => item.nome),
+
+        ...turmas
+          .filter((turma) => turma.modalidade)
+          .map((turma) => turma.modalidade),
+      ]),
+    ),
+  [settings.modalities, turmas],
+);
 
   const unidadeOptions = useMemo(
     () =>

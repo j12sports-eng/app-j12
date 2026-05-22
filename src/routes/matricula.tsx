@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -8,18 +8,15 @@ import {
   FileImage,
   Loader2,
   ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   buildEmptyAlunoMatricula,
   calculateStudentAge,
-  getAlunoDocumentPendencies,
-  isMedicalDocumentExpired,
-  isMedicalDocumentValidityInvalid,
   type AlunoMatriculaData,
   type AlunoUploadedDocument,
 } from "@/lib/aluno-matricula";
-import { MODALIDADES, UNIDADES } from "@/lib/alunos-store";
 import { useAuth } from "@/lib/auth";
 import { branding } from "@/lib/branding";
 import {
@@ -29,6 +26,11 @@ import {
 } from "@/lib/matricula-api";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { formatDias, useTurmas } from "@/lib/turmas-store";
+import {
+  usePublicModalidades,
+  usePublicUnidades,
+  usePublicTurmas,
+} from "@/lib/public-catalog-hooks";
 
 type FormState = AlunoMatriculaData;
 type FieldErrors = Record<string, string>;
@@ -55,83 +57,32 @@ type AsyncStatus = "idle" | "loading" | "success" | "error";
 const steps: StepDefinition[] = [
   {
     title: "Dados do Aluno",
-    description: "Identificação principal e dados pessoais obrigatórios.",
+    description: "Dados pessoais essenciais e categoria/turma da matricula.",
     fields: [
       "dadosAluno.nomeCompleto",
       "dadosAluno.dataNascimento",
-      "dadosAluno.cpf",
-      "dadosAluno.rg",
       "dadosAluno.sexo",
-      "dadosAluno.colegio",
-      "dadosAluno.periodoEscolar",
+      "esportivas.horarios",
     ],
   },
   {
-    title: "Responsável",
-    description: "Dados legais e financeiros do responsável.",
+    title: "Dados do Responsavel",
+    description: "Contato principal e identificacao do responsavel.",
     fields: [
       "responsavel.nomeCompleto",
       "responsavel.cpf",
-      "responsavel.rg",
       "responsavel.whatsapp",
-      "responsavel.email",
       "responsavel.parentesco",
     ],
   },
   {
-    title: "Endereço",
-    description: "Localização completa vinculada à matrícula.",
-    fields: [
-      "endereco.cep",
-      "endereco.rua",
-      "endereco.numero",
-      "endereco.bairro",
-      "endereco.cidade",
-      "endereco.estado",
-    ],
+    title: "Informacoes Complementares",
+    description: "Campos opcionais para completar o cadastro agora ou depois.",
+    fields: [],
   },
   {
-    title: "Documentos",
-    description: "Documentos opcionais no cadastro inicial, com status posterior no perfil.",
-    fields: ["documentos.atestadoMedico"],
-  },
-  {
-    title: "Informações Esportivas",
-    description: "Vínculos esportivos com múltiplas modalidades, unidades e horários.",
-    fields: [
-      "esportivas.modalidades",
-      "esportivas.unidades",
-      "esportivas.horarios",
-      "esportivas.nivel",
-      "esportivas.treinouAntes",
-      "esportivas.caracteristica",
-      "esportivas.objetivo",
-    ],
-  },
-  {
-    title: "Saúde",
-    description: "Restrições, cuidados e observações médicas.",
-    fields: [
-      "saude.restricaoMedica",
-      "saude.medicamentos",
-      "saude.alergias",
-      "saude.lesoes",
-      "saude.planoSaude",
-      "saude.observacoesImportantes",
-    ],
-  },
-  {
-    title: "Informações Estratégicas",
-    description: "Origem do lead, indicação e contexto geral.",
-    fields: [
-      "estrategicas.comoConheceu",
-      "estrategicas.indicacaoQuem",
-      "estrategicas.observacoesGerais",
-    ],
-  },
-  {
-    title: "Revisão e Finalização",
-    description: "Conferência final antes de registrar a matrícula.",
+    title: "Revisao e Finalizacao",
+    description: "Conferencia final antes de registrar a matricula.",
     fields: [],
   },
 ];
@@ -179,10 +130,6 @@ function maskWhatsapp(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
 function toUploadedDocument(
   file: File | null,
   current: AlunoUploadedDocument | null,
@@ -198,7 +145,7 @@ function toUploadedDocument(
   };
 }
 
-function validateMatriculaForm(form: FormState): FieldErrors {
+function validateMatriculaForm(form: FormState, hasAvailableTurmas: boolean): FieldErrors {
   const errors: FieldErrors = {};
 
   const requireText = (path: string, value: string, message: string) => {
@@ -215,24 +162,14 @@ function validateMatriculaForm(form: FormState): FieldErrors {
     form.dadosAluno.dataNascimento,
     "Informe a data de nascimento.",
   );
-  requireText("dadosAluno.cpf", form.dadosAluno.cpf, "Informe o CPF do aluno.");
-  requireText("dadosAluno.rg", form.dadosAluno.rg, "Informe o RG do aluno.");
   requireText("dadosAluno.sexo", form.dadosAluno.sexo, "Selecione o sexo.");
-  requireText("dadosAluno.colegio", form.dadosAluno.colegio, "Informe o colégio.");
-  requireText(
-    "dadosAluno.periodoEscolar",
-    form.dadosAluno.periodoEscolar,
-    "Selecione o período escolar.",
-  );
 
-  if (form.dadosAluno.cpf && digitsOnly(form.dadosAluno.cpf).length !== 11) {
-    errors["dadosAluno.cpf"] = "Digite um CPF válido com 11 números.";
-  }
-  if (form.dadosAluno.rg && digitsOnly(form.dadosAluno.rg).length < 7) {
-    errors["dadosAluno.rg"] = "Digite um RG válido.";
-  }
   if (form.dadosAluno.dataNascimento && !form.dadosAluno.idade) {
     errors["dadosAluno.dataNascimento"] = "Informe uma data de nascimento válida.";
+  }
+
+  if (hasAvailableTurmas && form.esportivas.turmas.length === 0) {
+    errors["esportivas.horarios"] = "Selecione a categoria/turma.";
   }
 
   requireText(
@@ -241,13 +178,7 @@ function validateMatriculaForm(form: FormState): FieldErrors {
     "Informe o nome completo do responsável.",
   );
   requireText("responsavel.cpf", form.responsavel.cpf, "Informe o CPF do responsável.");
-  requireText("responsavel.rg", form.responsavel.rg, "Informe o RG do responsável.");
-  requireText(
-    "responsavel.whatsapp",
-    form.responsavel.whatsapp,
-    "Informe o WhatsApp do responsável.",
-  );
-  requireText("responsavel.email", form.responsavel.email, "Informe o e-mail do responsável.");
+  requireText("responsavel.whatsapp", form.responsavel.whatsapp, "Informe o telefone principal.");
   requireText(
     "responsavel.parentesco",
     form.responsavel.parentesco,
@@ -257,92 +188,9 @@ function validateMatriculaForm(form: FormState): FieldErrors {
   if (form.responsavel.cpf && digitsOnly(form.responsavel.cpf).length !== 11) {
     errors["responsavel.cpf"] = "Digite um CPF válido com 11 números.";
   }
-  if (form.responsavel.rg && digitsOnly(form.responsavel.rg).length < 7) {
-    errors["responsavel.rg"] = "Digite um RG válido.";
-  }
   if (form.responsavel.whatsapp && digitsOnly(form.responsavel.whatsapp).length < 10) {
-    errors["responsavel.whatsapp"] = "Digite um WhatsApp válido com DDD.";
+    errors["responsavel.whatsapp"] = "Digite um telefone válido com DDD.";
   }
-  if (form.responsavel.email && !isValidEmail(form.responsavel.email)) {
-    errors["responsavel.email"] = "Informe um e-mail válido.";
-  }
-
-  requireText("endereco.cep", form.endereco.cep, "Informe o CEP.");
-  requireText("endereco.rua", form.endereco.rua, "Informe a rua.");
-  requireText("endereco.numero", form.endereco.numero, "Informe o número.");
-  requireText("endereco.bairro", form.endereco.bairro, "Informe o bairro.");
-  requireText("endereco.cidade", form.endereco.cidade, "Informe a cidade.");
-  requireText("endereco.estado", form.endereco.estado, "Informe o estado.");
-
-  if (form.endereco.cep && digitsOnly(form.endereco.cep).length !== 8) {
-    errors["endereco.cep"] = "Digite um CEP válido com 8 números.";
-  }
-
-  if (form.documentos.atestadoMedico) {
-    if (!form.documentos.atestadoMedico.expiresAt) {
-      errors["documentos.atestadoMedico"] =
-        "Informe a validade do atestado médico quando o arquivo for anexado.";
-    } else if (isMedicalDocumentExpired(form.documentos.atestadoMedico)) {
-      errors["documentos.atestadoMedico"] =
-        "O atestado médico anexado está vencido. Atualize a validade.";
-    } else if (isMedicalDocumentValidityInvalid(form.documentos.atestadoMedico)) {
-      errors["documentos.atestadoMedico"] =
-        "A validade do atestado médico deve ser de no máximo 1 ano.";
-    }
-  }
-
-  if (form.esportivas.modalidades.length === 0) {
-    errors["esportivas.modalidades"] = "Selecione pelo menos uma modalidade.";
-  }
-  if (form.esportivas.unidades.length === 0) {
-    errors["esportivas.unidades"] = "Selecione pelo menos uma unidade.";
-  }
-  if (form.esportivas.horarios.length === 0 || form.esportivas.turmas.length === 0) {
-    errors["esportivas.horarios"] = "Selecione pelo menos um horário disponível.";
-  }
-  requireText("esportivas.nivel", form.esportivas.nivel, "Selecione o nível.");
-  requireText(
-    "esportivas.treinouAntes",
-    form.esportivas.treinouAntes,
-    "Informe se o aluno já treinou antes.",
-  );
-  requireText(
-    "esportivas.caracteristica",
-    form.esportivas.caracteristica,
-    "Selecione a característica principal.",
-  );
-  requireText("esportivas.objetivo", form.esportivas.objetivo, "Selecione o objetivo esportivo.");
-
-  requireText(
-    "saude.restricaoMedica",
-    form.saude.restricaoMedica,
-    "Informe as restrições médicas.",
-  );
-  requireText("saude.medicamentos", form.saude.medicamentos, "Informe os medicamentos em uso.");
-  requireText("saude.alergias", form.saude.alergias, "Informe as alergias.");
-  requireText("saude.lesoes", form.saude.lesoes, "Informe o histórico de lesões.");
-  requireText("saude.planoSaude", form.saude.planoSaude, "Informe o plano de saúde.");
-  requireText(
-    "saude.observacoesImportantes",
-    form.saude.observacoesImportantes,
-    "Informe as observações importantes.",
-  );
-
-  requireText(
-    "estrategicas.comoConheceu",
-    form.estrategicas.comoConheceu,
-    "Informe como conheceu a J12.",
-  );
-  requireText(
-    "estrategicas.indicacaoQuem",
-    form.estrategicas.indicacaoQuem,
-    "Informe a indicação.",
-  );
-  requireText(
-    "estrategicas.observacoesGerais",
-    form.estrategicas.observacoesGerais,
-    "Informe as observações gerais.",
-  );
 
   return errors;
 }
@@ -357,6 +205,16 @@ function MatriculaPage() {
   const settings = useSettingsState();
   const turmas = useTurmas();
 
+  // ===== NOVOS HOOKS PÚBLICOS =====
+  const publicModalidades = usePublicModalidades();
+  const publicUnidades = usePublicUnidades();
+  const publicTurmas = usePublicTurmas();
+
+  // Estados de carregamento
+  const isLoadingCatalog =
+    publicModalidades.isPending || publicUnidades.isPending || publicTurmas.isPending;
+  const catalogError = publicModalidades.error || publicUnidades.error || publicTurmas.error;
+
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(() => buildEmptyAlunoMatricula());
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -370,41 +228,114 @@ function MatriculaPage() {
   const [cepLookupStatus, setCepLookupStatus] = useState<AsyncStatus>("idle");
   const [cepLookupMessage, setCepLookupMessage] = useState("");
   const lastFetchedCepRef = useRef("");
+  const catalogErrorNotifiedRef = useRef(false);
+
+  // ===== DADOS CONSOLIDADOS =====
+  // Usa dados públicos com fallback para settings/turmas
+  const consolidatedModalidades = useMemo(() => {
+    const publicData = publicModalidades.data || [];
+    const settingsData = settings.modalities || [];
+
+    // Log de debug
+    if (publicData.length > 0 || settingsData.length > 0) {
+      console.log("[MATRICULA] Modalidades consolidadas:", {
+        public: publicData.length,
+        settings: settingsData.length,
+        total: [...publicData, ...settingsData].length,
+      });
+    }
+
+    // Combina e remove duplicatas por nome
+    const all = [...publicData, ...settingsData];
+    const byName = new Map();
+    all.forEach((item) => {
+      const nome = item.nome || item.name;
+      if (nome && !byName.has(nome)) {
+        byName.set(nome, item);
+      }
+    });
+
+    return Array.from(byName.values()).filter((item) => item.ativa !== false);
+  }, [publicModalidades.data, settings.modalities]);
+
+  const consolidatedUnidades = useMemo(() => {
+    const publicData = publicUnidades.data || [];
+    const settingsData = settings.units || [];
+
+    if (publicData.length > 0 || settingsData.length > 0) {
+      console.log("[MATRICULA] Unidades consolidadas:", {
+        public: publicData.length,
+        settings: settingsData.length,
+        total: [...publicData, ...settingsData].length,
+      });
+    }
+
+    const all = [...publicData, ...settingsData];
+    const byName = new Map();
+    all.forEach((item) => {
+      const nome = item.nome || item.name;
+      if (nome && !byName.has(nome)) {
+        byName.set(nome, item);
+      }
+    });
+
+    return Array.from(byName.values()).filter((item) => item.ativa !== false);
+  }, [publicUnidades.data, settings.units]);
+
+  const consolidatedTurmas = useMemo(() => {
+    const publicData = publicTurmas.data || [];
+    const localData = turmas || [];
+
+    if (publicData.length > 0 || localData.length > 0) {
+      console.log("[MATRICULA] Turmas consolidadas:", {
+        public: publicData.length,
+        local: localData.length,
+        total: [...publicData, ...localData].length,
+      });
+    }
+
+    const all = [...publicData, ...localData];
+    const byId = new Map();
+    all.forEach((item) => {
+      const id = item.id || item.nome;
+      if (id && !byId.has(id)) {
+        byId.set(id, item);
+      }
+    });
+
+    return Array.from(byId.values()).filter((item) => item.ativa !== false);
+  }, [publicTurmas.data, turmas]);
 
   const modalityOptions = useMemo(
-    () =>
-      uniqueValues([
-        ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
-        ...turmas.map((turma) => turma.modalidade),
-        ...MODALIDADES,
-      ]),
-    [settings.modalities, turmas],
+    () => uniqueValues([...consolidatedModalidades.map((item) => item.nome)]),
+    [consolidatedModalidades],
   );
 
   const unitOptions = useMemo(
-    () =>
-      uniqueValues([
-        ...settings.units.map((unit) => unit.nome),
-        ...turmas.map((turma) => turma.unidade),
-        ...UNIDADES,
-      ]),
-    [settings.units, turmas],
+    () => uniqueValues([...consolidatedUnidades.map((unit) => unit.nome)]),
+    [consolidatedUnidades],
   );
 
-  const horarioOptions = useMemo<HorarioOption[]>(
-    () =>
-      turmas
-        .filter((turma) => turma.ativa)
-        .map((turma) => ({
-          turmaId: turma.id,
-          turmaNome: turma.nome,
-          modalidade: turma.modalidade,
-          unidade: turma.unidade,
-          horarioLabel: `${turma.horarioInicio} - ${turma.horarioFim}`,
-          description: `${formatDias(turma.diasSemana)} · ${turma.unidade} · ${turma.professor}`,
-        })),
-    [turmas],
-  );
+  const horarioOptions = useMemo<HorarioOption[]>(() => {
+    const filtered = consolidatedTurmas.filter((turma) => turma.ativa !== false);
+    return filtered.map((turma) => {
+      const diasSemana = turma.diasSemana || [];
+      const horarioInicio = turma.horarioInicio || "00:00";
+      const horarioFim = turma.horarioFim || "23:59";
+      const professor = turma.professor || "Professor não informado";
+      const unidade = turma.unidade || "Unidade não informada";
+      const modalidade = turma.modalidade || "Modalidade não informada";
+
+      return {
+        turmaId: turma.id,
+        turmaNome: turma.nome,
+        modalidade,
+        unidade,
+        horarioLabel: `${horarioInicio} - ${horarioFim}`,
+        description: `${formatDias(diasSemana)} · ${unidade} · ${professor}`,
+      };
+    });
+  }, [consolidatedTurmas]);
 
   const filteredHorarioOptions = useMemo(() => {
     return horarioOptions.filter((option) => {
@@ -416,8 +347,56 @@ function MatriculaPage() {
       return matchesModalidade && matchesUnidade;
     });
   }, [horarioOptions, form.esportivas.modalidades, form.esportivas.unidades]);
+  const hasAvailableTurmas = horarioOptions.length > 0;
 
-  const allErrors = useMemo(() => validateMatriculaForm(form), [form]);
+  useEffect(() => {
+    if (!catalogError) {
+      catalogErrorNotifiedRef.current = false;
+      return;
+    }
+
+    if (!catalogErrorNotifiedRef.current) {
+      toast.error("Erro ao carregar categorias.");
+      catalogErrorNotifiedRef.current = true;
+    }
+  }, [catalogError]);
+
+  useEffect(() => {
+    console.log("Categorias carregadas:", horarioOptions);
+  }, [horarioOptions]);
+
+  // DEBUG LOGS - Remover após verificar
+  useEffect(() => {
+    console.log("[MATRICULA DEBUG]");
+    console.log("isLoadingCatalog:", isLoadingCatalog);
+    console.log("catalogError:", catalogError);
+    console.log("Settings:", settings);
+    console.log("Turmas:", turmas);
+    console.log("Consolidated Modalidades:", consolidatedModalidades);
+    console.log("Consolidated Unidades:", consolidatedUnidades);
+    console.log("Consolidated Turmas:", consolidatedTurmas);
+    console.log("Modalidades (options):", modalityOptions);
+    console.log("Unidades (options):", unitOptions);
+    console.log("Horários (options):", horarioOptions);
+    console.log("Horários filtrados:", filteredHorarioOptions);
+  }, [
+    settings,
+    turmas,
+    consolidatedModalidades,
+    consolidatedUnidades,
+    consolidatedTurmas,
+    modalityOptions,
+    unitOptions,
+    horarioOptions,
+    filteredHorarioOptions,
+    isLoadingCatalog,
+    catalogError,
+  ]);
+
+  const allErrors = useMemo(
+    () => validateMatriculaForm(form, hasAvailableTurmas),
+    [form, hasAvailableTurmas],
+  );
   const currentStepErrors = useMemo(
     () =>
       uniqueValues(
@@ -428,7 +407,10 @@ function MatriculaPage() {
     [allErrors, step],
   );
 
-  const documentPendencies = useMemo(() => getAlunoDocumentPendencies(form), [form]);
+  const attachedDocumentsCount = useMemo(
+    () => Object.values(form.documentos).filter(Boolean).length,
+    [form.documentos],
+  );
   const progress = ((step + 1) / steps.length) * 100;
 
   useEffect(() => {
@@ -648,32 +630,29 @@ function MatriculaPage() {
     markTouched([fieldPath, "esportivas.horarios"]);
   }
 
-  function toggleHorario(option: HorarioOption) {
+  function selectTurma(turmaId: string) {
+    const option = horarioOptions.find((item) => item.turmaId === turmaId);
+
     setForm((current) => {
-      const alreadySelected = current.esportivas.turmas.includes(option.turmaNome);
-      const turmasSelecionadas = alreadySelected
-        ? current.esportivas.turmas.filter((turma) => turma !== option.turmaNome)
-        : [...current.esportivas.turmas, option.turmaNome];
-
-      const modalidadesSelecionadas = alreadySelected
-        ? current.esportivas.modalidades
-        : uniqueValues([...current.esportivas.modalidades, option.modalidade]);
-      const unidadesSelecionadas = alreadySelected
-        ? current.esportivas.unidades
-        : uniqueValues([...current.esportivas.unidades, option.unidade]);
-
-      const horariosSelecionados = horarioOptions
-        .filter((item) => turmasSelecionadas.includes(item.turmaNome))
-        .map((item) => item.horarioLabel);
+      if (!option) {
+        return {
+          ...current,
+          esportivas: {
+            ...current.esportivas,
+            turmas: [],
+            horarios: [],
+          },
+        };
+      }
 
       return {
         ...current,
         esportivas: {
           ...current.esportivas,
-          modalidades: modalidadesSelecionadas,
-          unidades: unidadesSelecionadas,
-          turmas: turmasSelecionadas,
-          horarios: uniqueValues(horariosSelecionados),
+          modalidades: uniqueValues([...current.esportivas.modalidades, option.modalidade]),
+          unidades: uniqueValues([...current.esportivas.unidades, option.unidade]),
+          turmas: [option.turmaNome],
+          horarios: [option.horarioLabel],
         },
       };
     });
@@ -729,6 +708,11 @@ function MatriculaPage() {
   }
 
   function goNext() {
+    if (step === 0 && isLoadingCatalog) {
+      toast.info("Aguarde carregar categorias.");
+      return;
+    }
+
     const fields = steps[step].fields;
     markTouched(fields);
 
@@ -983,11 +967,27 @@ function MatriculaPage() {
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-right">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">
-                  Pendência documental
+                  Documentos anexados
                 </div>
-                <div className="mt-1 text-lg font-bold text-white">{documentPendencies.length}</div>
+                <div className="mt-1 text-lg font-bold text-white">{attachedDocumentsCount}</div>
               </div>
             </div>
+
+            {/* Indicador de carregamento de catálogo */}
+            {isLoadingCatalog && step === 0 && (
+              <div className="mb-5 rounded-3xl border border-blue-500/25 bg-blue-500/10 px-4 py-4 text-sm text-blue-100 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Carregando categorias e turmas...</span>
+              </div>
+            )}
+
+            {/* Indicador de erro de catálogo */}
+            {catalogError && step === 0 && (
+              <div className="mb-5 rounded-3xl border border-red-500/25 bg-red-500/10 px-4 py-4 text-sm text-red-100 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                <span>Erro ao carregar dados cadastrados. Tentando novamente...</span>
+              </div>
+            )}
 
             {currentStepErrors.length > 0 && (
               <div className="mb-5 rounded-3xl border border-amber-500/25 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
@@ -1007,13 +1007,26 @@ function MatriculaPage() {
 
             <div className="space-y-6">
               {step === 0 && (
-                <StepStudent
-                  form={form}
-                  updateSection={updateSection}
-                  getFieldError={getFieldError}
-                  enrollmentNumberStatus={enrollmentNumberStatus}
-                  enrollmentNumberMessage={enrollmentNumberMessage}
-                />
+                <>
+                  <StepStudent
+                    form={form}
+                    updateSection={updateSection}
+                    getFieldError={getFieldError}
+                    enrollmentNumberStatus={enrollmentNumberStatus}
+                    enrollmentNumberMessage={enrollmentNumberMessage}
+                  />
+                  <StepClassSelection
+                    form={form}
+                    modalityOptions={modalityOptions}
+                    unitOptions={unitOptions}
+                    hasAnyTurma={hasAvailableTurmas}
+                    filteredHorarioOptions={filteredHorarioOptions}
+                    toggleSimpleArray={toggleSimpleArray}
+                    selectTurma={selectTurma}
+                    getFieldError={getFieldError}
+                    isLoading={isLoadingCatalog}
+                  />
+                </>
               )}
               {step === 1 && (
                 <StepGuardian
@@ -1023,52 +1036,19 @@ function MatriculaPage() {
                 />
               )}
               {step === 2 && (
-                <StepAddress
+                <StepComplementary
                   form={form}
                   updateSection={updateSection}
                   getFieldError={getFieldError}
                   cepLookupStatus={cepLookupStatus}
                   cepLookupMessage={cepLookupMessage}
-                />
-              )}
-              {step === 3 && (
-                <StepDocuments
-                  form={form}
                   photoPreview={photoPreview}
                   handlePhotoChange={handlePhotoChange}
                   handleDocumentChange={handleDocumentChange}
                   updateMedicalExpiry={updateMedicalExpiry}
-                  getFieldError={getFieldError}
-                  documentPendencies={documentPendencies}
                 />
               )}
-              {step === 4 && (
-                <StepSports
-                  form={form}
-                  modalityOptions={modalityOptions}
-                  unitOptions={unitOptions}
-                  filteredHorarioOptions={filteredHorarioOptions}
-                  toggleSimpleArray={toggleSimpleArray}
-                  toggleHorario={toggleHorario}
-                  updateSection={updateSection}
-                  getFieldError={getFieldError}
-                />
-              )}
-              {step === 5 && (
-                <StepHealth
-                  form={form}
-                  updateSection={updateSection}
-                  getFieldError={getFieldError}
-                />
-              )}
-              {step === 6 && (
-                <StepStrategy
-                  form={form}
-                  updateSection={updateSection}
-                  getFieldError={getFieldError}
-                />
-              )}
-              {step === 7 && <StepReview form={form} documentPendencies={documentPendencies} />}
+              {step === 3 && <StepReview form={form} />}
             </div>
 
             <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-6">
@@ -1086,11 +1066,21 @@ function MatriculaPage() {
                 <button
                   type="button"
                   onClick={goNext}
-                  className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition"
+                  disabled={step === 0 && isLoadingCatalog}
+                  className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ background: "linear-gradient(135deg,#ff6b00,#ff8f47)" }}
                 >
-                  Próxima etapa
-                  <ArrowRight className="h-4 w-4" />
+                  {step === 0 && isLoadingCatalog ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Carregando categorias...
+                    </>
+                  ) : (
+                    <>
+                      Próxima etapa
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
                 </button>
               ) : (
                 <button
@@ -1144,6 +1134,15 @@ function InputField({
   required?: boolean;
   helper?: string;
 }) {
+  const isOptional = !required && !disabled && !readOnly;
+  const helpText = isOptional
+    ? helper?.toLowerCase().includes("opcional")
+      ? helper
+      : helper
+        ? `Opcional. ${helper}`
+        : "Opcional"
+    : helper || "";
+
   return (
     <label className="block space-y-2">
       <span className="text-sm font-medium text-white/88">
@@ -1168,7 +1167,7 @@ function InputField({
                 : "border-white/10 bg-[#101010] text-white focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15"
         }`}
       />
-      {helper ? <p className="text-xs text-white/40">{helper}</p> : null}
+      {helpText ? <p className="text-xs text-white/40">{helpText}</p> : null}
       {error ? <p className="text-xs text-rose-300">{error}</p> : null}
     </label>
   );
@@ -1189,6 +1188,8 @@ function SelectField({
   error?: string;
   required?: boolean;
 }) {
+  const helpText = !required ? "Opcional" : "";
+
   return (
     <label className="block space-y-2">
       <span className="text-sm font-medium text-white/88">
@@ -1212,6 +1213,7 @@ function SelectField({
           </option>
         ))}
       </select>
+      {helpText ? <p className="text-xs text-white/40">{helpText}</p> : null}
       {error ? <p className="text-xs text-rose-300">{error}</p> : null}
     </label>
   );
@@ -1232,6 +1234,8 @@ function TextareaField({
   error?: string;
   required?: boolean;
 }) {
+  const helpText = !required ? "Opcional" : "";
+
   return (
     <label className="block space-y-2">
       <span className="text-sm font-medium text-white/88">
@@ -1250,6 +1254,7 @@ function TextareaField({
             : "border-white/10 bg-white/[0.03] text-white focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15"
         }`}
       />
+      {helpText ? <p className="text-xs text-white/40">{helpText}</p> : null}
       {error ? <p className="text-xs text-rose-300">{error}</p> : null}
     </label>
   );
@@ -1260,20 +1265,25 @@ function MultiSelectCard({
   description,
   checked,
   onToggle,
+  disabled,
 }: {
   label: string;
   description?: string;
   checked: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      disabled={disabled}
       className={`rounded-3xl border p-4 text-left transition ${
-        checked
-          ? "border-[#ff6b00]/50 bg-[#ff6b00]/12"
-          : "border-white/10 bg-white/[0.03] hover:border-white/20"
+        disabled
+          ? "border-white/5 bg-white/[0.02] cursor-not-allowed opacity-50"
+          : checked
+            ? "border-[#ff6b00]/50 bg-[#ff6b00]/12"
+            : "border-white/10 bg-white/[0.03] hover:border-white/20"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -1321,7 +1331,13 @@ function FileField({
         onChange={(event) => onChange(event.target.files?.[0] ?? null)}
         className="block w-full text-sm text-white file:mr-4 file:rounded-xl file:border-0 file:bg-[#ff6b00] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#ff4500]"
       />
-      {helper ? <p className="mt-2 text-xs text-white/45">{helper}</p> : null}
+      <p className="mt-2 text-xs text-white/45">
+        {helper?.toLowerCase().includes("opcional")
+          ? helper
+          : helper
+            ? `Opcional. ${helper}`
+            : "Opcional"}
+      </p>
       {file ? <p className="mt-3 text-xs text-[#ffb07e]">Arquivo: {file.name}</p> : null}
       {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
     </label>
@@ -1390,7 +1406,6 @@ function StepStudent({
       />
       <InputField
         label="CPF"
-        required
         value={form.dadosAluno.cpf}
         onChange={(value) =>
           updateSection("dadosAluno", { cpf: maskCpf(value) }, ["dadosAluno.cpf"])
@@ -1399,7 +1414,6 @@ function StepStudent({
       />
       <InputField
         label="RG"
-        required
         value={form.dadosAluno.rg}
         onChange={(value) => updateSection("dadosAluno", { rg: maskRg(value) }, ["dadosAluno.rg"])}
         error={getFieldError("dadosAluno.rg")}
@@ -1414,7 +1428,6 @@ function StepStudent({
       />
       <InputField
         label="Nome do colégio"
-        required
         value={form.dadosAluno.colegio}
         onChange={(value) =>
           updateSection("dadosAluno", { colegio: value }, ["dadosAluno.colegio"])
@@ -1423,7 +1436,6 @@ function StepStudent({
       />
       <SelectField
         label="Período escolar"
-        required
         value={form.dadosAluno.periodoEscolar}
         onChange={(value) =>
           updateSection("dadosAluno", { periodoEscolar: value }, ["dadosAluno.periodoEscolar"])
@@ -1475,7 +1487,6 @@ function StepGuardian({
         />
         <InputField
           label="RG do responsável"
-          required
           value={form.responsavel.rg}
           onChange={(value) =>
             updateSection("responsavel", { rg: maskRg(value) }, ["responsavel.rg"])
@@ -1483,7 +1494,7 @@ function StepGuardian({
           error={getFieldError("responsavel.rg")}
         />
         <InputField
-          label="WhatsApp"
+          label="Telefone principal"
           required
           value={form.responsavel.whatsapp}
           onChange={(value) =>
@@ -1495,7 +1506,6 @@ function StepGuardian({
         />
         <InputField
           label="E-mail"
-          required
           type="email"
           value={form.responsavel.email}
           onChange={(value) =>
@@ -1554,7 +1564,6 @@ function StepAddress({
       <div className="grid gap-4 md:grid-cols-2">
         <InputField
           label="CEP"
-          required
           value={form.endereco.cep}
           onChange={(value) => updateSection("endereco", { cep: maskCep(value) }, ["endereco.cep"])}
           error={getFieldError("endereco.cep")}
@@ -1562,14 +1571,12 @@ function StepAddress({
         />
         <InputField
           label="Rua"
-          required
           value={form.endereco.rua}
           onChange={(value) => updateSection("endereco", { rua: value }, ["endereco.rua"])}
           error={getFieldError("endereco.rua")}
         />
         <InputField
           label="Número"
-          required
           value={form.endereco.numero}
           onChange={(value) => updateSection("endereco", { numero: value }, ["endereco.numero"])}
           error={getFieldError("endereco.numero")}
@@ -1585,21 +1592,18 @@ function StepAddress({
         />
         <InputField
           label="Bairro"
-          required
           value={form.endereco.bairro}
           onChange={(value) => updateSection("endereco", { bairro: value }, ["endereco.bairro"])}
           error={getFieldError("endereco.bairro")}
         />
         <InputField
           label="Cidade"
-          required
           value={form.endereco.cidade}
           onChange={(value) => updateSection("endereco", { cidade: value }, ["endereco.cidade"])}
           error={getFieldError("endereco.cidade")}
         />
         <InputField
           label="Estado"
-          required
           value={form.endereco.estado}
           onChange={(value) => updateSection("endereco", { estado: value }, ["endereco.estado"])}
           error={getFieldError("endereco.estado")}
@@ -1616,7 +1620,6 @@ function StepDocuments({
   handleDocumentChange,
   updateMedicalExpiry,
   getFieldError,
-  documentPendencies,
 }: {
   form: FormState;
   photoPreview: string;
@@ -1624,13 +1627,12 @@ function StepDocuments({
   handleDocumentChange: (field: UploadedDocumentField, file: File | null) => void;
   updateMedicalExpiry: (value: string) => void;
   getFieldError: (field: string) => string;
-  documentPendencies: string[];
 }) {
   return (
     <div className="space-y-6">
       <div className="rounded-3xl border border-white/10 bg-black/20 px-4 py-4 text-sm leading-6 text-white/70">
-        Os documentos podem ser preenchidos depois. Enquanto houver pendências, o perfil do aluno
-        exibirá um alerta discreto de <strong className="text-white">pendência documental</strong>.
+        Documentos e foto sao opcionais na matricula inicial e podem ser anexados depois no perfil
+        do aluno.
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
@@ -1691,47 +1693,166 @@ function StepDocuments({
               value={form.documentos.atestadoMedico?.expiresAt ?? ""}
               onChange={updateMedicalExpiry}
               error={getFieldError("documentos.atestadoMedico")}
-              helper="A validade é usada para gerar a pendência documental automática."
+              helper="Opcional."
             />
           </div>
         </div>
       </div>
-
-      {documentPendencies.length > 0 && (
-        <div className="rounded-3xl border border-amber-500/25 bg-amber-500/10 p-4">
-          <div className="text-sm font-semibold text-amber-100">Pendências atuais</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {documentPendencies.map((item) => (
-              <span
-                key={item}
-                className="rounded-full border border-amber-500/20 bg-black/10 px-3 py-1 text-[11px] text-amber-100"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function StepSports({
+function StepClassSelection({
   form,
   modalityOptions,
   unitOptions,
+  hasAnyTurma,
   filteredHorarioOptions,
   toggleSimpleArray,
-  toggleHorario,
-  updateSection,
+  selectTurma,
   getFieldError,
+  isLoading,
 }: {
   form: FormState;
   modalityOptions: string[];
   unitOptions: string[];
+  hasAnyTurma: boolean;
   filteredHorarioOptions: HorarioOption[];
   toggleSimpleArray: (key: "modalidades" | "unidades", value: string, fieldPath: string) => void;
-  toggleHorario: (option: HorarioOption) => void;
+  selectTurma: (turmaId: string) => void;
+  getFieldError: (field: string) => string;
+  isLoading?: boolean;
+}) {
+  const selectedTurmaId =
+    filteredHorarioOptions.find((option) => form.esportivas.turmas.includes(option.turmaNome))
+      ?.turmaId ?? "";
+
+  return (
+    <div
+      className="space-y-6 opacity-75 pointer-events-auto"
+      style={isLoading ? { opacity: 0.6 } : {}}
+    >
+      <div>
+        <div className="mb-3 text-sm font-medium text-white/88 flex items-center gap-2">
+          Modalidades
+          <span className="text-xs font-normal text-white/40">Opcional</span>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {modalityOptions.length === 0 ? (
+            <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
+              {isLoading ? "Carregando modalidades..." : "Nenhuma modalidade disponível"}
+            </div>
+          ) : (
+            modalityOptions.map((option) => (
+              <MultiSelectCard
+                key={option}
+                label={option}
+                checked={form.esportivas.modalidades.includes(option)}
+                onToggle={() => toggleSimpleArray("modalidades", option, "esportivas.modalidades")}
+                disabled={isLoading}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-3 text-sm font-medium text-white/88 flex items-center gap-2">
+          Unidades
+          <span className="text-xs font-normal text-white/40">Opcional</span>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {unitOptions.length === 0 ? (
+            <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
+              {isLoading ? "Carregando unidades..." : "Nenhuma unidade disponível"}
+            </div>
+          ) : (
+            unitOptions.map((option) => (
+              <MultiSelectCard
+                key={option}
+                label={option}
+                checked={form.esportivas.unidades.includes(option)}
+                onToggle={() => toggleSimpleArray("unidades", option, "esportivas.unidades")}
+                disabled={isLoading}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-3 text-sm font-medium text-white/88 flex items-center gap-2">
+          Categoria/Turma
+          {hasAnyTurma ? <span className="text-[#ff9f6b]">*</span> : null}
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+        </div>
+        {isLoading ? (
+          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
+            Carregando categorias...
+          </div>
+        ) : !hasAnyTurma ? (
+          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
+            Nenhuma turma cadastrada no momento.
+          </div>
+        ) : filteredHorarioOptions.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
+            Nenhuma turma encontrada para os filtros selecionados. Remova modalidade ou unidade para
+            ver todas as turmas ativas.
+          </div>
+        ) : (
+          <label className="block space-y-2">
+            <select
+              value={selectedTurmaId}
+              onChange={(event) => selectTurma(event.target.value)}
+              aria-invalid={Boolean(getFieldError("esportivas.horarios"))}
+              className={`h-[52px] w-full rounded-2xl border px-4 text-sm outline-none transition ${
+                getFieldError("esportivas.horarios")
+                  ? "border-rose-500/70 bg-rose-500/10 text-white focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10"
+                  : "border-white/10 bg-[#101010] text-white focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15"
+              }`}
+            >
+              <option value="">Selecione uma categoria</option>
+              {filteredHorarioOptions.map((option) => (
+                <option key={option.turmaId} value={option.turmaId}>
+                  {option.turmaNome} - {option.horarioLabel} - {option.modalidade}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-white/40">
+              Selecione uma turma ativa. Sem filtros, todas as turmas cadastradas aparecem aqui.
+            </p>
+          </label>
+        )}
+        {filteredHorarioOptions.length > 0 ? (
+          <div className="mt-3 grid gap-3">
+            {filteredHorarioOptions.map((option) => (
+              <MultiSelectCard
+                key={option.turmaId}
+                label={`${option.turmaNome} · ${option.horarioLabel}`}
+                description={`${option.modalidade} · ${option.description}`}
+                checked={form.esportivas.turmas.includes(option.turmaNome)}
+                onToggle={() => selectTurma(option.turmaId)}
+                disabled={isLoading}
+              />
+            ))}
+          </div>
+        ) : null}
+        {getFieldError("esportivas.horarios") ? (
+          <p className="mt-2 text-xs text-rose-300">{getFieldError("esportivas.horarios")}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StepSportsComplement({
+  form,
+  updateSection,
+  getFieldError,
+}: {
+  form: FormState;
   updateSection: <K extends keyof FormState>(
     section: K,
     partial: Partial<FormState[K]>,
@@ -1740,106 +1861,41 @@ function StepSports({
   getFieldError: (field: string) => string;
 }) {
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="mb-3 text-sm font-medium text-white/88">Modalidades *</div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {modalityOptions.map((option) => (
-            <MultiSelectCard
-              key={option}
-              label={option}
-              checked={form.esportivas.modalidades.includes(option)}
-              onToggle={() => toggleSimpleArray("modalidades", option, "esportivas.modalidades")}
-            />
-          ))}
-        </div>
-        {getFieldError("esportivas.modalidades") ? (
-          <p className="mt-2 text-xs text-rose-300">{getFieldError("esportivas.modalidades")}</p>
-        ) : null}
-      </div>
-
-      <div>
-        <div className="mb-3 text-sm font-medium text-white/88">Unidades *</div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {unitOptions.map((option) => (
-            <MultiSelectCard
-              key={option}
-              label={option}
-              checked={form.esportivas.unidades.includes(option)}
-              onToggle={() => toggleSimpleArray("unidades", option, "esportivas.unidades")}
-            />
-          ))}
-        </div>
-        {getFieldError("esportivas.unidades") ? (
-          <p className="mt-2 text-xs text-rose-300">{getFieldError("esportivas.unidades")}</p>
-        ) : null}
-      </div>
-
-      <div>
-        <div className="mb-3 text-sm font-medium text-white/88">Horários disponíveis *</div>
-        {filteredHorarioOptions.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
-            Nenhum horário disponível para a combinação atual. Ajuste modalidades e unidades para
-            liberar horários cadastrados.
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {filteredHorarioOptions.map((option) => (
-              <MultiSelectCard
-                key={option.turmaId}
-                label={`${option.turmaNome} · ${option.horarioLabel}`}
-                description={`${option.modalidade} · ${option.description}`}
-                checked={form.esportivas.turmas.includes(option.turmaNome)}
-                onToggle={() => toggleHorario(option)}
-              />
-            ))}
-          </div>
-        )}
-        {getFieldError("esportivas.horarios") ? (
-          <p className="mt-2 text-xs text-rose-300">{getFieldError("esportivas.horarios")}</p>
-        ) : null}
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <SelectField
-          label="Nível"
-          required
-          value={form.esportivas.nivel}
-          onChange={(value) => updateSection("esportivas", { nivel: value }, ["esportivas.nivel"])}
-          options={["Iniciante", "Intermediário", "Avançado"]}
-          error={getFieldError("esportivas.nivel")}
-        />
-        <SelectField
-          label="Já treinou antes?"
-          required
-          value={form.esportivas.treinouAntes}
-          onChange={(value) =>
-            updateSection("esportivas", { treinouAntes: value }, ["esportivas.treinouAntes"])
-          }
-          options={["Sim", "Não"]}
-          error={getFieldError("esportivas.treinouAntes")}
-        />
-        <SelectField
-          label="Característica"
-          required
-          value={form.esportivas.caracteristica}
-          onChange={(value) =>
-            updateSection("esportivas", { caracteristica: value }, ["esportivas.caracteristica"])
-          }
-          options={["Ofensivo", "Defensivo", "Equilibrado"]}
-          error={getFieldError("esportivas.caracteristica")}
-        />
-        <SelectField
-          label="Objetivo"
-          required
-          value={form.esportivas.objetivo}
-          onChange={(value) =>
-            updateSection("esportivas", { objetivo: value }, ["esportivas.objetivo"])
-          }
-          options={["Lazer", "Desenvolvimento", "Competição"]}
-          error={getFieldError("esportivas.objetivo")}
-        />
-      </div>
+    <div className="grid gap-4 md:grid-cols-2">
+      <SelectField
+        label="Nivel"
+        value={form.esportivas.nivel}
+        onChange={(value) => updateSection("esportivas", { nivel: value }, ["esportivas.nivel"])}
+        options={["Iniciante", "Intermediario", "Avancado"]}
+        error={getFieldError("esportivas.nivel")}
+      />
+      <SelectField
+        label="Ja treinou antes?"
+        value={form.esportivas.treinouAntes}
+        onChange={(value) =>
+          updateSection("esportivas", { treinouAntes: value }, ["esportivas.treinouAntes"])
+        }
+        options={["Sim", "Nao"]}
+        error={getFieldError("esportivas.treinouAntes")}
+      />
+      <SelectField
+        label="Caracteristica"
+        value={form.esportivas.caracteristica}
+        onChange={(value) =>
+          updateSection("esportivas", { caracteristica: value }, ["esportivas.caracteristica"])
+        }
+        options={["Ofensivo", "Defensivo", "Equilibrado"]}
+        error={getFieldError("esportivas.caracteristica")}
+      />
+      <SelectField
+        label="Objetivo"
+        value={form.esportivas.objetivo}
+        onChange={(value) =>
+          updateSection("esportivas", { objetivo: value }, ["esportivas.objetivo"])
+        }
+        options={["Lazer", "Desenvolvimento", "Competicao"]}
+        error={getFieldError("esportivas.objetivo")}
+      />
     </div>
   );
 }
@@ -1861,7 +1917,6 @@ function StepHealth({
     <div className="grid gap-4 md:grid-cols-2">
       <InputField
         label="Restrição médica"
-        required
         value={form.saude.restricaoMedica}
         onChange={(value) =>
           updateSection("saude", { restricaoMedica: value }, ["saude.restricaoMedica"])
@@ -1870,7 +1925,6 @@ function StepHealth({
       />
       <InputField
         label="Medicamentos"
-        required
         value={form.saude.medicamentos}
         onChange={(value) =>
           updateSection("saude", { medicamentos: value }, ["saude.medicamentos"])
@@ -1879,21 +1933,18 @@ function StepHealth({
       />
       <InputField
         label="Alergias"
-        required
         value={form.saude.alergias}
         onChange={(value) => updateSection("saude", { alergias: value }, ["saude.alergias"])}
         error={getFieldError("saude.alergias")}
       />
       <InputField
         label="Lesões"
-        required
         value={form.saude.lesoes}
         onChange={(value) => updateSection("saude", { lesoes: value }, ["saude.lesoes"])}
         error={getFieldError("saude.lesoes")}
       />
       <InputField
         label="Plano de saúde"
-        required
         value={form.saude.planoSaude}
         onChange={(value) => updateSection("saude", { planoSaude: value }, ["saude.planoSaude"])}
         error={getFieldError("saude.planoSaude")}
@@ -1901,7 +1952,6 @@ function StepHealth({
       <div className="md:col-span-2">
         <TextareaField
           label="Observações importantes"
-          required
           value={form.saude.observacoesImportantes}
           onChange={(value) =>
             updateSection("saude", { observacoesImportantes: value }, [
@@ -1932,7 +1982,6 @@ function StepStrategy({
     <div className="space-y-4">
       <InputField
         label="Como conheceu a J12?"
-        required
         value={form.estrategicas.comoConheceu}
         onChange={(value) =>
           updateSection("estrategicas", { comoConheceu: value }, ["estrategicas.comoConheceu"])
@@ -1941,7 +1990,6 @@ function StepStrategy({
       />
       <InputField
         label="Indicação de quem?"
-        required
         value={form.estrategicas.indicacaoQuem}
         onChange={(value) =>
           updateSection("estrategicas", { indicacaoQuem: value }, ["estrategicas.indicacaoQuem"])
@@ -1950,7 +1998,6 @@ function StepStrategy({
       />
       <TextareaField
         label="Observações gerais"
-        required
         value={form.estrategicas.observacoesGerais}
         onChange={(value) =>
           updateSection("estrategicas", { observacoesGerais: value }, [
@@ -1963,13 +2010,112 @@ function StepStrategy({
   );
 }
 
-function StepReview({
+function ComplementarySection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/10 bg-white/[0.025] p-4 sm:p-5">
+      <div className="mb-4">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ff9f6b]">
+          Opcional
+        </div>
+        <h3 className="mt-1 text-lg font-bold text-white">{title}</h3>
+        <p className="mt-1 text-sm leading-6 text-white/55">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StepComplementary({
   form,
-  documentPendencies,
+  updateSection,
+  getFieldError,
+  cepLookupStatus,
+  cepLookupMessage,
+  photoPreview,
+  handlePhotoChange,
+  handleDocumentChange,
+  updateMedicalExpiry,
 }: {
   form: FormState;
-  documentPendencies: string[];
+  updateSection: <K extends keyof FormState>(
+    section: K,
+    partial: Partial<FormState[K]>,
+    fieldsToTouch?: string[],
+  ) => void;
+  getFieldError: (field: string) => string;
+  cepLookupStatus: AsyncStatus;
+  cepLookupMessage: string;
+  photoPreview: string;
+  handlePhotoChange: (file: File | null) => void;
+  handleDocumentChange: (field: UploadedDocumentField, file: File | null) => void;
+  updateMedicalExpiry: (value: string) => void;
 }) {
+  return (
+    <div className="space-y-5">
+      <ComplementarySection
+        title="Endereco"
+        description="Complete o endereco quando quiser vincular dados de localizacao ao cadastro."
+      >
+        <StepAddress
+          form={form}
+          updateSection={updateSection}
+          getFieldError={getFieldError}
+          cepLookupStatus={cepLookupStatus}
+          cepLookupMessage={cepLookupMessage}
+        />
+      </ComplementarySection>
+
+      <ComplementarySection
+        title="Documentos e foto"
+        description="Uploads sao opcionais e nao bloqueiam o salvamento da matricula."
+      >
+        <StepDocuments
+          form={form}
+          photoPreview={photoPreview}
+          handlePhotoChange={handlePhotoChange}
+          handleDocumentChange={handleDocumentChange}
+          updateMedicalExpiry={updateMedicalExpiry}
+          getFieldError={getFieldError}
+        />
+      </ComplementarySection>
+
+      <ComplementarySection
+        title="Informacoes esportivas"
+        description="Detalhes de nivel e objetivo ajudam na operacao, mas nao sao obrigatorios."
+      >
+        <StepSportsComplement
+          form={form}
+          updateSection={updateSection}
+          getFieldError={getFieldError}
+        />
+      </ComplementarySection>
+
+      <ComplementarySection
+        title="Saude"
+        description="Registre cuidados medicos quando houver informacao disponivel."
+      >
+        <StepHealth form={form} updateSection={updateSection} getFieldError={getFieldError} />
+      </ComplementarySection>
+
+      <ComplementarySection
+        title="Origem e observacoes"
+        description="Dados comerciais e observacoes gerais para enriquecer o atendimento."
+      >
+        <StepStrategy form={form} updateSection={updateSection} getFieldError={getFieldError} />
+      </ComplementarySection>
+    </div>
+  );
+}
+
+function StepReview({ form }: { form: FormState }) {
   const sections = [
     {
       title: "Dados do aluno",
@@ -2053,8 +2199,8 @@ function StepReview({
   return (
     <div className="space-y-5">
       <div className="rounded-3xl border border-[#ff6b00]/20 bg-[#ff6b00]/8 px-4 py-4 text-sm leading-6 text-[#ffd2bb]">
-        Revise todas as informações. Ao finalizar, a matrícula será integrada ao perfil do aluno e o
-        status documental será calculado automaticamente.
+        Revise as informacoes antes de finalizar. Campos opcionais vazios serao salvos em branco e
+        poderao ser preenchidos depois no perfil do aluno.
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -2094,24 +2240,8 @@ function StepReview({
           </div>
         ) : (
           <p className="text-sm text-white/55">
-            Nenhum documento foi anexado nesta etapa. O perfil será salvo com pendência documental.
+            Nenhum documento anexado. Documentos sao opcionais e podem ser enviados depois.
           </p>
-        )}
-
-        {documentPendencies.length > 0 && (
-          <div className="mt-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-100">
-            <div className="font-semibold">Pendências que aparecerão no perfil</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {documentPendencies.map((item) => (
-                <span
-                  key={item}
-                  className="rounded-full border border-amber-500/20 bg-black/10 px-3 py-1 text-[11px]"
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
         )}
       </div>
     </div>

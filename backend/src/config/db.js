@@ -2,25 +2,87 @@ const mysql = require("mysql2/promise");
 const path = require("node:path");
 const dotenv = require("dotenv");
 
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config({
+  path: [path.resolve(__dirname, "../../../.env"), path.resolve(__dirname, "../../.env")],
+});
+
+// ====================================
+// VALIDAÇÃO DE CREDENCIAIS
+// ====================================
+const DB_HOST = process.env.DB_HOST || "108.167.168.27";
+const DB_USER = process.env.DB_USER || "bestt486_appj12";
+const DB_PASSWORD = process.env.DB_PASSWORD || "";
+const DB_NAME = process.env.DB_NAME || "bestt486_appj12";
+const DB_PORT = Number(process.env.DB_PORT || 3306);
+
+console.log("[DB] Validando credenciais do banco de dados...");
+if (!DB_HOST || !DB_USER || !DB_NAME) {
+  console.error("[ERROR] Credenciais do banco incompletas!");
+  console.error(`[DB] HOST: ${DB_HOST ? "✓" : "✗"}`);
+  console.error(`[DB] USER: ${DB_USER ? "✓" : "✗"}`);
+  console.error(`[DB] NAME: ${DB_NAME ? "✓" : "✗"}`);
+  console.error(`[DB] PASS: ${DB_PASSWORD ? "✓" : "✗"}`);
+  process.exit(1);
+}
+console.log("[DB] ✓ Credenciais validadas com sucesso");
+console.log(`[DB] Host: ${DB_HOST}:${DB_PORT}`);
+console.log(`[DB] Database: ${DB_NAME}`);
+console.log(`[DB] User: ${DB_USER}`);
 
 const MYSQL_CONFIG = {
-  host: process.env.DB_HOST || "108.167.168.27",
-  user: process.env.DB_USER || "bestt486_appj12",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "bestt486_appj12",
-  port: Number(process.env.DB_PORT || 3306),
+  host: DB_HOST,
+  user: DB_USER,
+  password: DB_PASSWORD,
+  database: DB_NAME,
+  port: DB_PORT,
+  
+  // ====================================
+  // POOL DE CONEXÃO OTIMIZADO
+  // ====================================
   waitForConnections: true,
-  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 20),
   queueLimit: 0,
+  
+  // ====================================
+  // TIMEOUTS AUMENTADOS PARA HOSTGATOR
+  // ====================================
+  connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 60000), // 60 segundos
+  socketPath: undefined,
+  
+  // ====================================
+  // KEEP-ALIVE E RECONEXÃO
+  // ====================================
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 30000, // 30 segundos
+  
+  // ====================================
+  // CONFIGURAÇÃO DO CHARSET
+  // ====================================
   charset: "utf8mb4",
   dateStrings: true,
-  connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 10000),
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
+  
+  // ====================================
+  // SSL/TLS (desativar para HostGator)
+  // ====================================
+  ssl: process.env.DB_USE_SSL === "true" ? "Amazon RDS" : undefined,
 };
 
-const pool = mysql.createPool(MYSQL_CONFIG);
+console.log(`[DB] Configuração do pool:`);
+console.log(`  - Connection Limit: ${MYSQL_CONFIG.connectionLimit}`);
+console.log(`  - Connect Timeout: ${MYSQL_CONFIG.connectTimeout}ms`);
+console.log(`  - Keep-Alive: ${MYSQL_CONFIG.enableKeepAlive}`);
+console.log(`  - Keep-Alive Delay: ${MYSQL_CONFIG.keepAliveInitialDelay}ms`);
+
+let pool = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
+function createPool() {
+  console.log("[DB] Criando novo pool de conexões...");
+  return mysql.createPool(MYSQL_CONFIG);
+}
+
+pool = createPool();
 
 function sanitizeIdentifier(value) {
   const normalized = String(value ?? "").trim();
@@ -627,26 +689,81 @@ async function persistJ12SectionsFromLegacyRow(connection, row) {
 }
 
 async function testConnection() {
-  const connection = await pool.getConnection();
-
   try {
-    await connection.ping();
-  } finally {
-    connection.release();
+    console.log("[DB] Testando conexão com banco de dados...");
+    
+    const connection = await pool.getConnection();
+    console.log("[DB] ✓ Conexão adquirida do pool");
+
+    try {
+      await connection.ping();
+      console.log("[DB] ✓ Ping ao banco de dados bem-sucedido");
+    } finally {
+      connection.release();
+      console.log("[DB] ✓ Conexão liberada");
+    }
+    
+    console.log("[DB] ✓ Teste de conexão concluído com sucesso");
+    reconnectAttempts = 0;
+    return true;
+  } catch (error) {
+    reconnectAttempts += 1;
+    const retryMessage = 
+      reconnectAttempts < MAX_RECONNECT_ATTEMPTS 
+        ? ` (Tentativa ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
+        : " (Máximo de tentativas excedido)";
+    
+    console.error(`[ERROR] Falha na conexão com banco de dados${retryMessage}`);
+    console.error(`  Code: ${error?.code}`);
+    console.error(`  Error: ${error?.errno}`);
+    console.error(`  Message: ${error?.message}`);
+    
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      const delayMs = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
+      console.log(`[DB] Aguardando ${delayMs}ms antes de tentar novamente...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return testConnection();
+    }
+    
+    throw error;
   }
 }
 
 async function query(sql, params = []) {
+  let connection = null;
   try {
-    const [rows] = await pool.execute(sql, params);
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(sql, params);
     return rows;
   } catch (error) {
-    console.error("[mysql] Falha na query.", {
+    console.error("[ERROR] Falha na query SQL", {
       code: error?.code,
       errno: error?.errno,
       message: error?.message,
+      sql: sql.substring(0, 100),
+      timestamp: new Date().toISOString(),
     });
+    
+    // Reconectar em caso de erro de conexão perdida
+    if (error?.code === "PROTOCOL_CONNECTION_LOST" || 
+        error?.code === "PROTOCOL_ERROR" ||
+        error?.code === "ER_QUERY_INTERRUPTED" ||
+        error?.errno === 1041) {
+      console.warn("[DB] Reconectando ao banco após erro de conexão...");
+      if (pool && typeof pool.clearOldest === 'function') {
+        pool.clearOldest?.();
+      }
+    }
+    
     throw error;
+  } finally {
+    if (connection) {
+      try {
+        connection.release();
+      } catch (releaseError) {
+        console.warn("[DB] Erro ao liberar conexão:", releaseError?.message);
+      }
+    }
   }
 }
 
@@ -956,6 +1073,17 @@ async function ensureSchema() {
   );
 
   await query(`
+    CREATE TABLE IF NOT EXISTS j12_responsavel_alunos (
+      responsavel_id VARCHAR(64) NOT NULL,
+      aluno_id VARCHAR(64) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (responsavel_id, aluno_id),
+      INDEX idx_j12_responsavel_alunos_aluno (aluno_id)
+    )
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS j12_professores (
       id BIGINT PRIMARY KEY AUTO_INCREMENT,
       nome VARCHAR(191) NOT NULL,
@@ -1083,11 +1211,13 @@ async function ensureSchema() {
       rg_cpf_aluno_json LONGTEXT NULL,
       rg_cpf_responsavel_json LONGTEXT NULL,
       comprovante_endereco_json LONGTEXT NULL,
+      autorizacao_imagem_json LONGTEXT NULL,
       atestado_medico_json LONGTEXT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+  await ensureColumn("j12_alunos_documentos", "autorizacao_imagem_json", "LONGTEXT NULL");
 
   await query(`
     CREATE TABLE IF NOT EXISTS j12_alunos_esportes (
@@ -1299,6 +1429,16 @@ async function ensureSchema() {
     "idx_j12_financeiro_status",
     "INDEX `idx_j12_financeiro_status` (`status`)",
   );
+  await ensureIndex(
+    "j12_financeiro_cobrancas",
+    "idx_j12_financeiro_vencimento",
+    "INDEX `idx_j12_financeiro_vencimento` (`vencimento`)",
+  );
+  await ensureIndex(
+    "j12_financeiro_cobrancas",
+    "idx_j12_financeiro_status_vencimento",
+    "INDEX `idx_j12_financeiro_status_vencimento` (`status`, `vencimento`)",
+  );
 
   await query(`
     CREATE TABLE IF NOT EXISTS j12_mensalidades (
@@ -1355,6 +1495,11 @@ async function ensureSchema() {
     "idx_j12_mensalidades_status",
     "INDEX `idx_j12_mensalidades_status` (`status`)",
   );
+  await ensureIndex(
+    "j12_mensalidades",
+    "idx_j12_mensalidades_status_vencimento",
+    "INDEX `idx_j12_mensalidades_status_vencimento` (`status`, `data_vencimento`)",
+  );
 
   await query(`
     CREATE TABLE IF NOT EXISTS j12_pagamentos (
@@ -1401,6 +1546,102 @@ async function ensureSchema() {
   );
 
   await query(`
+    CREATE TABLE IF NOT EXISTS financial_payments (
+      id VARCHAR(64) PRIMARY KEY,
+      student_id VARCHAR(64) NULL,
+      responsible_id VARCHAR(64) NULL,
+      mensalidade_id VARCHAR(64) NULL,
+      charge_id VARCHAR(64) NULL,
+      txid VARCHAR(35) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+      status ENUM('PENDENTE', 'PROCESSANDO', 'PAGO', 'ATRASADO', 'VENCIDO', 'CANCELADO') NOT NULL DEFAULT 'PENDENTE',
+      due_date DATE NULL,
+      paid_at DATETIME NULL,
+      payment_method VARCHAR(50) NULL,
+      pix_payload LONGTEXT NULL,
+      pix_copy_paste LONGTEXT NULL,
+      qr_code LONGTEXT NULL,
+      e2eid VARCHAR(191) NULL,
+      inter_transaction_id VARCHAR(191) NULL,
+      webhook_payload LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_financial_payments_txid (txid),
+      INDEX idx_financial_payments_student (student_id),
+      INDEX idx_financial_payments_responsible (responsible_id),
+      INDEX idx_financial_payments_mensalidade (mensalidade_id),
+      INDEX idx_financial_payments_charge (charge_id),
+      INDEX idx_financial_payments_status (status)
+    )
+  `);
+  await ensureColumn("financial_payments", "student_id", "VARCHAR(64) NULL");
+  await ensureColumn("financial_payments", "responsible_id", "VARCHAR(64) NULL");
+  await ensureColumn("financial_payments", "mensalidade_id", "VARCHAR(64) NULL");
+  await ensureColumn("financial_payments", "charge_id", "VARCHAR(64) NULL");
+  await ensureColumn("financial_payments", "txid", "VARCHAR(35) NULL");
+  await ensureColumn("financial_payments", "amount", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+  await ensureColumn(
+    "financial_payments",
+    "status",
+    "ENUM('PENDENTE', 'PROCESSANDO', 'PAGO', 'ATRASADO', 'VENCIDO', 'CANCELADO') NOT NULL DEFAULT 'PENDENTE'",
+  );
+  await ensureColumn("financial_payments", "due_date", "DATE NULL");
+  await ensureColumn("financial_payments", "paid_at", "DATETIME NULL");
+  await ensureColumn("financial_payments", "payment_method", "VARCHAR(50) NULL");
+  await ensureColumn("financial_payments", "pix_payload", "LONGTEXT NULL");
+  await ensureColumn("financial_payments", "pix_copy_paste", "LONGTEXT NULL");
+  await ensureColumn("financial_payments", "qr_code", "LONGTEXT NULL");
+  await ensureColumn("financial_payments", "e2eid", "VARCHAR(191) NULL");
+  await ensureColumn("financial_payments", "inter_transaction_id", "VARCHAR(191) NULL");
+  await ensureColumn("financial_payments", "webhook_payload", "LONGTEXT NULL");
+  await ensureIndex(
+    "financial_payments",
+    "uniq_financial_payments_txid",
+    "UNIQUE INDEX `uniq_financial_payments_txid` (`txid`)",
+  );
+  await ensureIndex(
+    "financial_payments",
+    "idx_financial_payments_student",
+    "INDEX `idx_financial_payments_student` (`student_id`)",
+  );
+  await ensureIndex(
+    "financial_payments",
+    "idx_financial_payments_responsible",
+    "INDEX `idx_financial_payments_responsible` (`responsible_id`)",
+  );
+  await ensureIndex(
+    "financial_payments",
+    "idx_financial_payments_mensalidade",
+    "INDEX `idx_financial_payments_mensalidade` (`mensalidade_id`)",
+  );
+  await ensureIndex(
+    "financial_payments",
+    "idx_financial_payments_charge",
+    "INDEX `idx_financial_payments_charge` (`charge_id`)",
+  );
+  await ensureIndex(
+    "financial_payments",
+    "idx_financial_payments_status",
+    "INDEX `idx_financial_payments_status` (`status`)",
+  );
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS inter_webhook_events (
+      id VARCHAR(64) PRIMARY KEY,
+      event_hash VARCHAR(64) NOT NULL,
+      txid VARCHAR(35) NULL,
+      e2eid VARCHAR(191) NULL,
+      payload LONGTEXT NULL,
+      processed TINYINT(1) NOT NULL DEFAULT 0,
+      error TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_inter_webhook_events_hash (event_hash),
+      INDEX idx_inter_webhook_events_txid (txid),
+      INDEX idx_inter_webhook_events_e2eid (e2eid)
+    )
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(191) NOT NULL,
@@ -1437,6 +1678,36 @@ async function ensureSchema() {
     "idx_users_responsavel",
     "INDEX `idx_users_responsavel` (`responsavel_id`)",
   );
+
+  // Backfill nao destrutivo: preserva responsavel_id/linked_aluno_id antigos e alimenta o vinculo N:N.
+  await query(`
+    INSERT IGNORE INTO j12_responsavel_alunos (responsavel_id, aluno_id)
+    SELECT CAST(responsavel_id AS CHAR), CAST(id AS CHAR)
+    FROM j12_alunos
+    WHERE responsavel_id IS NOT NULL AND CAST(responsavel_id AS CHAR) <> ''
+  `);
+  await query(`
+    INSERT IGNORE INTO j12_responsavel_alunos (responsavel_id, aluno_id)
+    SELECT
+      COALESCE(NULLIF(CAST(responsavel_id AS CHAR), ''), CAST(id AS CHAR)),
+      CAST(linked_aluno_id AS CHAR)
+    FROM users
+    WHERE role = 'responsavel'
+      AND linked_aluno_id IS NOT NULL
+      AND CAST(linked_aluno_id AS CHAR) <> ''
+  `);
+  if (await tableExists("j12_usuarios")) {
+    await query(`
+      INSERT IGNORE INTO j12_responsavel_alunos (responsavel_id, aluno_id)
+      SELECT
+        COALESCE(NULLIF(CAST(responsavel_id AS CHAR), ''), CAST(id AS CHAR)),
+        CAST(aluno_id AS CHAR)
+      FROM j12_usuarios
+      WHERE perfil = 'responsavel'
+        AND aluno_id IS NOT NULL
+        AND CAST(aluno_id AS CHAR) <> ''
+    `);
+  }
 
   await query(`
     CREATE TABLE IF NOT EXISTS user_sessions (
@@ -1784,6 +2055,14 @@ async function syncEnrollmentNumberRegistry() {
 
   return { synced: registryEntries.size, skipped: false, reason: null };
 }
+
+setInterval(async () => {
+  try {
+    await pool.query("SELECT 1");
+  } catch (err) {
+    console.error("[mysql] keepalive error:", err.message);
+  }
+}, 30000);
 
 module.exports = {
   MYSQL_CONFIG,

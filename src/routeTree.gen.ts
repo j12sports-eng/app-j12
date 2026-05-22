@@ -13,6 +13,7 @@ import { Route as TurmasRouteImport } from './routes/turmas'
 import { Route as TrocarSenhaRouteImport } from './routes/trocar-senha'
 import { Route as ProfessoresRouteImport } from './routes/professores'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
+import { Route as PresencasRouteImport } from './routes/presencas'
 import { Route as PresencaRouteImport } from './routes/presenca'
 import { Route as PlanosRouteImport } from './routes/planos'
 import { Route as NotificacoesRouteImport } from './routes/notificacoes'
@@ -27,7 +28,33 @@ import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AulaExperimentalRouteImport } from './routes/aula-experimental'
 import { Route as AlunosRouteImport } from './routes/alunos'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProfessorIndexRouteImport } from './routes/professor/index'
+import { Route as PortalResponsavelIndexRouteImport } from './routes/portal-responsavel/index'
+import { Route as PortalAlunoIndexRouteImport } from './routes/portal-aluno/index'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
+import { Route as ProfessorPresencasRouteImport } from './routes/professor/presencas'
+import { Route as PortalResponsavelPresencasRouteImport } from './routes/portal-responsavel/presencas'
+import { Route as PortalResponsavelPerfilRouteImport } from './routes/portal-responsavel/perfil'
+import { Route as PortalResponsavelNotificacoesRouteImport } from './routes/portal-responsavel/notificacoes'
+import { Route as PortalResponsavelMeusFilhosRouteImport } from './routes/portal-responsavel/meus-filhos'
+import { Route as PortalResponsavelFinanceiroRouteImport } from './routes/portal-responsavel/financeiro'
+import { Route as PortalResponsavelDashboardRouteImport } from './routes/portal-responsavel/dashboard'
+import { Route as PortalResponsavelContratoRouteImport } from './routes/portal-responsavel/contrato'
+import { Route as PortalResponsavelConfiguracoesRouteImport } from './routes/portal-responsavel/configuracoes'
+import { Route as PortalResponsavelAgendaRouteImport } from './routes/portal-responsavel/agenda'
+import { Route as PortalAlunoTreinosRouteImport } from './routes/portal-aluno/treinos'
+import { Route as PortalAlunoPresencasRouteImport } from './routes/portal-aluno/presencas'
+import { Route as PortalAlunoPerfilRouteImport } from './routes/portal-aluno/perfil'
+import { Route as PortalAlunoNotificacoesRouteImport } from './routes/portal-aluno/notificacoes'
+import { Route as PortalAlunoMeuPlanoRouteImport } from './routes/portal-aluno/meu-plano'
+import { Route as PortalAlunoFinanceiroRouteImport } from './routes/portal-aluno/financeiro'
+import { Route as PortalAlunoDashboardRouteImport } from './routes/portal-aluno/dashboard'
+import { Route as PortalAlunoContratoRouteImport } from './routes/portal-aluno/contrato'
+import { Route as PortalAlunoConfiguracoesRouteImport } from './routes/portal-aluno/configuracoes'
+import { Route as PortalAlunoAvaliacoesRouteImport } from './routes/portal-aluno/avaliacoes'
+import { Route as PortalAlunoAgendaRouteImport } from './routes/portal-aluno/agenda'
+import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
+import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 
 const TurmasRoute = TurmasRouteImport.update({
   id: '/turmas',
@@ -47,6 +74,11 @@ const ProfessoresRoute = ProfessoresRouteImport.update({
 const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
   id: '/primeiro-acesso',
   path: '/primeiro-acesso',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PresencasRoute = PresencasRouteImport.update({
+  id: '/presencas',
+  path: '/presencas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PresencaRoute = PresencaRouteImport.update({
@@ -119,10 +151,148 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfessorIndexRoute = ProfessorIndexRouteImport.update({
+  id: '/professor/',
+  path: '/professor/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalResponsavelIndexRoute = PortalResponsavelIndexRouteImport.update({
+  id: '/portal-responsavel/',
+  path: '/portal-responsavel/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoIndexRoute = PortalAlunoIndexRouteImport.update({
+  id: '/portal-aluno/',
+  path: '/portal-aluno/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
   id: '/reset-password/$token',
   path: '/reset-password/$token',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ProfessorPresencasRoute = ProfessorPresencasRouteImport.update({
+  id: '/professor/presencas',
+  path: '/professor/presencas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalResponsavelPresencasRoute =
+  PortalResponsavelPresencasRouteImport.update({
+    id: '/portal-responsavel/presencas',
+    path: '/portal-responsavel/presencas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelPerfilRoute = PortalResponsavelPerfilRouteImport.update({
+  id: '/portal-responsavel/perfil',
+  path: '/portal-responsavel/perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalResponsavelNotificacoesRoute =
+  PortalResponsavelNotificacoesRouteImport.update({
+    id: '/portal-responsavel/notificacoes',
+    path: '/portal-responsavel/notificacoes',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelMeusFilhosRoute =
+  PortalResponsavelMeusFilhosRouteImport.update({
+    id: '/portal-responsavel/meus-filhos',
+    path: '/portal-responsavel/meus-filhos',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelFinanceiroRoute =
+  PortalResponsavelFinanceiroRouteImport.update({
+    id: '/portal-responsavel/financeiro',
+    path: '/portal-responsavel/financeiro',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelDashboardRoute =
+  PortalResponsavelDashboardRouteImport.update({
+    id: '/portal-responsavel/dashboard',
+    path: '/portal-responsavel/dashboard',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelContratoRoute =
+  PortalResponsavelContratoRouteImport.update({
+    id: '/portal-responsavel/contrato',
+    path: '/portal-responsavel/contrato',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelConfiguracoesRoute =
+  PortalResponsavelConfiguracoesRouteImport.update({
+    id: '/portal-responsavel/configuracoes',
+    path: '/portal-responsavel/configuracoes',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalResponsavelAgendaRoute = PortalResponsavelAgendaRouteImport.update({
+  id: '/portal-responsavel/agenda',
+  path: '/portal-responsavel/agenda',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoTreinosRoute = PortalAlunoTreinosRouteImport.update({
+  id: '/portal-aluno/treinos',
+  path: '/portal-aluno/treinos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoPresencasRoute = PortalAlunoPresencasRouteImport.update({
+  id: '/portal-aluno/presencas',
+  path: '/portal-aluno/presencas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoPerfilRoute = PortalAlunoPerfilRouteImport.update({
+  id: '/portal-aluno/perfil',
+  path: '/portal-aluno/perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoNotificacoesRoute = PortalAlunoNotificacoesRouteImport.update({
+  id: '/portal-aluno/notificacoes',
+  path: '/portal-aluno/notificacoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoMeuPlanoRoute = PortalAlunoMeuPlanoRouteImport.update({
+  id: '/portal-aluno/meu-plano',
+  path: '/portal-aluno/meu-plano',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoFinanceiroRoute = PortalAlunoFinanceiroRouteImport.update({
+  id: '/portal-aluno/financeiro',
+  path: '/portal-aluno/financeiro',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoDashboardRoute = PortalAlunoDashboardRouteImport.update({
+  id: '/portal-aluno/dashboard',
+  path: '/portal-aluno/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoContratoRoute = PortalAlunoContratoRouteImport.update({
+  id: '/portal-aluno/contrato',
+  path: '/portal-aluno/contrato',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoConfiguracoesRoute =
+  PortalAlunoConfiguracoesRouteImport.update({
+    id: '/portal-aluno/configuracoes',
+    path: '/portal-aluno/configuracoes',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PortalAlunoAvaliacoesRoute = PortalAlunoAvaliacoesRouteImport.update({
+  id: '/portal-aluno/avaliacoes',
+  path: '/portal-aluno/avaliacoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalAlunoAgendaRoute = PortalAlunoAgendaRouteImport.update({
+  id: '/portal-aluno/agenda',
+  path: '/portal-aluno/agenda',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
+  id: '/admin/financeiro',
+  path: '/admin/financeiro',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardAlunoIdRoute = DashboardAlunoIdRouteImport.update({
+  id: '/aluno/$id',
+  path: '/aluno/$id',
+  getParentRoute: () => DashboardRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -131,7 +301,7 @@ export interface FileRoutesByFullPath {
   '/aula-experimental': typeof AulaExperimentalRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/contratos': typeof ContratosRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/financeiro': typeof FinanceiroRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -140,11 +310,38 @@ export interface FileRoutesByFullPath {
   '/notificacoes': typeof NotificacoesRoute
   '/planos': typeof PlanosRoute
   '/presenca': typeof PresencaRoute
+  '/presencas': typeof PresencasRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
+  '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
+  '/portal-aluno/configuracoes': typeof PortalAlunoConfiguracoesRoute
+  '/portal-aluno/contrato': typeof PortalAlunoContratoRoute
+  '/portal-aluno/dashboard': typeof PortalAlunoDashboardRoute
+  '/portal-aluno/financeiro': typeof PortalAlunoFinanceiroRoute
+  '/portal-aluno/meu-plano': typeof PortalAlunoMeuPlanoRoute
+  '/portal-aluno/notificacoes': typeof PortalAlunoNotificacoesRoute
+  '/portal-aluno/perfil': typeof PortalAlunoPerfilRoute
+  '/portal-aluno/presencas': typeof PortalAlunoPresencasRoute
+  '/portal-aluno/treinos': typeof PortalAlunoTreinosRoute
+  '/portal-responsavel/agenda': typeof PortalResponsavelAgendaRoute
+  '/portal-responsavel/configuracoes': typeof PortalResponsavelConfiguracoesRoute
+  '/portal-responsavel/contrato': typeof PortalResponsavelContratoRoute
+  '/portal-responsavel/dashboard': typeof PortalResponsavelDashboardRoute
+  '/portal-responsavel/financeiro': typeof PortalResponsavelFinanceiroRoute
+  '/portal-responsavel/meus-filhos': typeof PortalResponsavelMeusFilhosRoute
+  '/portal-responsavel/notificacoes': typeof PortalResponsavelNotificacoesRoute
+  '/portal-responsavel/perfil': typeof PortalResponsavelPerfilRoute
+  '/portal-responsavel/presencas': typeof PortalResponsavelPresencasRoute
+  '/professor/presencas': typeof ProfessorPresencasRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/portal-aluno/': typeof PortalAlunoIndexRoute
+  '/portal-responsavel/': typeof PortalResponsavelIndexRoute
+  '/professor/': typeof ProfessorIndexRoute
+  '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -152,7 +349,7 @@ export interface FileRoutesByTo {
   '/aula-experimental': typeof AulaExperimentalRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/contratos': typeof ContratosRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/financeiro': typeof FinanceiroRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -161,11 +358,38 @@ export interface FileRoutesByTo {
   '/notificacoes': typeof NotificacoesRoute
   '/planos': typeof PlanosRoute
   '/presenca': typeof PresencaRoute
+  '/presencas': typeof PresencasRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
+  '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
+  '/portal-aluno/configuracoes': typeof PortalAlunoConfiguracoesRoute
+  '/portal-aluno/contrato': typeof PortalAlunoContratoRoute
+  '/portal-aluno/dashboard': typeof PortalAlunoDashboardRoute
+  '/portal-aluno/financeiro': typeof PortalAlunoFinanceiroRoute
+  '/portal-aluno/meu-plano': typeof PortalAlunoMeuPlanoRoute
+  '/portal-aluno/notificacoes': typeof PortalAlunoNotificacoesRoute
+  '/portal-aluno/perfil': typeof PortalAlunoPerfilRoute
+  '/portal-aluno/presencas': typeof PortalAlunoPresencasRoute
+  '/portal-aluno/treinos': typeof PortalAlunoTreinosRoute
+  '/portal-responsavel/agenda': typeof PortalResponsavelAgendaRoute
+  '/portal-responsavel/configuracoes': typeof PortalResponsavelConfiguracoesRoute
+  '/portal-responsavel/contrato': typeof PortalResponsavelContratoRoute
+  '/portal-responsavel/dashboard': typeof PortalResponsavelDashboardRoute
+  '/portal-responsavel/financeiro': typeof PortalResponsavelFinanceiroRoute
+  '/portal-responsavel/meus-filhos': typeof PortalResponsavelMeusFilhosRoute
+  '/portal-responsavel/notificacoes': typeof PortalResponsavelNotificacoesRoute
+  '/portal-responsavel/perfil': typeof PortalResponsavelPerfilRoute
+  '/portal-responsavel/presencas': typeof PortalResponsavelPresencasRoute
+  '/professor/presencas': typeof ProfessorPresencasRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/portal-aluno': typeof PortalAlunoIndexRoute
+  '/portal-responsavel': typeof PortalResponsavelIndexRoute
+  '/professor': typeof ProfessorIndexRoute
+  '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -174,7 +398,7 @@ export interface FileRoutesById {
   '/aula-experimental': typeof AulaExperimentalRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/contratos': typeof ContratosRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/financeiro': typeof FinanceiroRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -183,11 +407,38 @@ export interface FileRoutesById {
   '/notificacoes': typeof NotificacoesRoute
   '/planos': typeof PlanosRoute
   '/presenca': typeof PresencaRoute
+  '/presencas': typeof PresencasRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
+  '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
+  '/portal-aluno/configuracoes': typeof PortalAlunoConfiguracoesRoute
+  '/portal-aluno/contrato': typeof PortalAlunoContratoRoute
+  '/portal-aluno/dashboard': typeof PortalAlunoDashboardRoute
+  '/portal-aluno/financeiro': typeof PortalAlunoFinanceiroRoute
+  '/portal-aluno/meu-plano': typeof PortalAlunoMeuPlanoRoute
+  '/portal-aluno/notificacoes': typeof PortalAlunoNotificacoesRoute
+  '/portal-aluno/perfil': typeof PortalAlunoPerfilRoute
+  '/portal-aluno/presencas': typeof PortalAlunoPresencasRoute
+  '/portal-aluno/treinos': typeof PortalAlunoTreinosRoute
+  '/portal-responsavel/agenda': typeof PortalResponsavelAgendaRoute
+  '/portal-responsavel/configuracoes': typeof PortalResponsavelConfiguracoesRoute
+  '/portal-responsavel/contrato': typeof PortalResponsavelContratoRoute
+  '/portal-responsavel/dashboard': typeof PortalResponsavelDashboardRoute
+  '/portal-responsavel/financeiro': typeof PortalResponsavelFinanceiroRoute
+  '/portal-responsavel/meus-filhos': typeof PortalResponsavelMeusFilhosRoute
+  '/portal-responsavel/notificacoes': typeof PortalResponsavelNotificacoesRoute
+  '/portal-responsavel/perfil': typeof PortalResponsavelPerfilRoute
+  '/portal-responsavel/presencas': typeof PortalResponsavelPresencasRoute
+  '/professor/presencas': typeof ProfessorPresencasRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/portal-aluno/': typeof PortalAlunoIndexRoute
+  '/portal-responsavel/': typeof PortalResponsavelIndexRoute
+  '/professor/': typeof ProfessorIndexRoute
+  '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -206,11 +457,38 @@ export interface FileRouteTypes {
     | '/notificacoes'
     | '/planos'
     | '/presenca'
+    | '/presencas'
     | '/primeiro-acesso'
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/financeiro'
+    | '/portal-aluno/agenda'
+    | '/portal-aluno/avaliacoes'
+    | '/portal-aluno/configuracoes'
+    | '/portal-aluno/contrato'
+    | '/portal-aluno/dashboard'
+    | '/portal-aluno/financeiro'
+    | '/portal-aluno/meu-plano'
+    | '/portal-aluno/notificacoes'
+    | '/portal-aluno/perfil'
+    | '/portal-aluno/presencas'
+    | '/portal-aluno/treinos'
+    | '/portal-responsavel/agenda'
+    | '/portal-responsavel/configuracoes'
+    | '/portal-responsavel/contrato'
+    | '/portal-responsavel/dashboard'
+    | '/portal-responsavel/financeiro'
+    | '/portal-responsavel/meus-filhos'
+    | '/portal-responsavel/notificacoes'
+    | '/portal-responsavel/perfil'
+    | '/portal-responsavel/presencas'
+    | '/professor/presencas'
     | '/reset-password/$token'
+    | '/portal-aluno/'
+    | '/portal-responsavel/'
+    | '/professor/'
+    | '/dashboard/aluno/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -227,11 +505,38 @@ export interface FileRouteTypes {
     | '/notificacoes'
     | '/planos'
     | '/presenca'
+    | '/presencas'
     | '/primeiro-acesso'
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/financeiro'
+    | '/portal-aluno/agenda'
+    | '/portal-aluno/avaliacoes'
+    | '/portal-aluno/configuracoes'
+    | '/portal-aluno/contrato'
+    | '/portal-aluno/dashboard'
+    | '/portal-aluno/financeiro'
+    | '/portal-aluno/meu-plano'
+    | '/portal-aluno/notificacoes'
+    | '/portal-aluno/perfil'
+    | '/portal-aluno/presencas'
+    | '/portal-aluno/treinos'
+    | '/portal-responsavel/agenda'
+    | '/portal-responsavel/configuracoes'
+    | '/portal-responsavel/contrato'
+    | '/portal-responsavel/dashboard'
+    | '/portal-responsavel/financeiro'
+    | '/portal-responsavel/meus-filhos'
+    | '/portal-responsavel/notificacoes'
+    | '/portal-responsavel/perfil'
+    | '/portal-responsavel/presencas'
+    | '/professor/presencas'
     | '/reset-password/$token'
+    | '/portal-aluno'
+    | '/portal-responsavel'
+    | '/professor'
+    | '/dashboard/aluno/$id'
   id:
     | '__root__'
     | '/'
@@ -248,11 +553,38 @@ export interface FileRouteTypes {
     | '/notificacoes'
     | '/planos'
     | '/presenca'
+    | '/presencas'
     | '/primeiro-acesso'
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/financeiro'
+    | '/portal-aluno/agenda'
+    | '/portal-aluno/avaliacoes'
+    | '/portal-aluno/configuracoes'
+    | '/portal-aluno/contrato'
+    | '/portal-aluno/dashboard'
+    | '/portal-aluno/financeiro'
+    | '/portal-aluno/meu-plano'
+    | '/portal-aluno/notificacoes'
+    | '/portal-aluno/perfil'
+    | '/portal-aluno/presencas'
+    | '/portal-aluno/treinos'
+    | '/portal-responsavel/agenda'
+    | '/portal-responsavel/configuracoes'
+    | '/portal-responsavel/contrato'
+    | '/portal-responsavel/dashboard'
+    | '/portal-responsavel/financeiro'
+    | '/portal-responsavel/meus-filhos'
+    | '/portal-responsavel/notificacoes'
+    | '/portal-responsavel/perfil'
+    | '/portal-responsavel/presencas'
+    | '/professor/presencas'
     | '/reset-password/$token'
+    | '/portal-aluno/'
+    | '/portal-responsavel/'
+    | '/professor/'
+    | '/dashboard/aluno/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -261,7 +593,7 @@ export interface RootRouteChildren {
   AulaExperimentalRoute: typeof AulaExperimentalRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   ContratosRoute: typeof ContratosRoute
-  DashboardRoute: typeof DashboardRoute
+  DashboardRoute: typeof DashboardRouteWithChildren
   FinanceiroRoute: typeof FinanceiroRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
@@ -270,11 +602,37 @@ export interface RootRouteChildren {
   NotificacoesRoute: typeof NotificacoesRoute
   PlanosRoute: typeof PlanosRoute
   PresencaRoute: typeof PresencaRoute
+  PresencasRoute: typeof PresencasRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ProfessoresRoute: typeof ProfessoresRoute
   TrocarSenhaRoute: typeof TrocarSenhaRoute
   TurmasRoute: typeof TurmasRoute
+  AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  PortalAlunoAgendaRoute: typeof PortalAlunoAgendaRoute
+  PortalAlunoAvaliacoesRoute: typeof PortalAlunoAvaliacoesRoute
+  PortalAlunoConfiguracoesRoute: typeof PortalAlunoConfiguracoesRoute
+  PortalAlunoContratoRoute: typeof PortalAlunoContratoRoute
+  PortalAlunoDashboardRoute: typeof PortalAlunoDashboardRoute
+  PortalAlunoFinanceiroRoute: typeof PortalAlunoFinanceiroRoute
+  PortalAlunoMeuPlanoRoute: typeof PortalAlunoMeuPlanoRoute
+  PortalAlunoNotificacoesRoute: typeof PortalAlunoNotificacoesRoute
+  PortalAlunoPerfilRoute: typeof PortalAlunoPerfilRoute
+  PortalAlunoPresencasRoute: typeof PortalAlunoPresencasRoute
+  PortalAlunoTreinosRoute: typeof PortalAlunoTreinosRoute
+  PortalResponsavelAgendaRoute: typeof PortalResponsavelAgendaRoute
+  PortalResponsavelConfiguracoesRoute: typeof PortalResponsavelConfiguracoesRoute
+  PortalResponsavelContratoRoute: typeof PortalResponsavelContratoRoute
+  PortalResponsavelDashboardRoute: typeof PortalResponsavelDashboardRoute
+  PortalResponsavelFinanceiroRoute: typeof PortalResponsavelFinanceiroRoute
+  PortalResponsavelMeusFilhosRoute: typeof PortalResponsavelMeusFilhosRoute
+  PortalResponsavelNotificacoesRoute: typeof PortalResponsavelNotificacoesRoute
+  PortalResponsavelPerfilRoute: typeof PortalResponsavelPerfilRoute
+  PortalResponsavelPresencasRoute: typeof PortalResponsavelPresencasRoute
+  ProfessorPresencasRoute: typeof ProfessorPresencasRoute
   ResetPasswordTokenRoute: typeof ResetPasswordTokenRoute
+  PortalAlunoIndexRoute: typeof PortalAlunoIndexRoute
+  PortalResponsavelIndexRoute: typeof PortalResponsavelIndexRoute
+  ProfessorIndexRoute: typeof ProfessorIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -305,6 +663,13 @@ declare module '@tanstack/react-router' {
       path: '/primeiro-acesso'
       fullPath: '/primeiro-acesso'
       preLoaderRoute: typeof PrimeiroAcessoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/presencas': {
+      id: '/presencas'
+      path: '/presencas'
+      fullPath: '/presencas'
+      preLoaderRoute: typeof PresencasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/presenca': {
@@ -405,6 +770,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/professor/': {
+      id: '/professor/'
+      path: '/professor'
+      fullPath: '/professor/'
+      preLoaderRoute: typeof ProfessorIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/': {
+      id: '/portal-responsavel/'
+      path: '/portal-responsavel'
+      fullPath: '/portal-responsavel/'
+      preLoaderRoute: typeof PortalResponsavelIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/': {
+      id: '/portal-aluno/'
+      path: '/portal-aluno'
+      fullPath: '/portal-aluno/'
+      preLoaderRoute: typeof PortalAlunoIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password/$token': {
       id: '/reset-password/$token'
       path: '/reset-password/$token'
@@ -412,8 +798,181 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/professor/presencas': {
+      id: '/professor/presencas'
+      path: '/professor/presencas'
+      fullPath: '/professor/presencas'
+      preLoaderRoute: typeof ProfessorPresencasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/presencas': {
+      id: '/portal-responsavel/presencas'
+      path: '/portal-responsavel/presencas'
+      fullPath: '/portal-responsavel/presencas'
+      preLoaderRoute: typeof PortalResponsavelPresencasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/perfil': {
+      id: '/portal-responsavel/perfil'
+      path: '/portal-responsavel/perfil'
+      fullPath: '/portal-responsavel/perfil'
+      preLoaderRoute: typeof PortalResponsavelPerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/notificacoes': {
+      id: '/portal-responsavel/notificacoes'
+      path: '/portal-responsavel/notificacoes'
+      fullPath: '/portal-responsavel/notificacoes'
+      preLoaderRoute: typeof PortalResponsavelNotificacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/meus-filhos': {
+      id: '/portal-responsavel/meus-filhos'
+      path: '/portal-responsavel/meus-filhos'
+      fullPath: '/portal-responsavel/meus-filhos'
+      preLoaderRoute: typeof PortalResponsavelMeusFilhosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/financeiro': {
+      id: '/portal-responsavel/financeiro'
+      path: '/portal-responsavel/financeiro'
+      fullPath: '/portal-responsavel/financeiro'
+      preLoaderRoute: typeof PortalResponsavelFinanceiroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/dashboard': {
+      id: '/portal-responsavel/dashboard'
+      path: '/portal-responsavel/dashboard'
+      fullPath: '/portal-responsavel/dashboard'
+      preLoaderRoute: typeof PortalResponsavelDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/contrato': {
+      id: '/portal-responsavel/contrato'
+      path: '/portal-responsavel/contrato'
+      fullPath: '/portal-responsavel/contrato'
+      preLoaderRoute: typeof PortalResponsavelContratoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/configuracoes': {
+      id: '/portal-responsavel/configuracoes'
+      path: '/portal-responsavel/configuracoes'
+      fullPath: '/portal-responsavel/configuracoes'
+      preLoaderRoute: typeof PortalResponsavelConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-responsavel/agenda': {
+      id: '/portal-responsavel/agenda'
+      path: '/portal-responsavel/agenda'
+      fullPath: '/portal-responsavel/agenda'
+      preLoaderRoute: typeof PortalResponsavelAgendaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/treinos': {
+      id: '/portal-aluno/treinos'
+      path: '/portal-aluno/treinos'
+      fullPath: '/portal-aluno/treinos'
+      preLoaderRoute: typeof PortalAlunoTreinosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/presencas': {
+      id: '/portal-aluno/presencas'
+      path: '/portal-aluno/presencas'
+      fullPath: '/portal-aluno/presencas'
+      preLoaderRoute: typeof PortalAlunoPresencasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/perfil': {
+      id: '/portal-aluno/perfil'
+      path: '/portal-aluno/perfil'
+      fullPath: '/portal-aluno/perfil'
+      preLoaderRoute: typeof PortalAlunoPerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/notificacoes': {
+      id: '/portal-aluno/notificacoes'
+      path: '/portal-aluno/notificacoes'
+      fullPath: '/portal-aluno/notificacoes'
+      preLoaderRoute: typeof PortalAlunoNotificacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/meu-plano': {
+      id: '/portal-aluno/meu-plano'
+      path: '/portal-aluno/meu-plano'
+      fullPath: '/portal-aluno/meu-plano'
+      preLoaderRoute: typeof PortalAlunoMeuPlanoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/financeiro': {
+      id: '/portal-aluno/financeiro'
+      path: '/portal-aluno/financeiro'
+      fullPath: '/portal-aluno/financeiro'
+      preLoaderRoute: typeof PortalAlunoFinanceiroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/dashboard': {
+      id: '/portal-aluno/dashboard'
+      path: '/portal-aluno/dashboard'
+      fullPath: '/portal-aluno/dashboard'
+      preLoaderRoute: typeof PortalAlunoDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/contrato': {
+      id: '/portal-aluno/contrato'
+      path: '/portal-aluno/contrato'
+      fullPath: '/portal-aluno/contrato'
+      preLoaderRoute: typeof PortalAlunoContratoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/configuracoes': {
+      id: '/portal-aluno/configuracoes'
+      path: '/portal-aluno/configuracoes'
+      fullPath: '/portal-aluno/configuracoes'
+      preLoaderRoute: typeof PortalAlunoConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/avaliacoes': {
+      id: '/portal-aluno/avaliacoes'
+      path: '/portal-aluno/avaliacoes'
+      fullPath: '/portal-aluno/avaliacoes'
+      preLoaderRoute: typeof PortalAlunoAvaliacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-aluno/agenda': {
+      id: '/portal-aluno/agenda'
+      path: '/portal-aluno/agenda'
+      fullPath: '/portal-aluno/agenda'
+      preLoaderRoute: typeof PortalAlunoAgendaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/financeiro': {
+      id: '/admin/financeiro'
+      path: '/admin/financeiro'
+      fullPath: '/admin/financeiro'
+      preLoaderRoute: typeof AdminFinanceiroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/aluno/$id': {
+      id: '/dashboard/aluno/$id'
+      path: '/aluno/$id'
+      fullPath: '/dashboard/aluno/$id'
+      preLoaderRoute: typeof DashboardAlunoIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
   }
 }
+
+interface DashboardRouteChildren {
+  DashboardAlunoIdRoute: typeof DashboardAlunoIdRoute
+}
+
+const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardAlunoIdRoute: DashboardAlunoIdRoute,
+}
+
+const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
+  DashboardRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -421,7 +980,7 @@ const rootRouteChildren: RootRouteChildren = {
   AulaExperimentalRoute: AulaExperimentalRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   ContratosRoute: ContratosRoute,
-  DashboardRoute: DashboardRoute,
+  DashboardRoute: DashboardRouteWithChildren,
   FinanceiroRoute: FinanceiroRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
@@ -430,11 +989,37 @@ const rootRouteChildren: RootRouteChildren = {
   NotificacoesRoute: NotificacoesRoute,
   PlanosRoute: PlanosRoute,
   PresencaRoute: PresencaRoute,
+  PresencasRoute: PresencasRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ProfessoresRoute: ProfessoresRoute,
   TrocarSenhaRoute: TrocarSenhaRoute,
   TurmasRoute: TurmasRoute,
+  AdminFinanceiroRoute: AdminFinanceiroRoute,
+  PortalAlunoAgendaRoute: PortalAlunoAgendaRoute,
+  PortalAlunoAvaliacoesRoute: PortalAlunoAvaliacoesRoute,
+  PortalAlunoConfiguracoesRoute: PortalAlunoConfiguracoesRoute,
+  PortalAlunoContratoRoute: PortalAlunoContratoRoute,
+  PortalAlunoDashboardRoute: PortalAlunoDashboardRoute,
+  PortalAlunoFinanceiroRoute: PortalAlunoFinanceiroRoute,
+  PortalAlunoMeuPlanoRoute: PortalAlunoMeuPlanoRoute,
+  PortalAlunoNotificacoesRoute: PortalAlunoNotificacoesRoute,
+  PortalAlunoPerfilRoute: PortalAlunoPerfilRoute,
+  PortalAlunoPresencasRoute: PortalAlunoPresencasRoute,
+  PortalAlunoTreinosRoute: PortalAlunoTreinosRoute,
+  PortalResponsavelAgendaRoute: PortalResponsavelAgendaRoute,
+  PortalResponsavelConfiguracoesRoute: PortalResponsavelConfiguracoesRoute,
+  PortalResponsavelContratoRoute: PortalResponsavelContratoRoute,
+  PortalResponsavelDashboardRoute: PortalResponsavelDashboardRoute,
+  PortalResponsavelFinanceiroRoute: PortalResponsavelFinanceiroRoute,
+  PortalResponsavelMeusFilhosRoute: PortalResponsavelMeusFilhosRoute,
+  PortalResponsavelNotificacoesRoute: PortalResponsavelNotificacoesRoute,
+  PortalResponsavelPerfilRoute: PortalResponsavelPerfilRoute,
+  PortalResponsavelPresencasRoute: PortalResponsavelPresencasRoute,
+  ProfessorPresencasRoute: ProfessorPresencasRoute,
   ResetPasswordTokenRoute: ResetPasswordTokenRoute,
+  PortalAlunoIndexRoute: PortalAlunoIndexRoute,
+  PortalResponsavelIndexRoute: PortalResponsavelIndexRoute,
+  ProfessorIndexRoute: ProfessorIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { MODALIDADES, alunosStore, type Aluno, type Modalidade } from "./alunos-store";
+import { alunosStore, type Aluno, type Modalidade } from "./alunos-store";
 import { planosStore } from "./planos-store";
 import { type TrialClassMockRecord, type TrialClassStatus } from "./trialClassesMock";
 import { createRemoteCollectionStore } from "./remote-collection";
@@ -129,7 +129,7 @@ function buildStudentEmail(item: TrialClass) {
 }
 
 function normalizeModality(value: string): Modalidade {
-  return (MODALIDADES.find((item) => item === value) ?? MODALIDADES[0]) as Modalidade;
+  return (value || "") as Modalidade;
 }
 
 function normalizeStatus(value: string): TrialClassStatus {

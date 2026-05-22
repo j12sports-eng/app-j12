@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { MODALIDADES, type Modalidade } from "@/lib/alunos-store";
+import type { Modalidade } from "@/lib/alunos-store";
 import { useProfessores } from "@/lib/professores-store";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import {
@@ -36,7 +36,7 @@ const emptyForm: TrialClassInput = {
   phone: "",
   whatsapp: "",
   email: "",
-  modality: MODALIDADES[0] as Modalidade,
+  modality: "" as Modalidade,
   unit: "",
   turma: "",
   professor: "",
@@ -124,7 +124,6 @@ export function TrialClassFormDialog({
         new Set([
           ...settings.modalities.filter((item) => item.ativa).map((item) => item.nome),
           ...turmas.map((turma) => turma.modalidade),
-          ...MODALIDADES,
         ]),
       ) as Modalidade[],
     [settings.modalities, turmas],

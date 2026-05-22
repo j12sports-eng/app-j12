@@ -619,13 +619,57 @@ async function seedBaseData() {
 async function ensureAuthSeedData() {
   await seedBaseData();
 
-  const [usersCount] = await query("SELECT COUNT(*) AS total FROM users");
-  if (Number(usersCount?.total || 0) > 0) {
-    return;
-  }
+  const legacyAlunoRows = await query(
+    `
+      SELECT aluno_id
+      FROM j12_usuarios
+      WHERE perfil = 'aluno' AND status = 'ativo' AND aluno_id IS NOT NULL
+      ORDER BY id ASC
+      LIMIT 1
+    `,
+  );
+  const legacyResponsavelRows = await query(
+    `
+      SELECT id, aluno_id
+      FROM j12_usuarios
+      WHERE perfil = 'responsavel' AND status = 'ativo'
+      ORDER BY id ASC
+      LIMIT 1
+    `,
+  );
+  const professorRows = await query(
+    `
+      SELECT id
+      FROM j12_professores
+      ORDER BY id ASC
+      LIMIT 1
+    `,
+  );
+  const professorTurmasRows = await query(
+    `
+      SELECT nome
+      FROM j12_turmas
+      ORDER BY nome ASC
+      LIMIT 2
+    `,
+  );
 
-  const demoStudentRows = await query("SELECT id FROM alunos WHERE id = 'a1' LIMIT 1");
-  const hasDemoStudent = Array.isArray(demoStudentRows) && demoStudentRows.length > 0;
+  const demoStudentRows = await query(
+    `
+      SELECT id, telefone_contato
+      FROM j12_alunos
+      WHERE LOWER(status) = 'ativo'
+      ORDER BY id ASC
+      LIMIT 1
+    `,
+  );
+  const resolvedAlunoId = legacyAlunoRows?.[0]?.aluno_id ?? demoStudentRows?.[0]?.id ?? null;
+  const resolvedResponsavelAlunoId =
+    legacyResponsavelRows?.[0]?.aluno_id ?? resolvedAlunoId ?? null;
+  const resolvedProfessorId = professorRows?.[0]?.id ?? null;
+  const resolvedProfessorScope = Array.isArray(professorTurmasRows)
+    ? professorTurmasRows.map((row) => String(row.nome || "").trim()).filter(Boolean)
+    : [];
 
   const defaults = [
     {
@@ -660,54 +704,57 @@ async function ensureAuthSeedData() {
     },
   ];
 
-  if (hasDemoStudent) {
-    defaults.push(
-      {
-        id: "usr-prof-ricardo",
-        name: "Ricardo Mendes",
-        email: "prof@j12.com",
-        login: "prof@j12.com",
-        role: "professor",
-        alunoId: null,
-        professorId: "pr1",
-        responsavelId: null,
-        linkedAlunoId: null,
-        classScope: ["Sub-11 Tarde", "Sub-9 Manha"],
-        phoneWhatsapp: null,
-        status: "ativo",
-        password: "123456",
-      },
-      {
-        id: "usr-aluno-lucas",
-        name: "Lucas Almeida",
-        email: "aluno@j12.com",
-        login: "aluno@j12.com",
-        role: "aluno",
-        alunoId: "a1",
-        professorId: null,
-        responsavelId: null,
-        linkedAlunoId: null,
-        classScope: [],
-        phoneWhatsapp: "(11) 98123-4567",
-        status: "ativo",
-        password: "123456",
-      },
-      {
-        id: "usr-resp-carla",
-        name: "Carla Almeida",
-        email: "responsavel@j12.com",
-        login: "responsavel@j12.com",
-        role: "responsavel",
-        alunoId: null,
-        professorId: null,
-        responsavelId: "resp-a1",
-        linkedAlunoId: "a1",
-        classScope: [],
-        phoneWhatsapp: "(11) 99888-1122",
-        status: "ativo",
-        password: "123456",
-      },
-    );
+  defaults.push({
+    id: "usr-prof-ricardo",
+    name: "Ricardo Mendes",
+    email: "prof@j12.com",
+    login: "prof@j12.com",
+    role: "professor",
+    alunoId: null,
+    professorId: resolvedProfessorId == null ? null : String(resolvedProfessorId),
+    responsavelId: null,
+    linkedAlunoId: null,
+    classScope: resolvedProfessorScope,
+    phoneWhatsapp: null,
+    status: "ativo",
+    password: "123456",
+  });
+
+  if (resolvedAlunoId != null) {
+    defaults.push({
+      id: "usr-aluno-lucas",
+      name: "Lucas Almeida",
+      email: "aluno@j12.com",
+      login: "aluno@j12.com",
+      role: "aluno",
+      alunoId: String(resolvedAlunoId),
+      professorId: null,
+      responsavelId: null,
+      linkedAlunoId: null,
+      classScope: [],
+      phoneWhatsapp: demoStudentRows?.[0]?.telefone_contato ?? null,
+      status: "ativo",
+      password: "123456",
+    });
+  }
+
+  if (resolvedResponsavelAlunoId != null) {
+    defaults.push({
+      id: "usr-resp-carla",
+      name: "Carla Almeida",
+      email: "responsavel@j12.com",
+      login: "responsavel@j12.com",
+      role: "responsavel",
+      alunoId: null,
+      professorId: null,
+      responsavelId:
+        legacyResponsavelRows?.[0]?.id == null ? null : String(legacyResponsavelRows[0].id),
+      linkedAlunoId: String(resolvedResponsavelAlunoId),
+      classScope: [],
+      phoneWhatsapp: null,
+      status: "ativo",
+      password: "123456",
+    });
   }
 
   await transaction(async (connection) => {
@@ -716,11 +763,49 @@ async function ensureAuthSeedData() {
         "SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(login) = ? LIMIT 1",
         [String(user.email).toLowerCase(), String(user.login).toLowerCase()],
       );
+
+      const { hash, salt } = hashPassword(user.password);
       if (Array.isArray(existing) && existing.length > 0) {
+        await connection.execute(
+          `
+            UPDATE users
+            SET
+              name = ?,
+              email = ?,
+              login = ?,
+              password_hash = ?,
+              password_salt = ?,
+              role = ?,
+              aluno_id = ?,
+              professor_id = ?,
+              responsavel_id = ?,
+              linked_aluno_id = ?,
+              class_scope_json = ?,
+              phone_whatsapp = ?,
+              status = ?,
+              updated_at = NOW()
+            WHERE id = ?
+          `,
+          [
+            user.name,
+            user.email,
+            user.login,
+            hash,
+            salt,
+            user.role,
+            user.alunoId,
+            user.professorId,
+            user.responsavelId,
+            user.linkedAlunoId,
+            JSON.stringify(user.classScope),
+            user.phoneWhatsapp,
+            user.status,
+            String(existing[0].id),
+          ],
+        );
         continue;
       }
 
-      const { hash, salt } = hashPassword(user.password);
       await connection.execute(
         `
           INSERT INTO users (
@@ -755,7 +840,7 @@ async function authenticateUser(identifier, password) {
   if (j12Row && normalizeLegacyUserStatus(j12Row.status) === "ativo") {
     const legacyHash = String(j12Row.senha_hash ?? "");
     if (legacyHash && bcrypt.compareSync(String(password ?? ""), legacyHash)) {
-      const mirroredUser = await upsertLegacyMirrorUser(j12Row, password);
+      const mirroredUser = await upsertLegacyMirrorUser(j12Row, password).catch(() => null);
       return sanitizeUser({
         ...(mirroredUser || {}),
         ...j12Row,
