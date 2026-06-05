@@ -1440,3 +1440,5 @@ export function getNextEnrollmentNumberPreview() {
 export function getDatabasePath() {
   return DATABASE_PATH;
 }
+
+export default db;

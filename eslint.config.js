@@ -7,16 +7,7 @@ const tseslint = require("typescript-eslint");
 
 module.exports = tseslint.config(
   {
-    ignores: [
-      "dist",
-      ".output",
-      ".vinxi",
-      ".tanstack",
-      ".wrangler",
-      "node_modules",
-      "*.log",
-      "*.err.log",
-    ],
+    ignores: ["dist", ".output", ".vinxi", ".tanstack", "node_modules", "*.log", "*.err.log"],
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

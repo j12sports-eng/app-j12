@@ -1,6 +1,6 @@
 const express = require("express");
-const { requireAuth } = require("../../auth");
-const { getCollectionSnapshot, upsertCollectionSnapshot } = require("../config/db");
+const { requireAuth } = require("../../auth.js");
+const { getCollectionSnapshot, upsertCollectionSnapshot } = require("../config/db.js");
 
 const router = express.Router();
 

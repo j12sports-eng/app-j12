@@ -3,13 +3,13 @@ const {
   createPublicEnrollment,
   getNextEnrollmentNumber,
   lookupAddress,
-} = require("../controllers/public-enrollments.controller");
+} = require("../controllers/public-enrollments.controller.js");
 const {
   getPublicModalidades,
   getPublicUnidades,
   getPublicTurmas,
   getPublicHorarios,
-} = require("../controllers/public-catalog.controller");
+} = require("../controllers/public-catalog.controller.js");
 
 const router = express.Router();
 

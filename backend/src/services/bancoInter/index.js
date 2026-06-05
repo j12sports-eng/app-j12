@@ -1,10 +1,10 @@
 module.exports = {
-  ...require("./auth"),
-  ...require("./baixaAutomatica"),
-  ...require("./financial"),
-  ...require("./pix"),
-  ...require("./realtime"),
-  ...require("./types"),
-  ...require("./utils"),
-  ...require("./webhook"),
+  ...require("./auth.js"),
+  ...require("./baixaAutomatica.js"),
+  ...require("./financial.js"),
+  ...require("./pix.js"),
+  ...require("./realtime.js"),
+  ...require("./types.js"),
+  ...require("./utils.js"),
+  ...require("./webhook.js"),
 };

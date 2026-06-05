@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { getCollectionSnapshot, query, tableExists, transaction } = require("../db");
+const { getCollectionSnapshot, query, tableExists, transaction } = require("../db.js");
 
 function text(value, max = 191) {
   return String(value ?? "")

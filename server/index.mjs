@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import dotenv from "dotenv";
 import alunoRoutes from "./routes/aluno.mjs";
-import "@/lib/socket";
 
 dotenv.config();
 
@@ -11,6 +10,7 @@ const backendRequire = createRequire(new URL("../backend/package.json", import.m
 const express = backendRequire("express");
 const { default: dbModule } = await import("../backend/db.js");
 const { default: authModule } = await import("../backend/auth.js");
+const { default: authRoutes } = await import("../backend/routes/auth.js");
 
 const { pool, query, testConnection, ensureSchema, syncEnrollmentNumberRegistry } = dbModule;
 const {
@@ -54,7 +54,6 @@ const routeDefinitions = [
   { mountPath: "/aluno", modulePath: "./src/routes/aluno.routes.js" },
   { mountPath: "/aluno-completo", modulePath: "./src/routes/aluno-completo.routes.js" },
   { mountPath: "/alunos", modulePath: "./src/routes/alunos.routes.js" },
-  { mountPath: "/auth", modulePath: "./src/routes/auth.routes.js" },
 
   { mountPath: "/financeiro", modulePath: "./src/routes/financeiro.routes.js" },
   { mountPath: "/modalidades", modulePath: "./src/routes/modalidades.routes.js" },
@@ -70,9 +69,9 @@ const routeDefinitions = [
   { mountPath: "/unidades", modulePath: "./src/routes/unidades.routes.js" },
 
   // NOVAS ROTAS
-  { mountPath: "/trial-classes", modulePath: "./backend/routes/trial-classes.routes.js" },
-  { mountPath: "/contratos", modulePath: "./backend/routes/contratos.routes.js" },
-  { mountPath: "/settings", modulePath: "./backend/routes/settings.routes.js" },
+  { mountPath: "/trial-classes", modulePath: "./routes/trial-classes.routes.js" },
+  { mountPath: "/contratos", modulePath: "./routes/contratos.routes.js" },
+  { mountPath: "/settings", modulePath: "./routes/settings.routes.js" },
 ];
 
 const mountedRoutes = [];
@@ -161,8 +160,8 @@ app.use(
     limit: formatBodyLimit(REQUEST_BODY_LIMIT_BYTES),
   }),
 );
-app.use("/auth", authRoutes);
 app.use("/aluno", alunoRoutes);
+app.use("/auth", authRoutes);
 
 app.use(
   express.urlencoded({

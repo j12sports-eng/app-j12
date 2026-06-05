@@ -10,7 +10,7 @@ const {
   getValidPasswordResetToken,
   requireAuth,
   resetPassword,
-} = require("../auth");
+} = require("../auth.js");
 
 const router = express.Router();
 

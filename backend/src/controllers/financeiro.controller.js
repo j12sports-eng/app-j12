@@ -1,4 +1,4 @@
-const { pool } = require("../config/db");
+const { pool } = require("../config/db.js");
 
 function isAdmin(user) {
   return user?.perfil === "admin";

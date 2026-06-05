@@ -1,6 +1,6 @@
 const express = require("express");
-const { canManageSystem, requireAuth } = require("../../auth");
-const { pool } = require("../config/db");
+const { canManageSystem, requireAuth } = require("../../auth.js");
+const { pool } = require("../config/db.js");
 
 const router = express.Router();
 

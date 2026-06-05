@@ -1,4 +1,4 @@
-const db = require("../../db");
+const db = require("../../db.js");
 
 // LISTAR TODOS
 async function getAlunos(req, res) {

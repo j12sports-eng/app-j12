@@ -2,7 +2,7 @@ const express = require("express");
 
 const cors = require("cors");
 
-const interRoutes = require("./routes/inter.routes");
+const interRoutes = require("./routes/inter.routes.js");
 
 const app = express();
 

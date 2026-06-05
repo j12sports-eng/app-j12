@@ -1,5 +1,5 @@
 const { randomBytes, randomUUID, scryptSync } = require("node:crypto");
-const { query, transaction } = require("../db");
+const { query, transaction } = require("../db.js");
 
 function text(value, max = 191) {
   return String(value ?? "")

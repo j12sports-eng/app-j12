@@ -1,8 +1,8 @@
 const express = require("express");
 
-const { requireAuth } = require("../../auth");
+const { requireAuth } = require("../../auth.js");
 
-const { pool } = require("../config/db");
+const { pool } = require("../config/db.js");
 
 const router = express.Router();
 

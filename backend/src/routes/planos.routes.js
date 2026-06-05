@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 
-const { canManageSystem, requireAuth } = require("../../auth");
-const { pool } = require("../config/db");
+const { canManageSystem, requireAuth } = require("../../auth.js");
+const { pool } = require("../config/db.js");
 
 function text(value, max = 191) {
   return String(value ?? "")

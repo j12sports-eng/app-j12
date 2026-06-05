@@ -1,5 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { buildApiUrl } from "./api";
+
 export type AlunoStatus = "ativo" | "inativo" | "experimental" | string;
 export type StatusAluno = AlunoStatus;
 export type Modalidade = string;
@@ -141,23 +143,6 @@ export function getLoadingSnapshot() {
 
 export function getErrorSnapshot() {
   return errorState;
-}
-
-/**
- * IMPORTANTE:
- * Para a tela de alunos, vamos forçar a API MySQL real na porta 3001.
- * Isso evita continuar lendo a API persistente 3001, que tinha só 6 alunos teste.
- */
-function apiBaseUrl() {
-  const envUrl = String(import.meta.env.VITE_API_URL || "")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (envUrl) {
-    return envUrl;
-  }
-
-  return "http://localhost:3001";
 }
 
 function safeJsonParse(value: any, fallback: any = null) {
@@ -427,7 +412,7 @@ export async function loadAlunos(): Promise<Aluno[]> {
   try {
     const token = localStorage.getItem("j12_auth_token") || "";
 
-    const response = await fetch(`${apiBaseUrl()}/api/alunos`, {
+    const response = await fetch(buildApiUrl("/alunos"), {
       method: "GET",
 
       headers: {
@@ -540,7 +525,7 @@ export const alunosStore = {
 
     emit();
 
-    fetch(`${apiBaseUrl()}/api/alunos/${id}`, {
+    fetch(buildApiUrl(`/alunos/${id}`), {
       method: "PUT",
 
       headers: {

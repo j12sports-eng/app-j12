@@ -1,6 +1,6 @@
 const express = require("express");
-const { requireAuth } = require("../../auth");
-const { criarAlunoCompleto } = require("../controllers/aluno-completo.controller");
+const { requireAuth } = require("../../auth.js");
+const { criarAlunoCompleto } = require("../controllers/aluno-completo.controller.js");
 
 const router = express.Router();
 

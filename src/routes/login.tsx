@@ -12,13 +12,25 @@ import {
 } from "@/components/public/AuthExperience";
 
 import { getRoleHomePath, useAuth } from "@/lib/auth";
+import { logSsr, logSsrRoute } from "@/lib/ssr-debug";
 
 export const Route = createFileRoute("/login")({
+  loader: () => {
+    logSsr("[SSR] iniciou loader /login");
+    logSsr("[SSR] terminou loader /login");
+    return null;
+  },
   component: LoginPage,
 });
 
 function LoginPage() {
+  logSsrRoute("/login", "entrou na");
+
   const { login, loading } = useAuth();
+
+  logSsr("[SSR] estado auth na rota /login", {
+    loading,
+  });
 
   const navigate = useNavigate();
 

@@ -249,7 +249,7 @@ function MatriculaPage() {
     const all = [...publicData, ...settingsData];
     const byName = new Map();
     all.forEach((item) => {
-      const nome = item.nome || item.name;
+      const nome = item.nome || ("name" in item ? item.name : undefined);
       if (nome && !byName.has(nome)) {
         byName.set(nome, item);
       }
@@ -273,7 +273,7 @@ function MatriculaPage() {
     const all = [...publicData, ...settingsData];
     const byName = new Map();
     all.forEach((item) => {
-      const nome = item.nome || item.name;
+      const nome = item.nome || ("name" in item ? item.name : undefined);
       if (nome && !byName.has(nome)) {
         byName.set(nome, item);
       }

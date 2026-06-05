@@ -1,12 +1,12 @@
 const QRCode = require("qrcode");
 
-const { interRequest } = require("./auth");
+const { interRequest } = require("./auth.js");
 const {
   assertPaymentAccess,
   findReusablePendingPayment,
   loadChargeForPix,
   savePixPayment,
-} = require("./financial");
+} = require("./financial.js");
 const {
   buildTxid,
   logInter,
@@ -14,7 +14,7 @@ const {
   nullableText,
   resolvePixKey,
   text,
-} = require("./utils");
+} = require("./utils.js");
 
 function normalizeDebtor(charge) {
   const digits = text(charge.responsibleCpf, 20).replace(/\D/g, "");

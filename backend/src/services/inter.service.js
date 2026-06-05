@@ -1,4 +1,4 @@
-const bancoInter = require("./bancoInter");
+const bancoInter = require("./bancoInter/index.js");
 
 const {
   createPixCharge,

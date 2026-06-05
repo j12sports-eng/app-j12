@@ -1,18 +1,36 @@
-import { createContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 
-export const ConfigContext = createContext({});
+type ConfigResponse<T> = T | { data?: T };
 
-export function ConfigProvider({ children }) {
-  const [modalidades, setModalidades] = useState([]);
-  const [planos, setPlanos] = useState([]);
+type ConfigContextValue = {
+  modalidades: unknown[];
+  planos: unknown[];
+};
+
+export const ConfigContext = createContext<ConfigContextValue>({
+  modalidades: [],
+  planos: [],
+});
+
+function extractConfigData<T>(payload: ConfigResponse<T>, fallback: T): T {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    return payload.data ?? fallback;
+  }
+
+  return (payload as T) ?? fallback;
+}
+
+export function ConfigProvider({ children }: { children: ReactNode }) {
+  const [modalidades, setModalidades] = useState<unknown[]>([]);
+  const [planos, setPlanos] = useState<unknown[]>([]);
 
   async function carregarConfigs() {
-    const mod = await api.get("/api/config/modalidades");
-    const pla = await api.get("/api/config/planos");
+    const mod = await api.get<ConfigResponse<unknown[]>>("/api/config/modalidades");
+    const pla = await api.get<ConfigResponse<unknown[]>>("/api/config/planos");
 
-    setModalidades(mod.data);
-    setPlanos(pla.data);
+    setModalidades(extractConfigData(mod, []));
+    setPlanos(extractConfigData(pla, []));
   }
 
   useEffect(() => {

@@ -10,7 +10,7 @@ const {
   getMeDashboard,
   getMeDashboardResponsavel,
   marcarNotificacaoComoLida,
-} = require("../controllers/aluno.controller");
+} = require("../controllers/aluno.controller.js");
 
 const router = express.Router();
 

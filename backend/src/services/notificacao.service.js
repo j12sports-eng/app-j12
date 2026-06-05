@@ -1,4 +1,4 @@
-const { query } = require("../config/db");
+const { query } = require("../config/db.js");
 
 async function criarNotificacao({ alunoId, titulo, mensagem, tipo = "info" }) {
   const existente = await query(

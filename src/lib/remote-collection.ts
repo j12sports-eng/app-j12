@@ -71,19 +71,18 @@ export function createRemoteCollectionStore<T>(
     listeners.forEach((listener) => listener());
   }
 
-  async function persistSnapshot(snapshot: T) {
+  async function persistSnapshot(snapshot: T): Promise<void> {
     // Enviar com wrapper 'data' conforme esperado pelo backend
     const payload = { data: snapshot };
     
     console.log(`[RemoteCollection] Persistindo ${collection}:`, payload);
     
     try {
-      const response = await apiFetch(`/api/state/${collection}`, {
+      const response = await apiFetch<unknown>(`/api/state/${collection}`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
       console.log(`[RemoteCollection] ✓ ${collection} persistido com sucesso`, response);
-      return response;
     } catch (error: any) {
       console.error(`[RemoteCollection] ✗ Falha ao persistir ${collection}:`, {
         status: error?.status,

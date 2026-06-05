@@ -1,9 +1,9 @@
-const { canManageSystem } = require("../../auth");
-const { query, transaction } = require("../config/db");
-const { loadStudentRows, normalizeAlunoPayload, persistAluno } = require("./alunos.controller");
-const { syncStudentUsers } = require("../../services/student-users");
-const { syncResponsavelUsers } = require("../../services/linked-users");
-const { generateMonthlyChargeForStudent } = require("../../services/student-finance");
+const { canManageSystem } = require("../../auth.js");
+const { query, transaction } = require("../config/db.js");
+const { loadStudentRows, normalizeAlunoPayload, persistAluno } = require("./alunos.controller.js");
+const { syncStudentUsers } = require("../../services/student-users.js");
+const { syncResponsavelUsers } = require("../../services/linked-users.js");
+const { generateMonthlyChargeForStudent } = require("../../services/student-finance.js");
 
 function text(value, max = 191) {
   return String(value ?? "")

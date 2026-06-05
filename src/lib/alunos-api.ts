@@ -1,7 +1,6 @@
 import type { Aluno } from "./alunos-store";
 import { getStoredAuthToken } from "@/lib/auth-storage";
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+import { buildApiUrl } from "@/lib/api";
 
 type ApiPlano = {
   id?: string | number;
@@ -36,7 +35,7 @@ type ApiResponsavel = {
 };
 
 async function apiGet<T>(path: string): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = buildApiUrl(path);
 
   const token = getStoredAuthToken();
 
@@ -63,7 +62,7 @@ async function apiSend<T>(
   method: "POST" | "PUT" | "DELETE",
   body?: unknown,
 ): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = buildApiUrl(path);
 
   const token = getStoredAuthToken();
 

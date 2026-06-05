@@ -1,255 +1,110 @@
 # Publicacao Final em `app.j12sports.com.br`
 
-## O que ja foi preparado
+## Stack de producao
 
-O projeto agora possui duas camadas prontas para producao:
+O projeto roda em VPS Linux com Node.js 22+, PM2 e Nginx.
 
-1. frontend TanStack Start para publicar na Cloudflare Workers
-2. API Node persistente em SQLite para publicar em `api.j12sports.com.br`
+- Frontend: TanStack Start SSR gerado por Vite.
+- Runtime do frontend: Node.js + Express em `scripts/serve-ssr.mjs`.
+- Backend/API: Node.js + Express em `server/index.mjs`.
+- PM2: `ecosystem.config.cjs`.
+- Nginx: proxy reverso para `127.0.0.1:4173` e `127.0.0.1:3001`.
 
-Arquivos principais:
+Nao ha runtime serverless na producao. O build gera:
 
-- frontend Cloudflare: `wrangler.jsonc`
-- backend persistente: `server/index.mjs`
-- banco SQLite: `data/j12.sqlite`
-- colecoes sincronizadas: `src/lib/remote-collection.ts`
+- `dist/client`: assets do navegador.
+- `dist/server/server.mjs`: entry SSR consumido pelo servidor Node.
 
-## O que mudou na pratica
+## Portas locais
 
-Os modulos principais agora salvam em backend centralizado:
-
-- autenticacao com sessoes persistidas em SQLite
-- alunos
-- professores
-- planos
-- turmas
-- financeiro
-- contratos
-- aulas experimentais
-- configuracoes
-
-O navegador ainda usa `localStorage` apenas para manter o token e a sessao local do usuario.
-
-## Arquitetura recomendada
-
-### `app.j12sports.com.br`
-
-Publicar o frontend na Cloudflare Workers.
-
-### `api.j12sports.com.br`
-
-Publicar a API Node deste repositorio em um servidor Node com HTTPS.
-
-### Banco
-
-O backend atual usa SQLite local em disco.
-
-Para operacao pequena ou interna, isso pode funcionar bem em uma unica maquina ou VPS.
-Para crescimento maior, o proximo passo natural e migrar para Postgres ou MySQL.
+- Frontend SSR: `127.0.0.1:4173`.
+- API: `127.0.0.1:3001`.
+- Dominio publico: `https://app.j12sports.com.br`.
 
 ## Variaveis de producao
 
-Crie `.env.production` com base em `.env.production.example`:
-
-```env
-VITE_API_URL=https://api.j12sports.com.br
-```
-
-Para a API Node, crie `.env.api.production` com base em `.env.api.production.example`:
+Crie `.env.api.production` para a API:
 
 ```env
 NODE_ENV=production
 HOST=127.0.0.1
 PORT=3001
-CORS_ALLOWED_ORIGINS=https://app.j12sports.com.br
-HEALTH_SHOW_DETAILS=false
+CORS_ORIGIN=https://app.j12sports.com.br
 ```
 
-## Deploy do frontend
+Para o frontend, se precisar sobrescrever o backend interno:
 
-### 1. Login no Cloudflare
-
-```powershell
-npx wrangler login
+```env
+API_TARGET=http://127.0.0.1:3001
+VITE_API_URL=/api
 ```
 
-### 2. Confirmar o custom domain no `wrangler.jsonc`
-
-O projeto ja esta configurado para publicar em `app.j12sports.com.br`.
-
-### 3. Publicar
-
-```powershell
-npm run deploy
-```
-
-### 4. Dry run opcional
-
-```powershell
-npm run deploy:dry
-```
-
-## Deploy da API
-
-O comando da API e:
-
-```powershell
-npm run start:api
-```
-
-Para producao com PM2:
-
-```powershell
-npm run start:api:prod
-```
-
-Arquivos de apoio incluidos no repositorio:
-
-- PM2: `ecosystem.config.cjs`
-- Nginx: `deploy/nginx/api.j12sports.com.br.conf`
-- script Ubuntu: `deploy/server/api-first-deploy-ubuntu.sh`
-- env da API: `.env.api.production.example`
-
-Roteiro recomendado de publicacao:
-
-1. subir a pasta do projeto em um VPS ou host Node
-2. instalar Node 24+
-3. rodar `npm install`
-4. criar `.env.api.production`
-5. instalar PM2 no servidor com `npm install -g pm2`
-6. iniciar a API com `pm2 start ecosystem.config.cjs`
-7. persistir o processo com `pm2 save`
-8. registrar auto start com `pm2 startup`
-9. publicar atras de Nginx ou Caddy
-10. apontar `api.j12sports.com.br` para esse servidor
-
-## Exemplo direto para VPS Ubuntu
+## Comandos principais
 
 ```bash
-cd /var/www/j12-sports-hub-main
 npm install
-cp .env.api.production.example .env.api.production
-npm install -g pm2
+npm run build
+npm run start
+npm run start:prod
+npm run pm2:start
+```
+
+## Deploy recomendado na VPS
+
+```bash
+cd /var/www/app-j12
+npm install
+npm run build
 pm2 start ecosystem.config.cjs
 pm2 save
-```
-
-## Exemplo de proxy reverso com Nginx
-
-```nginx
-server {
-    listen 80;
-    server_name api.j12sports.com.br;
-    client_max_body_size 4m;
-
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-Fluxo tipico no servidor:
-
-```bash
-sudo cp deploy/nginx/api.j12sports.com.br.conf /etc/nginx/sites-available/api.j12sports.com.br.conf
-sudo ln -s /etc/nginx/sites-available/api.j12sports.com.br.conf /etc/nginx/sites-enabled/api.j12sports.com.br.conf
 sudo nginx -t
 sudo systemctl reload nginx
-sudo certbot --nginx -d api.j12sports.com.br
 ```
 
-## Script pronto para a primeira publicacao da API
-
-Se o servidor for Ubuntu e o projeto estiver em `/var/www/j12-sports-hub-main`, voce pode rodar:
+Para reparar apenas o frontend SSR e aplicar o Nginx do projeto:
 
 ```bash
-chmod +x deploy/server/api-first-deploy-ubuntu.sh
-EMAIL=seu-email@dominio.com APP_DIR=/var/www/j12-sports-hub-main bash deploy/server/api-first-deploy-ubuntu.sh
+cd /var/www/app-j12
+chmod +x deploy/server/frontend-ssr-deploy-ubuntu.sh
+APP_DIR=/var/www/app-j12 DOMAIN=app.j12sports.com.br bash deploy/server/frontend-ssr-deploy-ubuntu.sh
 ```
 
-O script:
+## Nginx
 
-- instala Nginx e Certbot
-- roda `npm install`
-- cria `.env.api.production` se ainda nao existir
-- instala PM2 se precisar
-- sobe a API com `ecosystem.config.cjs`
-- publica o Nginx e tenta emitir o SSL
+O template principal esta em:
 
-## DNS
+```text
+deploy/nginx/app.j12sports.com.br.conf
+```
 
-Para o custom domain do app funcionar:
+Ele faz:
 
-1. a zona `j12sports.com.br` precisa estar dentro da Cloudflare
-2. `app.j12sports.com.br` nao pode ter um CNAME antigo em conflito
-3. `api.j12sports.com.br` precisa apontar para o servidor Node da API
+- redirect de HTTP para HTTPS;
+- proxy de `/` para `http://127.0.0.1:4173`;
+- proxy de `/api`, `/auth` e `/socket.io` para `http://127.0.0.1:3001`;
+- suporte a WebSocket para Socket.IO.
 
-## Proximo passo exato na Cloudflare
+O certificado esperado e:
 
-### 1. Colocar a zona `j12sports.com.br` dentro da Cloudflare
+```text
+/etc/letsencrypt/live/app.j12sports.com.br/fullchain.pem
+/etc/letsencrypt/live/app.j12sports.com.br/privkey.pem
+```
 
-No painel da Cloudflare:
+## Validacoes
 
-1. adicione o dominio raiz `j12sports.com.br`
-2. revise os registros DNS importados
-3. troque os nameservers no registrador pelos nameservers entregues pela Cloudflare
-4. aguarde a zona ficar `Active`
+Depois do deploy:
 
-### 2. Configurar o `api.j12sports.com.br`
+```bash
+curl -I http://127.0.0.1:4173
+curl -I http://127.0.0.1:3001/health
+curl -I https://app.j12sports.com.br
+pm2 status
+pm2 logs j12-frontend
+pm2 logs j12-api
+```
 
-No DNS da Cloudflare, crie:
+## Observacoes
 
-- tipo `A`
-- nome `api`
-- conteudo: IP publico do seu VPS
-- proxy status: `Proxied`
-
-Se usar IPv6, pode adicionar um `AAAA` tambem.
-
-### 3. Nao criar DNS manual para `app.j12sports.com.br`
-
-Para o frontend, como o Worker esta usando custom domain via `wrangler.jsonc`, o fluxo correto e:
-
-1. garantir que nao exista CNAME antigo para `app`
-2. rodar `npm run deploy`
-3. deixar a propria Cloudflare criar o registro e o certificado do custom domain
-
-### 4. Ajustar SSL/TLS da zona
-
-Na Cloudflare, use `SSL/TLS > Overview > Full (strict)`.
-
-Isso e o ideal quando sua API em `api.j12sports.com.br` estiver com HTTPS valido no servidor.
-
-### 5. Validar depois do deploy
-
-Verifique:
-
-- `https://app.j12sports.com.br`
-- `https://api.j12sports.com.br/health`
-- login no app
-- `pm2 status` no servidor da API
-
-## Validacoes minimas antes de abrir ao publico
-
-- `https://app.j12sports.com.br` carregando com HTTPS
-- `https://api.j12sports.com.br/health` respondendo 200
-- login funcionando com usuario real
-- criacao e edicao refletindo em navegadores diferentes
-- backup do arquivo SQLite ou snapshot do servidor
-- `pm2 status` mostrando `j12-api` como `online`
-
-## Riscos e proximo passo recomendado
-
-O backend atual ja e persistente e centralizado, com CORS travado para o app de producao quando `NODE_ENV=production`.
-Ainda assim, ele continua usando SQLite nativo do Node.
-Para uma operacao mais robusta, o proximo passo recomendado e migrar a API para Postgres ou MySQL e adicionar rotinas de backup, auditoria e recuperacao.
-
-## Referencias oficiais
-
-- Cloudflare custom domains: https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
-- Cloudflare Wrangler config: https://developers.cloudflare.com/workers/wrangler/configuration/
+O frontend SSR nao deve chamar o proprio dominio publico durante a renderizacao.
+Chamadas internas de servidor devem usar `http://127.0.0.1:3001`.

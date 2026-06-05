@@ -1,5 +1,5 @@
 const express = require("express");
-const { listarModalidades } = require("../controllers/modalidades.controller");
+const { listarModalidades } = require("../src/controllers/modalidades.controller.js");
 
 const router = express.Router();
 

@@ -5,14 +5,14 @@ const {
   pool,
   transaction,
   upsertEnrollmentNumberRegistry,
-} = require("../config/db");
-const { persistAluno } = require("./alunos.controller");
+} = require("../config/db.js");
+const { persistAluno } = require("./alunos.controller.js");
 const {
   createId,
   sanitizeIsoDate,
   sanitizeString,
   stringifyJson,
-} = require("../../routes/helpers");
+} = require("../../routes/helpers.js");
 
 function text(value, max = 65535) {
   return sanitizeString(value, max);

@@ -3,7 +3,7 @@
  * Utilizados na página de matrícula pública do aluno
  */
 
-const { pool } = require("../config/db");
+const { pool } = require("../config/db.js");
 
 const ACTIVE_TURMA_WHERE = `
   LOWER(COALESCE(turma.status, 'ativa')) NOT IN (

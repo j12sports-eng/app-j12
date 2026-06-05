@@ -1,8 +1,8 @@
 const express = require("express");
 const { randomUUID } = require("node:crypto");
 
-const { query } = require("../config/db");
-const { canManageSystem, requireAuth } = require("../../auth");
+const { query } = require("../config/db.js");
+const { canManageSystem, requireAuth } = require("../../auth.js");
 
 const router = express.Router();
 

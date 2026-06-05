@@ -1,7 +1,7 @@
 const express = require("express");
-const legacyFinanceiroRoutes = require("../../routes/financeiro");
-const { requireAuth, canManageSystem } = require("../../auth");
-const { gerarMensalidadesDoMesAtual } = require("../services/financeiro.service");
+const legacyFinanceiroRoutes = require("../../routes/financeiro.js");
+const { requireAuth, canManageSystem } = require("../../auth.js");
+const { gerarMensalidadesDoMesAtual } = require("../services/financeiro.service.js");
 
 const {
   getResumoFinanceiro,
@@ -9,9 +9,9 @@ const {
   pagarMensalidade,
   atualizarMensalidade,
   deletarMensalidade,
-} = require("../controllers/financeiro.controller");
+} = require("../controllers/financeiro.controller.js");
 
-const { pool } = require("../config/db");
+const { pool } = require("../config/db.js");
 
 const router = express.Router();
 

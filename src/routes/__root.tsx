@@ -1,7 +1,9 @@
+import { useState, type ReactNode } from "react";
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth";
 import { ResponsavelStudentsProvider } from "@/lib/responsavel-students-context";
 import { ThemeProvider } from "@/lib/settings/theme-context";
+import { logSsr, logSsrRoute } from "@/lib/ssr-debug";
 import { Toaster } from "@/components/ui/sonner";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -31,9 +33,12 @@ function NotFoundComponent() {
   );
 }
 
-const queryClient = new QueryClient();
-
 export const Route = createRootRoute({
+  loader: () => {
+    logSsr("[SSR] iniciou loader __root");
+    logSsr("[SSR] terminou loader __root");
+    return null;
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -59,13 +64,34 @@ export const Route = createRootRoute({
       },
     ],
   }),
-
-  shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
 });
 
-function RootShell({ children }: { children: React.ReactNode }) {
+function RootComponent() {
+  logSsrRoute("__root", "entrou na");
+
+  const [queryClient] = useState(() => new QueryClient());
+
+  return (
+    <RootDocument>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <ResponsavelStudentsProvider>
+            <ThemeProvider>
+              <Outlet />
+              <Toaster richColors position="top-right" />
+            </ThemeProvider>
+          </ResponsavelStudentsProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </RootDocument>
+  );
+}
+
+function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+  logSsr("[SSR] renderizando RootDocument");
+
   return (
     <html lang="pt-BR">
       <head>
@@ -76,20 +102,5 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  );
-}
-
-function RootComponent() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ResponsavelStudentsProvider>
-          <ThemeProvider>
-            <Outlet />
-            <Toaster richColors position="top-right" />
-          </ThemeProvider>
-        </ResponsavelStudentsProvider>
-      </AuthProvider>
-    </QueryClientProvider>
   );
 }

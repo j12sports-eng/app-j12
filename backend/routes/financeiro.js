@@ -1,7 +1,7 @@
 const express = require("express");
 const axios = require("axios");
-const { query } = require("../db");
-const { canManageSystem, requireAuth, resolveScopedStudentId } = require("../auth");
+const { query } = require("../db.js");
+const { canManageSystem, requireAuth, resolveScopedStudentId } = require("../auth.js");
 const {
   sanitizeBoolean,
   sanitizeIsoDate,
@@ -9,7 +9,7 @@ const {
   sanitizeNumber,
   sanitizeString,
   createId,
-} = require("./helpers");
+} = require("./helpers.js");
 const {
   generateMonthlyChargeForStudent,
   generateMonthlyCharges,
@@ -21,7 +21,7 @@ const {
   removeChargeCompatibility,
   syncAllChargeCompatibilityTables,
   syncChargeCompatibility,
-} = require("../services/student-finance");
+} = require("../services/student-finance.js");
 
 const router = express.Router();
 

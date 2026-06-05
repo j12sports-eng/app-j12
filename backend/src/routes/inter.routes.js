@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { canManageSystem, requireAuth } = require("../../auth");
+const { canManageSystem, requireAuth } = require("../../auth.js");
 const {
   configurePixWebhook,
   createPixCharge,
@@ -9,7 +9,7 @@ const {
   gerarToken,
   handleInterWebhook,
   userCanAccessStudent,
-} = require("../services/inter.service");
+} = require("../services/inter.service.js");
 
 const router = express.Router();
 

@@ -48,9 +48,15 @@ import { useAlunos, useAlunosLoading, type Aluno } from "@/lib/alunos-store";
 import { useProfessores, useProfessoresStatus, type Professor } from "@/lib/professores-store";
 import { useTrialClasses, useTrialClassesStatus } from "@/lib/trial-classes-store";
 import { useTurmas, useTurmasStatus, type DiaSemana, type Turma } from "@/lib/turmas-store";
+import { logSsr, logSsrRoute } from "@/lib/ssr-debug";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard")({
+  loader: () => {
+    logSsr("[SSR] iniciou loader /dashboard");
+    logSsr("[SSR] terminou loader /dashboard");
+    return null;
+  },
   component: DashboardPage,
 });
 
@@ -102,7 +108,13 @@ const DIA_LABELS: Record<DiaSemana, string> = {
 const CHART_COLORS = ["#ff4500", "#22c55e", "#f59e0b", "#38bdf8", "#a855f7", "#ef4444"];
 
 function DashboardPage() {
+  logSsrRoute("/dashboard", "entrou na");
+
   const { role } = useAuth();
+
+  logSsr("[SSR] estado auth na rota /dashboard", {
+    role,
+  });
 
   let destination = "/portal-aluno/dashboard";
 
@@ -124,6 +136,8 @@ function DashboardPage() {
 }
 
 function ExecutiveDashboard() {
+  logSsr("[SSR] renderizando ExecutiveDashboard");
+
   const alunos = useAlunos();
   const alunosLoading = useAlunosLoading();
   const turmas = useTurmas();
@@ -746,7 +760,9 @@ function buildAgenda(
         detail: `${turma.modalidade || "Modalidade"} com ${turma.professor || "professor a definir"}`,
         meta: turma.unidade || "Escola J12",
         time: turma.horarioInicio || "00:00",
-        type: isArenaText(turma.unidade) || isArenaText(turma.nome) ? "arena" : "aula",
+        type: (isArenaText(turma.unidade) || isArenaText(turma.nome) ? "arena" : "aula") as
+          | "arena"
+          | "aula",
         status: dia === todayKey ? "Hoje" : DIA_LABELS[dia],
         dayIndex: DIA_KEYS.indexOf(dia),
       })),

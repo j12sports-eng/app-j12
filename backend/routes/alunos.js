@@ -1,1 +1,1 @@
-module.exports = require("../src/routes/alunos.routes");
+module.exports = require("../src/routes/alunos.routes.js");

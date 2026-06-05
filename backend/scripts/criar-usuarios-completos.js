@@ -1,5 +1,5 @@
-const bcrypt = require("bcrypt");
-const { pool } = require("../src/config/db");
+const bcrypt = require("bcryptjs");
+const { pool } = require("../src/config/db.js");
 
 async function criarUsuarios() {
   try {

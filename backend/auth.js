@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const { randomBytes, randomUUID, scryptSync, timingSafeEqual } = require("node:crypto");
-const { query, transaction } = require("./db");
-const { signJwt, verifyJwt } = require("./src/utils/jwt");
+const { query, transaction } = require("./db.js");
+const { signJwt, verifyJwt } = require("./src/utils/jwt.js");
 
 const SESSION_TTL_DAYS = Number(process.env.AUTH_SESSION_TTL_DAYS || 30);
 const RESET_TTL_MINUTES = Number(process.env.AUTH_RESET_TTL_MINUTES || 30);

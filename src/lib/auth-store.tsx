@@ -11,6 +11,7 @@ import {
 import { apiFetch } from "@/lib/api";
 
 import { clearAuthSession, getAuthSession, saveAuthSession } from "@/lib/auth-storage";
+import { logSsr } from "@/lib/ssr-debug";
 
 export type Role = "admin" | "coordenador" | "professor" | "aluno" | "responsavel";
 
@@ -148,8 +149,13 @@ function decodeTokenPayload(token: string) {
     }
 
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decodeBase64 =
+      typeof globalThis.atob === "function"
+        ? globalThis.atob.bind(globalThis)
+        : (value: string) =>
+            typeof Buffer !== "undefined" ? Buffer.from(value, "base64").toString("utf-8") : "";
 
-    const decoded = atob(normalized);
+    const decoded = decodeBase64(normalized);
     return JSON.parse(decoded) as {
       exp?: number;
     };
@@ -197,6 +203,8 @@ async function authRequest<T>(endpoint: string, body?: unknown, method = "POST")
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  logSsr("[SSR] entrou no AuthProvider");
+
   const [user, setUser] = useState<AuthUser | null>(null);
 
   const [token, setToken] = useState<string | null>(null);
@@ -392,6 +400,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshSession,
     ],
   );
+
+  logSsr("[SSR] terminou AuthProvider", {
+    loading,
+    hasToken: Boolean(token),
+    hasUser: Boolean(user),
+  });
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

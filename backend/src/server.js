@@ -19,26 +19,26 @@ const {
   syncJ12FinanceFromLegacy,
   syncJ12TablesFromLegacy,
   testConnection,
-} = require("./config/db");
-const { ensureAuthSeedData } = require("../auth");
+} = require("./config/db.js");
+const { ensureAuthSeedData } = require("../auth.js");
 
-const authRoutes = require("../routes/auth");
-const alunoMeRoutes = require("../routes/aluno-me");
-const financeiroRoutes = require("../routes/financeiro");
+const authRoutes = require("../routes/auth.js");
+const alunoMeRoutes = require("../routes/aluno-me.js");
+const financeiroRoutes = require("../routes/financeiro.js");
 
-const alunoCompletoRoutes = require("./routes/aluno-completo.routes");
-const alunosRoutes = require("./routes/alunos.routes");
-const modalidadesRoutes = require("./routes/modalidades.routes");
-const perfilRoutes = require("./routes/perfil.routes");
-const planosRoutes = require("./routes/planos.routes");
-const presencasRoutes = require("./routes/presencas.routes");
-const professoresRoutes = require("./routes/professores.routes");
-const publicRoutes = require("./routes/public.routes");
-const responsaveisRoutes = require("./routes/responsaveis.routes");
-const interRoutes = require("./routes/inter.routes");
-const stateRoutes = require("./routes/state.routes");
-const turmasRoutes = require("./routes/turmas.routes");
-const unidadesRoutes = require("./routes/unidades.routes");
+const alunoCompletoRoutes = require("./routes/aluno-completo.routes.js");
+const alunosRoutes = require("./routes/alunos.routes.js");
+const modalidadesRoutes = require("./routes/modalidades.routes.js");
+const perfilRoutes = require("./routes/perfil.routes.js");
+const planosRoutes = require("./routes/planos.routes.js");
+const presencasRoutes = require("./routes/presencas.routes.js");
+const professoresRoutes = require("./routes/professores.routes.js");
+const publicRoutes = require("./routes/public.routes.js");
+const responsaveisRoutes = require("./routes/responsaveis.routes.js");
+const interRoutes = require("./routes/inter.routes.js");
+const stateRoutes = require("./routes/state.routes.js");
+const turmasRoutes = require("./routes/turmas.routes.js");
+const unidadesRoutes = require("./routes/unidades.routes.js");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);

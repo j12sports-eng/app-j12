@@ -1,9 +1,9 @@
 const express = require("express");
 
-const { query } = require("../db");
-const { requireAuth, requireRole, resolveScopedStudentId } = require("../auth");
-const { parseJson } = require("./helpers");
-const { listCharges } = require("../services/student-finance");
+const { query } = require("../db.js");
+const { requireAuth, requireRole, resolveScopedStudentId } = require("../auth.js");
+const { parseJson } = require("./helpers.js");
+const { listCharges } = require("../services/student-finance.js");
 
 const router = express.Router();
 

@@ -1,6 +1,6 @@
 const express = require("express");
-const { canManageSystem, requireAuth } = require("../../auth");
-const alunosController = require("../controllers/alunos.controller");
+const { canManageSystem, requireAuth } = require("../../auth.js");
+const alunosController = require("../controllers/alunos.controller.js");
 
 const router = express.Router();
 

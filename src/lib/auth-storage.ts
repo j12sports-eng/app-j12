@@ -2,6 +2,26 @@ const TOKEN_KEY = "j12_auth_token";
 
 const USER_KEY = "j12_auth_user";
 
+function getBrowserStorage(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function dispatchBrowserEvent(name: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(name));
+}
+
 /**
  * =========================
  * TOKEN
@@ -9,19 +29,31 @@ const USER_KEY = "j12_auth_user";
  */
 
 export function setStoredAuthToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+  try {
+    getBrowserStorage()?.setItem(TOKEN_KEY, token);
+  } catch {
+    // Storage can be disabled by the browser; auth falls back to an empty session.
+  }
 }
 
 export function getStoredAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    return getBrowserStorage()?.getItem(TOKEN_KEY) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function hasStoredAuthToken() {
-  return !!localStorage.getItem(TOKEN_KEY);
+  return Boolean(getStoredAuthToken());
 }
 
 export function clearStoredAuthToken() {
-  localStorage.removeItem(TOKEN_KEY);
+  try {
+    getBrowserStorage()?.removeItem(TOKEN_KEY);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
 }
 
 /**
@@ -31,11 +63,21 @@ export function clearStoredAuthToken() {
  */
 
 export function setStoredAuthUser(user: any) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  try {
+    getBrowserStorage()?.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    // Ignore storage persistence failures.
+  }
 }
 
 export function getStoredAuthUser() {
-  const raw = localStorage.getItem(USER_KEY);
+  let raw: string | null | undefined;
+
+  try {
+    raw = getBrowserStorage()?.getItem(USER_KEY);
+  } catch {
+    raw = null;
+  }
 
   if (!raw) {
     return null;
@@ -49,7 +91,11 @@ export function getStoredAuthUser() {
 }
 
 export function clearStoredAuthUser() {
-  localStorage.removeItem(USER_KEY);
+  try {
+    getBrowserStorage()?.removeItem(USER_KEY);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
 }
 
 /**
@@ -61,11 +107,13 @@ export function clearStoredAuthUser() {
 export function clearAuthSession() {
   clearStoredAuthToken();
   clearStoredAuthUser();
+  dispatchBrowserEvent("j12:session-cleared");
 }
 
 export function saveAuthSession(token: string, user: any) {
   setStoredAuthToken(token);
   setStoredAuthUser(user);
+  dispatchBrowserEvent("j12:session-ready");
 }
 
 export function getAuthSession() {
@@ -74,4 +122,3 @@ export function getAuthSession() {
     user: getStoredAuthUser(),
   };
 }
-

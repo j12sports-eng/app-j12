@@ -1,7 +1,7 @@
 const axios = require("axios");
 
-const { INTER_PIX_SCOPES } = require("./types");
-const { createInterHttpsAgent, logInter, resolveInterBaseUrl, text } = require("./utils");
+const { INTER_PIX_SCOPES } = require("./types.js");
+const { createInterHttpsAgent, logInter, resolveInterBaseUrl, text } = require("./utils.js");
 
 let tokenCache = null;
 

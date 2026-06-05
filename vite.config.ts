@@ -1,10 +1,4 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - tanstackStart, viteReact, tailwindcss, tsConfigPaths, cloudflare (build-only),
-//     componentTagger (dev-only), VITE_* env injection, @ path alias, React/TanStack dedupe,
-//     error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... } }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig, type PluginOption } from "vite";
 
 const allowedHosts = ["app.j12sports.com.br"];
 const defaultApiTarget = "http://127.0.0.1:3001";
@@ -22,11 +16,50 @@ function resolveDevApiTarget() {
 }
 
 const apiTarget = resolveDevApiTarget();
+const apiProxy = {
+  "/api": {
+    target: apiTarget,
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/api(?=\/|$)/, "") || "/",
+  },
+  "/socket.io": {
+    target: apiTarget,
+    changeOrigin: true,
+    ws: true,
+  },
+};
 
-export default defineConfig({
-  vite: {
+export default defineConfig(async () => {
+  const [
+    { default: tailwindcss },
+    { tanstackStart },
+    { default: react },
+    { default: tsconfigPaths },
+  ] = await Promise.all([
+    import("@tailwindcss/vite"),
+    import("@tanstack/react-start/plugin/vite"),
+    import("@vitejs/plugin-react"),
+    import("vite-tsconfig-paths"),
+  ]);
+
+  const plugins: PluginOption[] = [tailwindcss(), tsconfigPaths()];
+
+  plugins.push(
+    tanstackStart({
+      importProtection: {
+        behavior: "error",
+        client: {
+          files: ["**/server/**"],
+          specifiers: ["server-only"],
+        },
+      },
+    }),
+    react(),
+  );
+
+  return {
     base: "/",
-
+    plugins,
     build: {
       chunkSizeWarningLimit: 1300,
       rollupOptions: {
@@ -49,24 +82,16 @@ export default defineConfig({
         },
       },
     },
-
     server: {
       host: true,
       allowedHosts,
-      proxy: {
-        "/api": {
-          target: apiTarget,
-          changeOrigin: true,
-        },
-        "/auth": {
-          target: apiTarget,
-          changeOrigin: true,
-        },
-      },
+      proxy: apiProxy,
     },
     preview: {
       host: true,
       allowedHosts,
+      strictPort: true,
+      proxy: apiProxy,
     },
-  },
+  };
 });

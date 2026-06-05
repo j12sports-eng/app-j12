@@ -10,6 +10,7 @@ import {
 
 import { api, formatApiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { logSsr } from "@/lib/ssr-debug";
 
 const FAMILY_SELECTION = "__familia__";
 
@@ -91,6 +92,8 @@ function resolveInitialSelection(
 }
 
 export function ResponsavelStudentsProvider({ children }: { children: ReactNode }) {
+  logSsr("[SSR] entrou no ResponsavelStudentsProvider");
+
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const [alunos, setAlunos] = useState<ResponsavelAluno[]>([]);
   const [loading, setLoading] = useState(false);
@@ -174,6 +177,12 @@ export function ResponsavelStudentsProvider({ children }: { children: ReactNode 
       reload,
     ],
   );
+
+  logSsr("[SSR] terminou ResponsavelStudentsProvider", {
+    authLoading,
+    isAuthenticated,
+    isResponsavel,
+  });
 
   return (
     <ResponsavelStudentsContext.Provider value={value}>

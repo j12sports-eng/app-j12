@@ -5,9 +5,9 @@ const {
   markPaymentAsPaid,
   markWebhookEventProcessed,
   recordWebhookEvent,
-} = require("./financial");
-const { FINANCIAL_STATUSES } = require("./types");
-const { logInter, safeJsonStringify, text } = require("./utils");
+} = require("./financial.js");
+const { FINANCIAL_STATUSES } = require("./types.js");
+const { logInter, safeJsonStringify, text } = require("./utils.js");
 
 function extractPixEvents(payload) {
   if (!payload) return [];

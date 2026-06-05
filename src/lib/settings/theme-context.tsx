@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { logSsr } from "@/lib/ssr-debug";
 import { settingsStore, useSettingsState } from "./settings-store";
 import type { AppearanceSettingsData } from "./types";
 
@@ -107,6 +108,8 @@ function applyAppearance(appearance: AppearanceSettingsData) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  logSsr("[SSR] entrou no ThemeProvider");
+
   const settings = useSettingsState();
 
   useEffect(() => {
@@ -121,6 +124,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }),
     [settings.appearance],
   );
+
+  logSsr("[SSR] terminou ThemeProvider", {
+    mode: settings.appearance.mode,
+  });
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

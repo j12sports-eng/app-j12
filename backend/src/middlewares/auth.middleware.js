@@ -1,3 +1,3 @@
-const { requireAuth } = require("../../auth");
+const { requireAuth } = require("../../auth.js");
 
 module.exports = requireAuth;

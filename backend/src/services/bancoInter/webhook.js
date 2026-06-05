@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 
-const { processInterWebhookPayload } = require("./baixaAutomatica");
-const { text } = require("./utils");
+const { processInterWebhookPayload } = require("./baixaAutomatica.js");
+const { text } = require("./utils.js");
 
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left ?? ""));

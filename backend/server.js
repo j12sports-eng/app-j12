@@ -1,3 +1,3 @@
 console.log("[START] server.js executou");
 
-require("./src/server");
+require("./src/server.js");

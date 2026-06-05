@@ -23,8 +23,8 @@ function emit() {
 export async function loadSystem() {
   try {
     const [unidades, modalidades] = await Promise.all([
-      apiFetch("/unidades"),
-      apiFetch("/modalidades"),
+      apiFetch<Unidade[]>("/unidades"),
+      apiFetch<Modalidade[]>("/modalidades"),
     ]);
 
     unidadesState = unidades || [];

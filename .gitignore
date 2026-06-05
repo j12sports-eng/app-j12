@@ -18,9 +18,6 @@ dist-ssr
 backend/.env
 backend/node_modules/
 
-# Wrangler / Cloudflare
-.wrangler/
-.dev.vars
 data/
 
 # Editor directories and files

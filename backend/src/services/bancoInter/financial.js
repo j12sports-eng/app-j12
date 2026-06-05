@@ -1,9 +1,9 @@
 const { randomUUID } = require("node:crypto");
 
-const { canManageSystem } = require("../../../auth");
-const { query, tableExists, transaction } = require("../../config/db");
-const { syncChargeCompatibility } = require("../../../services/student-finance");
-const { FINANCIAL_STATUSES, normalizeFinancialStatus } = require("./types");
+const { canManageSystem } = require("../../../auth.js");
+const { query, tableExists, transaction } = require("../../config/db.js");
+const { syncChargeCompatibility } = require("../../../services/student-finance.js");
+const { FINANCIAL_STATUSES, normalizeFinancialStatus } = require("./types.js");
 const {
   dateOnly,
   logInter,
@@ -12,8 +12,8 @@ const {
   parseJson,
   safeJsonStringify,
   text,
-} = require("./utils");
-const { emitFinancialPaymentUpdated } = require("./realtime");
+} = require("./utils.js");
+const { emitFinancialPaymentUpdated } = require("./realtime.js");
 
 function safeIdentifier(value) {
   const normalized = text(value, 80);

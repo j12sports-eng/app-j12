@@ -1,7 +1,7 @@
-const { loadStudentRows } = require("./alunos.controller");
-const { query } = require("../config/db");
-const { gerarMensalidadeDoAluno } = require("../services/financeiro.service");
-const { criarNotificacao } = require("../services/notificacao.service");
+const { loadStudentRows } = require("./alunos.controller.js");
+const { query } = require("../config/db.js");
+const { gerarMensalidadeDoAluno } = require("../services/financeiro.service.js");
+const { criarNotificacao } = require("../services/notificacao.service.js");
 
 function parseJson(value, fallback) {
   if (!value) return fallback;

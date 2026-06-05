@@ -1,4 +1,4 @@
-const { query, tableExists, transaction } = require("../config/db");
+const { query, tableExists, transaction } = require("../config/db.js");
 
 function text(value, max = 191) {
   return String(value ?? "")

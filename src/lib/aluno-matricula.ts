@@ -288,7 +288,7 @@ export function normalizeAlunoMatriculaData(
   };
 }
 
-function hasDocument(document: AlunoUploadedDocument | null) {
+function hasDocument(document: AlunoUploadedDocument | null): document is AlunoUploadedDocument {
   return Boolean(document?.name);
 }
 

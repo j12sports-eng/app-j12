@@ -1,7 +1,7 @@
 const express = require("express");
-const { canManageSystem, requireAuth } = require("../../auth");
-const { pool } = require("../config/db");
-const { deactivateProfessorUsers, syncProfessorUsers } = require("../../services/linked-users");
+const { canManageSystem, requireAuth } = require("../../auth.js");
+const { pool } = require("../config/db.js");
+const { deactivateProfessorUsers, syncProfessorUsers } = require("../../services/linked-users.js");
 
 const router = express.Router();
 

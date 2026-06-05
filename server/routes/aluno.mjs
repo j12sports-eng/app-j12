@@ -1,6 +1,9 @@
-import express from "express";
+import { createRequire } from "node:module";
 import jwt from "jsonwebtoken";
-import db from "../database.mjs";
+
+const backendRequire = createRequire(new URL("../../backend/package.json", import.meta.url));
+const express = backendRequire("express");
+const { query } = backendRequire("./db.js");
 
 const router = express.Router();
 
@@ -27,7 +30,7 @@ router.get("/financeiro", async (req, res) => {
 
     const alunoId = decoded.id;
 
-    const [rows] = await db.query(
+    const rows = await query(
       `
       SELECT
         id,

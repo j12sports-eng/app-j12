@@ -1,5 +1,5 @@
 const express = require("express");
-const { listarUnidades } = require("../controllers/unidades.controller");
+const { listarUnidades } = require("../src/controllers/unidades.controller.js");
 
 const router = express.Router();
 

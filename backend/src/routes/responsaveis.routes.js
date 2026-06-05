@@ -1,8 +1,8 @@
 const express = require("express");
 
-const { canManageSystem, requireAuth, resolveScopedStudentId } = require("../../auth");
-const { listCharges } = require("../../services/student-finance");
-const { pool, tableExists } = require("../config/db");
+const { canManageSystem, requireAuth, resolveScopedStudentId } = require("../../auth.js");
+const { listCharges } = require("../../services/student-finance.js");
+const { pool, tableExists } = require("../config/db.js");
 
 const router = express.Router();
 
