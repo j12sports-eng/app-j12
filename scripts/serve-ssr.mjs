@@ -7,8 +7,12 @@ import { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import express from "express";
 
+process.on("uncaughtException", console.error);
+process.on("unhandledRejection", console.error);
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
+const DEFAULT_API_TARGET = "http://127.0.0.1:3001";
 
 function getArg(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -20,11 +24,48 @@ function getArg(name, fallback) {
   return process.env[name.replaceAll("-", "_").toUpperCase()] || fallback;
 }
 
+function getFirstEnv(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function normalizeApiTarget(value) {
+  const configured = String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (!/^https?:\/\//i.test(configured)) {
+    return DEFAULT_API_TARGET;
+  }
+
+  return configured
+    .replace(/\/api\/auth\/login$/i, "/api")
+    .replace(/\/auth\/login$/i, "")
+    .replace(/\/api\/auth$/i, "/api")
+    .replace(/\/auth$/i, "");
+}
+
+function resolveApiTarget() {
+  return normalizeApiTarget(
+    getArg(
+      "api-target",
+      getFirstEnv("API_TARGET", "SSR_API_URL", "API_BASE_URL", "AUTH_URL", "VITE_API_URL"),
+    ),
+  );
+}
+
 const HOST = getArg("host", "127.0.0.1");
 const PORT = Number(getArg("port", "4173"));
 const CLIENT_DIR = path.resolve(rootDir, getArg("client-dist", "dist/client"));
 const SERVER_ENTRY = path.resolve(rootDir, getArg("server-entry", "dist/server/server.mjs"));
-const API_TARGET = new URL(getArg("api-target", "http://127.0.0.1:3001"));
+const API_TARGET = new URL(resolveApiTarget());
 const SSR_TIMEOUT_MS = Number(getArg("ssr-timeout-ms", "30000"));
 
 const mimeTypes = {
@@ -85,6 +126,29 @@ function withTimeout(promise, timeoutMs, label) {
   });
 
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
+async function logFailedFetchResponse(fetchResponse, req, startedAt) {
+  if (fetchResponse.status < 500) {
+    return;
+  }
+
+  let body = "";
+
+  try {
+    body = await fetchResponse.clone().text();
+  } catch (error) {
+    console.error("[SSR] falha ao ler corpo de resposta 500:", error);
+  }
+
+  console.error("[SSR] fetchHandler retornou erro HTTP:", {
+    method: req.method,
+    url: req.url,
+    status: fetchResponse.status,
+    statusText: fetchResponse.statusText,
+    elapsedMs: Date.now() - startedAt,
+    body: body.slice(0, 4000),
+  });
 }
 
 function resolveStaticFile(url) {
@@ -150,77 +214,110 @@ function getApiProxyPath(url) {
 }
 
 function proxyHttp(req, res, proxyPath = req.url) {
-  logSsr("[SSR] proxy API iniciou", {
-    method: req.method,
-    url: req.url,
-    proxyPath,
-    target: API_TARGET.origin,
-  });
-
-  const headers = {
-    ...req.headers,
-    host: API_TARGET.host,
-    "x-forwarded-host": req.headers.host || "",
-    "x-forwarded-proto": req.headers["x-forwarded-proto"] || "http",
-  };
-
-  const proxyRequest =
-    API_TARGET.protocol === "https:" ? createHttpsProxyRequest : createHttpProxyRequest;
-  const proxyReq = proxyRequest(
-    {
-      hostname: API_TARGET.hostname,
-      port: API_TARGET.port || (API_TARGET.protocol === "https:" ? 443 : 80),
-      protocol: API_TARGET.protocol,
-      method: req.method,
-      path: proxyPath,
-      headers,
-    },
-    (proxyRes) => {
-      res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
-      proxyRes.pipe(res);
-    },
-  );
-
-  proxyReq.on("error", (error) => {
-    logSsr("[SSR] proxy API falhou", {
+  try {
+    logSsr("[SSR] proxy API iniciou", {
       method: req.method,
       url: req.url,
-      error: error.message,
+      proxyPath,
+      target: API_TARGET.origin,
     });
-    setError(res, 502, `Falha ao conectar na API: ${error.message}`);
-  });
 
-  req.pipe(proxyReq);
+    const headers = {
+      ...req.headers,
+      host: API_TARGET.host,
+      "x-forwarded-host": req.headers.host || "",
+      "x-forwarded-proto": req.headers["x-forwarded-proto"] || "http",
+    };
+
+    const proxyRequest =
+      API_TARGET.protocol === "https:" ? createHttpsProxyRequest : createHttpProxyRequest;
+    const proxyReq = proxyRequest(
+      {
+        hostname: API_TARGET.hostname,
+        port: API_TARGET.port || (API_TARGET.protocol === "https:" ? 443 : 80),
+        protocol: API_TARGET.protocol,
+        method: req.method,
+        path: proxyPath,
+        headers,
+      },
+      (proxyRes) => {
+        proxyRes.on("error", (error) => {
+          console.error("[SSR] proxy response stream error:", error);
+          res.destroy(error);
+        });
+
+        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+        proxyRes.pipe(res);
+      },
+    );
+
+    proxyReq.on("error", (error) => {
+      console.error("[SSR] proxy API falhou:", error);
+
+      if (!res.headersSent) {
+        setError(res, 502, `Falha ao conectar na API: ${error.message}`);
+        return;
+      }
+
+      res.destroy(error);
+    });
+
+    req.on("error", (error) => {
+      console.error("[SSR] request stream error no proxy:", error);
+      proxyReq.destroy(error);
+    });
+
+    req.pipe(proxyReq);
+  } catch (error) {
+    console.error("[SSR] proxy API erro inesperado:", error);
+
+    if (!res.headersSent) {
+      setError(
+        res,
+        502,
+        error instanceof Error ? error.message : "Falha inesperada no proxy da API.",
+      );
+      return;
+    }
+
+    res.destroy(error);
+  }
 }
 
 function proxyWebSocket(req, socket, head) {
-  const targetPort = Number(API_TARGET.port || (API_TARGET.protocol === "https:" ? 443 : 80));
-  const backendSocket = net.connect(targetPort, API_TARGET.hostname, () => {
-    backendSocket.write(`${req.method} ${req.url} HTTP/${req.httpVersion}\r\n`);
+  try {
+    const targetPort = Number(API_TARGET.port || (API_TARGET.protocol === "https:" ? 443 : 80));
+    const backendSocket = net.connect(targetPort, API_TARGET.hostname, () => {
+      backendSocket.write(`${req.method} ${req.url} HTTP/${req.httpVersion}\r\n`);
 
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (key.toLowerCase() === "host") {
-        continue;
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (key.toLowerCase() === "host") {
+          continue;
+        }
+
+        const headerValue = Array.isArray(value) ? value.join(", ") : value;
+        backendSocket.write(`${key}: ${headerValue || ""}\r\n`);
       }
 
-      const headerValue = Array.isArray(value) ? value.join(", ") : value;
-      backendSocket.write(`${key}: ${headerValue || ""}\r\n`);
-    }
+      backendSocket.write(`host: ${API_TARGET.host}\r\n`);
+      backendSocket.write("\r\n");
 
-    backendSocket.write(`host: ${API_TARGET.host}\r\n`);
-    backendSocket.write("\r\n");
+      if (head.length > 0) {
+        backendSocket.write(head);
+      }
 
-    if (head.length > 0) {
-      backendSocket.write(head);
-    }
+      backendSocket.pipe(socket);
+      socket.pipe(backendSocket);
+    });
 
-    backendSocket.pipe(socket);
-    socket.pipe(backendSocket);
-  });
-
-  backendSocket.on("error", () => {
+    backendSocket.on("error", (error) => {
+      console.error("[SSR] websocket proxy error:", error);
+      socket.destroy();
+    });
+  } catch (error) {
+    console.error("[SSR] websocket proxy erro inesperado:", error);
     socket.destroy();
-  });
+  }
 }
 
 async function getServerFetch() {
@@ -232,8 +329,16 @@ async function getServerFetch() {
     );
   }
 
-  serverEntryPromise ??= import(pathToFileURL(SERVER_ENTRY).href);
-  const serverEntry = await serverEntryPromise;
+  let serverEntry;
+
+  try {
+    serverEntryPromise ??= import(pathToFileURL(SERVER_ENTRY).href);
+    serverEntry = await serverEntryPromise;
+  } catch (error) {
+    console.error("[SSR] falha ao importar server entry:", error);
+    throw error;
+  }
+
   const fetchHandler = serverEntry.default?.fetch;
 
   if (typeof fetchHandler !== "function") {
@@ -288,7 +393,14 @@ async function sendFetchResponse(fetchResponse, res) {
     return;
   }
 
-  Readable.fromWeb(fetchResponse.body).pipe(res);
+  await new Promise((resolve, reject) => {
+    const stream = Readable.fromWeb(fetchResponse.body);
+
+    stream.on("error", reject);
+    res.on("error", reject);
+    res.on("finish", resolve);
+    stream.pipe(res);
+  });
 }
 
 async function renderSsr(req, res) {
@@ -322,6 +434,8 @@ async function renderSsr(req, res) {
       elapsedMs: Date.now() - startedAt,
     });
 
+    await logFailedFetchResponse(fetchResponse, req, startedAt);
+
     await sendFetchResponse(fetchResponse, res);
 
     logSsr("[SSR] enviou resposta", {
@@ -345,50 +459,74 @@ app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
 app.use((req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  try {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
-  logSsr("[SSR] recebeu request", {
-    method: req.method,
-    pathname: url.pathname,
-  });
-
-  if (isApiRequest(url)) {
-    proxyHttp(req, res, getApiProxyPath(url));
-    return;
-  }
-
-  if (isSocketRequest(url)) {
-    proxyHttp(req, res);
-    return;
-  }
-
-  if (serveStatic(req, res, url)) {
-    logSsr("[SSR] serviu asset estatico", {
+    logSsr("[SSR] recebeu request", {
       method: req.method,
       pathname: url.pathname,
     });
-    return;
-  }
 
-  if (url.pathname.startsWith("/assets/")) {
-    setError(res, 404, "Asset nao encontrado.");
-    return;
-  }
+    if (isApiRequest(url)) {
+      proxyHttp(req, res, getApiProxyPath(url));
+      return;
+    }
 
-  renderSsr(req, res);
+    if (isSocketRequest(url)) {
+      proxyHttp(req, res);
+      return;
+    }
+
+    if (serveStatic(req, res, url)) {
+      logSsr("[SSR] serviu asset estatico", {
+        method: req.method,
+        pathname: url.pathname,
+      });
+      return;
+    }
+
+    if (url.pathname.startsWith("/assets/")) {
+      setError(res, 404, "Asset nao encontrado.");
+      return;
+    }
+
+    void renderSsr(req, res);
+  } catch (error) {
+    console.error("[SSR] pipeline HTTP falhou:", error);
+
+    if (!res.headersSent) {
+      setError(
+        res,
+        500,
+        error instanceof Error ? error.message : "Falha inesperada no frontend SSR.",
+      );
+      return;
+    }
+
+    res.destroy(error);
+  }
 });
 
 const server = createServer(app);
 
+server.on("error", (error) => {
+  console.error("[SSR] servidor HTTP falhou:", error);
+});
+
 server.on("upgrade", (req, socket, head) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  try {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
-  if (isSocketRequest(url)) {
-    proxyWebSocket(req, socket, head);
-    return;
+    if (isSocketRequest(url)) {
+      proxyWebSocket(req, socket, head);
+      return;
+    }
+
+    socket.destroy();
+  } catch (error) {
+    console.error("[SSR] upgrade falhou:", error);
+    socket.destroy();
   }
-
-  socket.destroy();
 });
 
 server.listen(PORT, HOST, () => {

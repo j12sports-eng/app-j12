@@ -4,6 +4,9 @@ import { createRequire } from "node:module";
 import dotenv from "dotenv";
 import alunoRoutes from "./routes/aluno.mjs";
 
+process.on("uncaughtException", console.error);
+process.on("unhandledRejection", console.error);
+
 dotenv.config();
 
 const backendRequire = createRequire(new URL("../backend/package.json", import.meta.url));

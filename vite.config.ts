@@ -29,7 +29,12 @@ const apiProxy = {
   },
 };
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
+  if (command === "build") {
+    process.env.NODE_ENV = "production";
+    process.env.BABEL_ENV = "production";
+  }
+
   const [
     { default: tailwindcss },
     { tanstackStart },
@@ -54,12 +59,17 @@ export default defineConfig(async () => {
         },
       },
     }),
-    react(),
+    react({
+      jsxRuntime: "automatic",
+    }),
   );
 
   return {
     base: "/",
     plugins,
+    esbuild: {
+      jsx: "automatic",
+    },
     build: {
       chunkSizeWarningLimit: 1300,
       rollupOptions: {

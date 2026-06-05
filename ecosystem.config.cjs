@@ -5,7 +5,7 @@ module.exports = {
       cwd: __dirname,
       script: "server/index.mjs",
       interpreter: "node",
-      node_args: "--env-file=.env.api.production",
+      node_args: "--env-file=.env",
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
@@ -38,6 +38,9 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         API_TARGET: "http://127.0.0.1:3001",
+        SSR_API_URL: "http://127.0.0.1:3001",
+        API_BASE_URL: "http://127.0.0.1:3001",
+        VITE_API_URL: "/api",
       },
     },
   ],

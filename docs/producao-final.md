@@ -23,7 +23,7 @@ Nao ha runtime serverless na producao. O build gera:
 
 ## Variaveis de producao
 
-Crie `.env.api.production` para a API:
+Crie `.env` na raiz do projeto para a API:
 
 ```env
 NODE_ENV=production
@@ -36,6 +36,8 @@ Para o frontend, se precisar sobrescrever o backend interno:
 
 ```env
 API_TARGET=http://127.0.0.1:3001
+SSR_API_URL=http://127.0.0.1:3001
+API_BASE_URL=http://127.0.0.1:3001
 VITE_API_URL=/api
 ```
 

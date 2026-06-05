@@ -26,7 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-const BROWSER_API_URL = "/api";
+const DEFAULT_BROWSER_API_URL = "/api";
 const DEFAULT_SERVER_API_URL = "http://127.0.0.1:3001";
 const DEFAULT_API_TIMEOUT_MS = 12000;
 const FRONTEND_SELF_HOSTS = new Set(["app.j12sports.com.br", "localhost", "127.0.0.1"]);
@@ -66,6 +66,14 @@ function normalizeBaseUrl(value: unknown, fallback: string): string {
   return normalized || fallback;
 }
 
+function stripKnownAuthPath(value: string): string {
+  return value
+    .replace(/\/api\/auth\/login$/i, "/api")
+    .replace(/\/auth\/login$/i, "")
+    .replace(/\/api\/auth$/i, "/api")
+    .replace(/\/auth$/i, "");
+}
+
 function parsePositiveInteger(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -75,7 +83,10 @@ function getApiTimeoutMs() {
   const processEnv =
     typeof process !== "undefined" && process.env ? process.env.SSR_API_TIMEOUT_MS : "";
 
-  return parsePositiveInteger(processEnv || import.meta.env.VITE_API_TIMEOUT_MS, DEFAULT_API_TIMEOUT_MS);
+  return parsePositiveInteger(
+    processEnv || import.meta.env.VITE_API_TIMEOUT_MS,
+    DEFAULT_API_TIMEOUT_MS,
+  );
 }
 
 function isFrontendSelfUrl(value: string): boolean {
@@ -95,7 +106,16 @@ function isFrontendSelfUrl(value: string): boolean {
 }
 
 function resolveServerApiBaseUrl(configuredValue: unknown): string {
-  const normalized = normalizeBaseUrl(configuredValue, DEFAULT_SERVER_API_URL);
+  const normalized = stripKnownAuthPath(normalizeBaseUrl(configuredValue, DEFAULT_SERVER_API_URL));
+
+  if (!isAbsoluteHttpUrl(normalized)) {
+    logSsr("[SSR] API base relativa detectada; usando backend local", {
+      configured: normalized,
+      fallback: DEFAULT_SERVER_API_URL,
+    });
+
+    return DEFAULT_SERVER_API_URL;
+  }
 
   if (!isFrontendSelfUrl(normalized)) {
     return normalized;
@@ -112,10 +132,30 @@ function resolveServerApiBaseUrl(configuredValue: unknown): string {
 function getServerApiBaseUrl(): string {
   const processEnv =
     typeof process !== "undefined" && process.env
-      ? process.env.SSR_API_URL || process.env.VITE_API_URL
+      ? process.env.SSR_API_URL ||
+        process.env.API_BASE_URL ||
+        process.env.AUTH_URL ||
+        process.env.API_TARGET ||
+        process.env.VITE_API_URL
       : "";
 
-  return resolveServerApiBaseUrl(processEnv || import.meta.env.VITE_API_URL);
+  return resolveServerApiBaseUrl(
+    processEnv ||
+      import.meta.env.VITE_API_URL ||
+      import.meta.env.VITE_API_BASE_URL ||
+      import.meta.env.VITE_AUTH_URL,
+  );
+}
+
+function getBrowserApiBaseUrl(): string {
+  return stripKnownAuthPath(
+    normalizeBaseUrl(
+      import.meta.env.VITE_API_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        import.meta.env.VITE_AUTH_URL,
+      DEFAULT_BROWSER_API_URL,
+    ),
+  );
 }
 
 function getSafeStoredAuthToken(): string | null {
@@ -129,7 +169,7 @@ function clearSafeAuthSession(): void {
 }
 
 export function getApiBaseUrl(): string {
-  return isBrowser() ? BROWSER_API_URL : getServerApiBaseUrl();
+  return isBrowser() ? getBrowserApiBaseUrl() : getServerApiBaseUrl();
 }
 
 export function buildApiUrl(endpoint: string): string {

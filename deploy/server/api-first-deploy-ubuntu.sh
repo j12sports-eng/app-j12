@@ -30,9 +30,14 @@ echo "==> Instalando dependencias do projeto"
 cd "$APP_DIR"
 npm install
 
-if [[ ! -f ".env.api.production" ]]; then
-  echo "==> Criando .env.api.production a partir do modelo"
-  cp .env.api.production.example .env.api.production
+if [[ ! -f ".env" ]]; then
+  echo "==> Criando .env a partir do modelo"
+  if [[ -f ".env.production.example" ]]; then
+    cp .env.production.example .env
+  else
+    cp .env.example .env
+  fi
+  echo "Edite .env com as credenciais do banco antes de iniciar a API em producao."
 fi
 
 mkdir -p logs
