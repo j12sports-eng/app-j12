@@ -165,6 +165,7 @@ app.use(
 );
 app.use("/aluno", alunoRoutes);
 app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 
 app.use(
   express.urlencoded({
@@ -639,17 +640,17 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if (pathname === "/auth/login" && method === "POST") {
+    if ((pathname === "/auth/login" || pathname === "/api/auth/login") && method === "POST") {
       statusCode = await handleLogin(req, res, context);
       return;
     }
 
-    if (pathname === "/auth/me" && method === "GET") {
+    if ((pathname === "/auth/me" || pathname === "/api/auth/me") && method === "GET") {
       statusCode = await handleAuthMe(req, res, context);
       return;
     }
 
-    if (pathname === "/auth/logout" && method === "POST") {
+    if ((pathname === "/auth/logout" || pathname === "/api/auth/logout") && method === "POST") {
       statusCode = await handleLogout(req, res, context);
       return;
     }

@@ -22,6 +22,11 @@ const apiProxy = {
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/api(?=\/|$)/, "") || "/",
   },
+  "/__api": {
+    target: apiTarget,
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/__api(?=\/|$)/, "") || "/",
+  },
   "/socket.io": {
     target: apiTarget,
     changeOrigin: true,

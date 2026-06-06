@@ -91,6 +91,8 @@ let serverEntryPromise;
 
 function isApiRequest(url) {
   return (
+    url.pathname === "/__api" ||
+    url.pathname.startsWith("/__api/") ||
     url.pathname === "/api" ||
     url.pathname.startsWith("/api/") ||
     url.pathname === "/auth" ||
@@ -202,6 +204,18 @@ function serveStatic(req, res, url) {
 }
 
 function getApiProxyPath(url) {
+  if (url.pathname === "/__api") {
+    return `/${url.search}`;
+  }
+
+  if (url.pathname.startsWith("/__api/api/")) {
+    return `${url.pathname.slice(10)}${url.search}`;
+  }
+
+  if (url.pathname.startsWith("/__api/")) {
+    return `${url.pathname.slice(6)}${url.search}`;
+  }
+
   if (url.pathname === "/api") {
     return `/${url.search}`;
   }

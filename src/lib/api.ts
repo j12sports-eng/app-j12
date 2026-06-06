@@ -27,10 +27,12 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_BROWSER_API_URL = "/api";
+const DEFAULT_HML_BROWSER_API_URL = "/__api";
 const DEFAULT_SERVER_API_URL = "http://127.0.0.1:3001";
 const DEFAULT_API_TIMEOUT_MS = 12000;
 const FRONTEND_SELF_HOSTS = new Set(["app.j12sports.com.br", "localhost", "127.0.0.1"]);
 const FRONTEND_SELF_PORTS = new Set(["3000", "4173", "5173", "5174"]);
+const HML_FRONTEND_HOSTS = new Set(["hml.app.j12sports.com.br"]);
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -51,7 +53,12 @@ function normalizeEndpoint(endpoint: string): string {
 }
 
 function joinApiUrl(baseUrl: string, endpoint: string): string {
-  if (baseUrl.replace(/\/+$/, "").endsWith("/api") && endpoint.startsWith("/api")) {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+
+  if (
+    (normalizedBaseUrl.endsWith("/api") || normalizedBaseUrl.endsWith("/__api")) &&
+    endpoint.startsWith("/api")
+  ) {
     return `${baseUrl}${endpoint.slice(4)}`;
   }
 
@@ -68,10 +75,20 @@ function normalizeBaseUrl(value: unknown, fallback: string): string {
 
 function stripKnownAuthPath(value: string): string {
   return value
+    .replace(/\/__api\/auth\/login$/i, "/__api")
     .replace(/\/api\/auth\/login$/i, "/api")
     .replace(/\/auth\/login$/i, "")
+    .replace(/\/__api\/auth$/i, "/__api")
     .replace(/\/api\/auth$/i, "/api")
     .replace(/\/auth$/i, "");
+}
+
+function isHmlBrowserHost(): boolean {
+  return isBrowser() && HML_FRONTEND_HOSTS.has(window.location.hostname.toLowerCase());
+}
+
+function getDefaultBrowserApiUrl(): string {
+  return isHmlBrowserHost() ? DEFAULT_HML_BROWSER_API_URL : DEFAULT_BROWSER_API_URL;
 }
 
 function parsePositiveInteger(value: unknown, fallback: number): number {
@@ -148,14 +165,20 @@ function getServerApiBaseUrl(): string {
 }
 
 function getBrowserApiBaseUrl(): string {
-  return stripKnownAuthPath(
+  const configuredBaseUrl = stripKnownAuthPath(
     normalizeBaseUrl(
       import.meta.env.VITE_API_URL ||
         import.meta.env.VITE_API_BASE_URL ||
         import.meta.env.VITE_AUTH_URL,
-      DEFAULT_BROWSER_API_URL,
+      getDefaultBrowserApiUrl(),
     ),
   );
+
+  if (isHmlBrowserHost() && configuredBaseUrl === DEFAULT_BROWSER_API_URL) {
+    return DEFAULT_HML_BROWSER_API_URL;
+  }
+
+  return configuredBaseUrl;
 }
 
 function getSafeStoredAuthToken(): string | null {
