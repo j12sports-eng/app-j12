@@ -1,4 +1,4 @@
-import { defineConfig, type PluginOption } from "vite";
+import { defineConfig, type ConfigEnv, type PluginOption, type UserConfig } from "vite";
 
 const allowedHosts = ["app.j12sports.com.br"];
 const defaultApiTarget = "http://127.0.0.1:3001";
@@ -29,7 +29,7 @@ const apiProxy = {
   },
 };
 
-export default defineConfig(async ({ command }) => {
+export default defineConfig(async ({ command }: ConfigEnv): Promise<UserConfig> => {
   if (command === "build") {
     process.env.NODE_ENV = "production";
     process.env.BABEL_ENV = "production";
@@ -74,7 +74,7 @@ export default defineConfig(async ({ command }) => {
       chunkSizeWarningLimit: 1300,
       rollupOptions: {
         output: {
-          manualChunks(id) {
+          manualChunks(id: string) {
             if (!id.includes("node_modules")) {
               return undefined;
             }

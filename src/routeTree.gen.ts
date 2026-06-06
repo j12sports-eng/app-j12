@@ -16,6 +16,7 @@ import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as PresencasRouteImport } from './routes/presencas'
 import { Route as PresencaRouteImport } from './routes/presenca'
 import { Route as PlanosRouteImport } from './routes/planos'
+import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as NotificacoesRouteImport } from './routes/notificacoes'
 import { Route as MeuPlanoRouteImport } from './routes/meu-plano'
 import { Route as MatriculaRouteImport } from './routes/matricula'
@@ -27,6 +28,7 @@ import { Route as ContratosRouteImport } from './routes/contratos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AulaExperimentalRouteImport } from './routes/aula-experimental'
 import { Route as AlunosRouteImport } from './routes/alunos'
+import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfessorIndexRouteImport } from './routes/professor/index'
 import { Route as PortalResponsavelIndexRouteImport } from './routes/portal-responsavel/index'
@@ -91,6 +93,11 @@ const PlanosRoute = PlanosRouteImport.update({
   path: '/planos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NotificacoesRoute = NotificacoesRouteImport.update({
   id: '/notificacoes',
   path: '/notificacoes',
@@ -144,6 +151,11 @@ const AulaExperimentalRoute = AulaExperimentalRouteImport.update({
 const AlunosRoute = AlunosRouteImport.update({
   id: '/alunos',
   path: '/alunos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgendaRoute = AgendaRouteImport.update({
+  id: '/agenda',
+  path: '/agenda',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -297,6 +309,7 @@ const DashboardAlunoIdRoute = DashboardAlunoIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agenda': typeof AgendaRoute
   '/alunos': typeof AlunosRoute
   '/aula-experimental': typeof AulaExperimentalRoute
   '/configuracoes': typeof ConfiguracoesRoute
@@ -308,6 +321,7 @@ export interface FileRoutesByFullPath {
   '/matricula': typeof MatriculaRoute
   '/meu-plano': typeof MeuPlanoRoute
   '/notificacoes': typeof NotificacoesRoute
+  '/perfil': typeof PerfilRoute
   '/planos': typeof PlanosRoute
   '/presenca': typeof PresencaRoute
   '/presencas': typeof PresencasRoute
@@ -345,6 +359,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agenda': typeof AgendaRoute
   '/alunos': typeof AlunosRoute
   '/aula-experimental': typeof AulaExperimentalRoute
   '/configuracoes': typeof ConfiguracoesRoute
@@ -356,6 +371,7 @@ export interface FileRoutesByTo {
   '/matricula': typeof MatriculaRoute
   '/meu-plano': typeof MeuPlanoRoute
   '/notificacoes': typeof NotificacoesRoute
+  '/perfil': typeof PerfilRoute
   '/planos': typeof PlanosRoute
   '/presenca': typeof PresencaRoute
   '/presencas': typeof PresencasRoute
@@ -394,6 +410,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agenda': typeof AgendaRoute
   '/alunos': typeof AlunosRoute
   '/aula-experimental': typeof AulaExperimentalRoute
   '/configuracoes': typeof ConfiguracoesRoute
@@ -405,6 +422,7 @@ export interface FileRoutesById {
   '/matricula': typeof MatriculaRoute
   '/meu-plano': typeof MeuPlanoRoute
   '/notificacoes': typeof NotificacoesRoute
+  '/perfil': typeof PerfilRoute
   '/planos': typeof PlanosRoute
   '/presenca': typeof PresencaRoute
   '/presencas': typeof PresencasRoute
@@ -444,6 +462,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agenda'
     | '/alunos'
     | '/aula-experimental'
     | '/configuracoes'
@@ -455,6 +474,7 @@ export interface FileRouteTypes {
     | '/matricula'
     | '/meu-plano'
     | '/notificacoes'
+    | '/perfil'
     | '/planos'
     | '/presenca'
     | '/presencas'
@@ -492,6 +512,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/agenda'
     | '/alunos'
     | '/aula-experimental'
     | '/configuracoes'
@@ -503,6 +524,7 @@ export interface FileRouteTypes {
     | '/matricula'
     | '/meu-plano'
     | '/notificacoes'
+    | '/perfil'
     | '/planos'
     | '/presenca'
     | '/presencas'
@@ -540,6 +562,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/agenda'
     | '/alunos'
     | '/aula-experimental'
     | '/configuracoes'
@@ -551,6 +574,7 @@ export interface FileRouteTypes {
     | '/matricula'
     | '/meu-plano'
     | '/notificacoes'
+    | '/perfil'
     | '/planos'
     | '/presenca'
     | '/presencas'
@@ -589,6 +613,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgendaRoute: typeof AgendaRoute
   AlunosRoute: typeof AlunosRoute
   AulaExperimentalRoute: typeof AulaExperimentalRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
@@ -600,6 +625,7 @@ export interface RootRouteChildren {
   MatriculaRoute: typeof MatriculaRoute
   MeuPlanoRoute: typeof MeuPlanoRoute
   NotificacoesRoute: typeof NotificacoesRoute
+  PerfilRoute: typeof PerfilRoute
   PlanosRoute: typeof PlanosRoute
   PresencaRoute: typeof PresencaRoute
   PresencasRoute: typeof PresencasRoute
@@ -686,6 +712,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlanosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/notificacoes': {
       id: '/notificacoes'
       path: '/notificacoes'
@@ -761,6 +794,13 @@ declare module '@tanstack/react-router' {
       path: '/alunos'
       fullPath: '/alunos'
       preLoaderRoute: typeof AlunosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agenda': {
+      id: '/agenda'
+      path: '/agenda'
+      fullPath: '/agenda'
+      preLoaderRoute: typeof AgendaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -976,6 +1016,7 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgendaRoute: AgendaRoute,
   AlunosRoute: AlunosRoute,
   AulaExperimentalRoute: AulaExperimentalRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
@@ -987,6 +1028,7 @@ const rootRouteChildren: RootRouteChildren = {
   MatriculaRoute: MatriculaRoute,
   MeuPlanoRoute: MeuPlanoRoute,
   NotificacoesRoute: NotificacoesRoute,
+  PerfilRoute: PerfilRoute,
   PlanosRoute: PlanosRoute,
   PresencaRoute: PresencaRoute,
   PresencasRoute: PresencasRoute,
