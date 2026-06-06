@@ -162,16 +162,13 @@ function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto min-h-screen w-full max-w-[853px] overflow-hidden bg-[#030303] shadow-[0_0_80px_rgba(255,102,0,0.18)]">
-        <section
-          className="relative h-[min(105vw,900px)] overflow-hidden bg-white"
-          aria-labelledby="login-hero-title"
-        >
+    <main className="j12-login-page">
+      <div className="j12-login-shell">
+        <section className="j12-login-hero" aria-labelledby="login-hero-title">
           <img
             src={loginHeroImage}
             alt="Jessiquinha bicampeã mundial ao lado do escudo J12 e do texto App J12"
-            className="absolute inset-x-0 top-0 w-full"
+            className="j12-login-hero-image"
           />
           <div className="sr-only">
             <h1 id="login-hero-title">JESSIQUINHA</h1>
@@ -180,41 +177,35 @@ function LoginPage() {
           </div>
         </section>
 
-        <section className="relative z-10 -mt-1 space-y-7 bg-[#030303] px-6 pb-10 sm:space-y-9 sm:px-[54px] sm:pb-14">
+        <section className="j12-login-content">
           <nav aria-label="Atalhos do App J12">
-            <div className="grid grid-cols-4 gap-3 sm:gap-4">
+            <div className="j12-login-shortcuts">
               {featureCards.map((card) => (
                 <button
                   key={card.label}
                   type="button"
                   onClick={() => handleFeatureNavigation(card.to)}
-                  className="group flex aspect-[0.98] min-h-[86px] flex-col items-center justify-center gap-2 rounded-2xl border border-white/25 bg-[linear-gradient(145deg,rgba(20,20,20,0.95),rgba(3,3,3,0.98))] px-2 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_45px_-35px_rgba(255,102,0,0.9)] outline-none transition hover:border-[#FF6600] hover:bg-[#140903] focus-visible:border-[#FF6600] focus-visible:ring-4 focus-visible:ring-[#FF6600]/35 sm:min-h-[204px] sm:gap-5 sm:rounded-[18px]"
+                  className="j12-login-shortcut"
                   aria-label={`Abrir ${card.label}`}
                 >
                   <card.icon
-                    className="h-8 w-8 text-[#FF6600] transition group-hover:scale-105 sm:h-16 sm:w-16"
+                    className="j12-login-shortcut-icon"
                     strokeWidth={card.label === "Financeiro" ? 2.4 : 2.8}
                     aria-hidden="true"
                   />
-                  <span className="text-sm font-semibold leading-tight text-white sm:text-3xl">
-                    {card.label}
-                  </span>
+                  <span className="j12-login-shortcut-label">{card.label}</span>
                 </button>
               ))}
             </div>
           </nav>
 
-          <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-7" aria-label="Login J12">
+          <form onSubmit={handleSubmit} className="j12-login-form" aria-label="Login J12">
             <div>
               <label htmlFor="login-email" className="sr-only">
                 E-mail
               </label>
-              <div
-                className={`flex h-[70px] items-center gap-4 rounded-2xl border bg-[linear-gradient(145deg,rgba(18,18,18,0.96),rgba(7,7,7,0.98))] px-5 transition focus-within:border-[#FF6600] focus-within:ring-4 focus-within:ring-[#FF6600]/20 sm:h-[108px] sm:gap-7 sm:rounded-[18px] sm:px-8 ${
-                  errors.email ? "border-red-500/70" : "border-white/25"
-                }`}
-              >
-                <Mail className="h-7 w-7 shrink-0 text-[#FF6600] sm:h-10 sm:w-10" aria-hidden />
+              <div className={`j12-login-field ${errors.email ? "j12-login-field-error" : ""}`}>
+                <Mail className="j12-login-field-icon" aria-hidden />
                 <input
                   id="login-email"
                   type="email"
@@ -234,11 +225,11 @@ function LoginPage() {
                   }}
                   aria-invalid={Boolean(errors.email)}
                   aria-describedby={errors.email ? "login-email-error" : undefined}
-                  className="h-full min-w-0 flex-1 bg-transparent text-lg font-medium text-white outline-none placeholder:text-white/38 sm:text-3xl"
+                  className="j12-login-input"
                 />
               </div>
               {errors.email ? (
-                <p id="login-email-error" className="mt-2 text-sm font-medium text-red-300">
+                <p id="login-email-error" className="j12-login-error">
                   {errors.email}
                 </p>
               ) : null}
@@ -248,15 +239,8 @@ function LoginPage() {
               <label htmlFor="login-password" className="sr-only">
                 Senha
               </label>
-              <div
-                className={`flex h-[70px] items-center gap-4 rounded-2xl border bg-[linear-gradient(145deg,rgba(18,18,18,0.96),rgba(7,7,7,0.98))] px-5 transition focus-within:border-[#FF6600] focus-within:ring-4 focus-within:ring-[#FF6600]/20 sm:h-[108px] sm:gap-7 sm:rounded-[18px] sm:px-8 ${
-                  errors.senha ? "border-red-500/70" : "border-white/25"
-                }`}
-              >
-                <LockKeyhole
-                  className="h-7 w-7 shrink-0 text-[#FF6600] sm:h-10 sm:w-10"
-                  aria-hidden
-                />
+              <div className={`j12-login-field ${errors.senha ? "j12-login-field-error" : ""}`}>
+                <LockKeyhole className="j12-login-field-icon" aria-hidden />
                 <input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
@@ -275,86 +259,73 @@ function LoginPage() {
                   }}
                   aria-invalid={Boolean(errors.senha)}
                   aria-describedby={errors.senha ? "login-password-error" : undefined}
-                  className="h-full min-w-0 flex-1 bg-transparent text-lg font-medium text-white outline-none placeholder:text-white/38 sm:text-3xl"
+                  className="j12-login-input"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="rounded-full p-2 text-white outline-none transition hover:text-[#FF6600] focus-visible:ring-4 focus-visible:ring-[#FF6600]/35"
+                  className="j12-login-eye"
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-7 w-7 sm:h-11 sm:w-11" />
+                    <EyeOff className="j12-login-eye-icon" />
                   ) : (
-                    <Eye className="h-7 w-7 sm:h-11 sm:w-11" />
+                    <Eye className="j12-login-eye-icon" />
                   )}
                 </button>
               </div>
               {errors.senha ? (
-                <p id="login-password-error" className="mt-2 text-sm font-medium text-red-300">
+                <p id="login-password-error" className="j12-login-error">
                   {errors.senha}
                 </p>
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <label className="flex cursor-pointer items-center gap-3 text-base font-medium text-white sm:gap-5 sm:text-2xl">
+            <div className="j12-login-actions">
+              <label className="j12-login-remember">
                 <input
                   type="checkbox"
                   checked={rememberLogin}
                   onChange={(event) => setRememberLogin(event.target.checked)}
-                  className="h-7 w-7 shrink-0 rounded border border-white/60 bg-transparent accent-[#FF6600] outline-none focus-visible:ring-4 focus-visible:ring-[#FF6600]/35 sm:h-10 sm:w-10"
+                  className="j12-login-checkbox"
                   aria-label="Lembrar meus dados"
                 />
                 <span>Lembrar meus dados</span>
               </label>
 
-              <Link
-                to="/forgot-password"
-                className="text-right text-base font-semibold text-[#FF6600] outline-none transition hover:text-[#ff9a3d] focus-visible:rounded-md focus-visible:ring-4 focus-visible:ring-[#FF6600]/35 sm:text-2xl"
-              >
+              <Link to="/forgot-password" className="j12-login-link">
                 Esqueci minha senha
               </Link>
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting || loading}
-              className="flex h-[72px] w-full items-center justify-center gap-4 rounded-2xl bg-[#FF6600] px-6 text-2xl font-semibold text-white shadow-[0_28px_75px_-35px_rgba(255,102,0,1)] outline-none transition hover:bg-[#ff7a1f] focus-visible:ring-4 focus-visible:ring-[#FF6600]/40 disabled:cursor-not-allowed disabled:opacity-65 sm:h-[100px] sm:rounded-[15px] sm:text-4xl"
-            >
+            <button type="submit" disabled={submitting || loading} className="j12-login-submit">
               {submitting ? (
                 <>
-                  <Loader2 className="h-6 w-6 animate-spin sm:h-8 sm:w-8" aria-hidden />
+                  <Loader2 className="j12-login-submit-icon animate-spin" aria-hidden />
                   Entrando...
                 </>
               ) : (
                 <>
                   Entrar
-                  <ArrowRight className="h-7 w-7 sm:h-12 sm:w-12" aria-hidden />
+                  <ArrowRight className="j12-login-submit-icon" aria-hidden />
                 </>
               )}
             </button>
 
-            <div className="flex items-center gap-4 text-lg font-medium text-white sm:text-2xl">
-              <span className="h-px flex-1 bg-white/30" />
+            <div className="j12-login-divider">
+              <span className="j12-login-divider-line" />
               <span>ou</span>
-              <span className="h-px flex-1 bg-white/30" />
+              <span className="j12-login-divider-line" />
             </div>
 
-            <Link
-              to="/primeiro-acesso"
-              className="flex h-[66px] w-full items-center justify-center gap-4 rounded-2xl border border-[#FF6600] bg-transparent px-5 text-lg font-semibold text-white outline-none transition hover:bg-[#FF6600]/10 focus-visible:ring-4 focus-visible:ring-[#FF6600]/35 sm:h-[84px] sm:rounded-[14px] sm:text-3xl"
-            >
-              <UserPlus className="h-8 w-8 sm:h-12 sm:w-12" aria-hidden />
+            <Link to="/primeiro-acesso" className="j12-login-first-access">
+              <UserPlus className="j12-login-first-access-icon" aria-hidden />
               Primeiro acesso
             </Link>
 
-            <p className="text-center text-lg font-medium text-white/62 sm:text-3xl">
+            <p className="j12-login-signup">
               Ainda não é aluno?{" "}
-              <Link
-                to="/matricula"
-                className="font-semibold text-[#FF6600] outline-none transition hover:text-[#ff9a3d] focus-visible:rounded-md focus-visible:ring-4 focus-visible:ring-[#FF6600]/35"
-              >
+              <Link to="/matricula" className="j12-login-link">
                 Matricule-se
               </Link>
             </p>

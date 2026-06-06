@@ -243,6 +243,611 @@
     );
     animation: j12-shimmer 1.4s infinite;
   }
+
+  .j12-login-page {
+    min-height: 100svh;
+    overflow-x: clip;
+    background: radial-gradient(circle at top, rgba(255, 102, 0, 0.16), transparent 34rem), #000;
+    color: #fff;
+  }
+
+  .j12-login-shell {
+    width: 100%;
+    max-width: 853px;
+    min-height: 100svh;
+    margin: 0 auto;
+    overflow: hidden;
+    background: #030303;
+    box-shadow: 0 0 80px rgba(255, 102, 0, 0.18);
+  }
+
+  .j12-login-hero {
+    display: flex;
+    justify-content: center;
+    background: #fff;
+  }
+
+  .j12-login-hero-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    object-position: center top;
+  }
+
+  .j12-login-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.25rem, 4vw, 2.25rem);
+    background: #030303;
+  }
+
+  .j12-login-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: clamp(0.5rem, 2.2vw, 1rem);
+  }
+
+  .j12-login-shortcut {
+    display: flex;
+    aspect-ratio: 0.98;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: linear-gradient(145deg, rgba(20, 20, 20, 0.95), rgba(3, 3, 3, 0.98));
+    text-align: center;
+    color: #fff;
+    outline: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 18px 45px -35px rgba(255, 102, 0, 0.9);
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .j12-login-shortcut:hover {
+    border-color: #ff6600;
+    background: #140903;
+  }
+
+  .j12-login-shortcut:focus-visible,
+  .j12-login-link:focus-visible,
+  .j12-login-eye:focus-visible,
+  .j12-login-submit:focus-visible,
+  .j12-login-first-access:focus-visible,
+  .j12-login-checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(255, 102, 0, 0.35);
+  }
+
+  .j12-login-shortcut-icon {
+    color: #ff6600;
+    transition: transform 160ms ease;
+  }
+
+  .j12-login-shortcut:hover .j12-login-shortcut-icon {
+    transform: scale(1.05);
+  }
+
+  .j12-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1rem, 2.6vw, 1.75rem);
+  }
+
+  .j12-login-field {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: linear-gradient(145deg, rgba(18, 18, 18, 0.96), rgba(7, 7, 7, 0.98));
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .j12-login-field:focus-within {
+    border-color: #ff6600;
+    box-shadow: 0 0 0 4px rgba(255, 102, 0, 0.2);
+  }
+
+  .j12-login-field-error {
+    border-color: rgba(239, 68, 68, 0.72);
+  }
+
+  .j12-login-field-icon {
+    flex: 0 0 auto;
+    color: #ff6600;
+  }
+
+  .j12-login-input {
+    height: 100%;
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-weight: 500;
+    outline: 0;
+  }
+
+  .j12-login-input::placeholder {
+    color: rgba(255, 255, 255, 0.38);
+  }
+
+  .j12-login-error {
+    margin-top: 0.5rem;
+    color: rgb(252, 165, 165);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .j12-login-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .j12-login-remember {
+    display: flex;
+    min-width: 0;
+    cursor: pointer;
+    align-items: center;
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .j12-login-checkbox {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    border-radius: 0.25rem;
+    background: transparent;
+    accent-color: #ff6600;
+  }
+
+  .j12-login-link {
+    color: #ff6600;
+    font-weight: 600;
+    text-align: right;
+    text-decoration: none;
+    transition: color 160ms ease;
+  }
+
+  .j12-login-link:hover {
+    color: #ff9a3d;
+  }
+
+  .j12-login-eye {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    color: #fff;
+    outline: none;
+    transition: color 160ms ease;
+  }
+
+  .j12-login-eye:hover {
+    color: #ff6600;
+  }
+
+  .j12-login-submit,
+  .j12-login-first-access {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    outline: none;
+    transition:
+      background-color 160ms ease,
+      opacity 160ms ease;
+  }
+
+  .j12-login-submit {
+    border: 0;
+    background: #ff6600;
+    color: #fff;
+    box-shadow: 0 28px 75px -35px rgba(255, 102, 0, 1);
+  }
+
+  .j12-login-submit:hover {
+    background: #ff7a1f;
+  }
+
+  .j12-login-submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
+
+  .j12-login-divider {
+    display: flex;
+    align-items: center;
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .j12-login-divider-line {
+    height: 1px;
+    flex: 1;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .j12-login-first-access {
+    border: 1px solid #ff6600;
+    background: transparent;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .j12-login-first-access:hover {
+    background: rgba(255, 102, 0, 0.1);
+  }
+
+  .j12-login-signup {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.62);
+    font-weight: 500;
+  }
+
+  @media (max-width: 767px) {
+    .j12-login-shell {
+      max-width: none;
+      box-shadow: none;
+    }
+
+    .j12-login-hero-image {
+      width: 100%;
+    }
+
+    .j12-login-content {
+      padding: clamp(1.35rem, 5.6vw, 1.65rem) clamp(1.25rem, 5.6vw, 1.5rem) 2.5rem;
+    }
+
+    .j12-login-shortcut {
+      min-height: clamp(4.75rem, 23vw, 6.25rem);
+      gap: 0.5rem;
+      padding: 0.55rem 0.35rem;
+      border-radius: 1rem;
+    }
+
+    .j12-login-shortcut-icon {
+      width: clamp(1.75rem, 8.2vw, 2.15rem);
+      height: clamp(1.75rem, 8.2vw, 2.15rem);
+    }
+
+    .j12-login-shortcut-label {
+      font-size: clamp(0.8rem, 3.7vw, 0.95rem);
+      line-height: 1.1;
+    }
+
+    .j12-login-field {
+      height: 4rem;
+      gap: 0.9rem;
+      padding: 0 1.15rem;
+      border-radius: 1rem;
+    }
+
+    .j12-login-field-icon {
+      width: 1.65rem;
+      height: 1.65rem;
+    }
+
+    .j12-login-input {
+      font-size: 1rem;
+    }
+
+    .j12-login-eye {
+      padding: 0.45rem;
+    }
+
+    .j12-login-eye-icon {
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+
+    .j12-login-actions {
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .j12-login-remember {
+      gap: 0.65rem;
+      font-size: clamp(0.88rem, 3.9vw, 1rem);
+    }
+
+    .j12-login-checkbox {
+      width: 1.55rem;
+      height: 1.55rem;
+    }
+
+    .j12-login-link {
+      flex: 0 0 auto;
+      font-size: clamp(0.88rem, 3.8vw, 1rem);
+      white-space: nowrap;
+    }
+
+    .j12-login-submit {
+      height: 4.5rem;
+      gap: 1rem;
+      border-radius: 1rem;
+      padding: 0 1.5rem;
+      font-size: 1.5rem;
+    }
+
+    .j12-login-submit-icon {
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+
+    .j12-login-divider {
+      gap: 1rem;
+      font-size: 1.1rem;
+    }
+
+    .j12-login-first-access {
+      height: 4.125rem;
+      gap: 1rem;
+      border-radius: 1rem;
+      padding: 0 1.25rem;
+      font-size: 1.1rem;
+    }
+
+    .j12-login-first-access-icon {
+      width: 2rem;
+      height: 2rem;
+    }
+
+    .j12-login-signup {
+      font-size: clamp(1rem, 4.6vw, 1.16rem);
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .j12-login-page {
+      padding: 1.5rem 0;
+    }
+
+    .j12-login-shell {
+      max-width: min(720px, calc(100vw - 3rem));
+      min-height: auto;
+      border-radius: 2rem;
+    }
+
+    .j12-login-hero-image {
+      width: min(100%, 34rem);
+    }
+
+    .j12-login-content {
+      padding: 2rem 2.6rem 2.75rem;
+    }
+
+    .j12-login-shortcut {
+      min-height: 8.5rem;
+      gap: 1rem;
+      padding: 1rem 0.75rem;
+      border-radius: 1.125rem;
+    }
+
+    .j12-login-shortcut-icon {
+      width: 3.1rem;
+      height: 3.1rem;
+    }
+
+    .j12-login-shortcut-label {
+      font-size: 1.45rem;
+      line-height: 1.1;
+    }
+
+    .j12-login-field {
+      height: 5rem;
+      gap: 1.3rem;
+      padding: 0 1.6rem;
+      border-radius: 1.125rem;
+    }
+
+    .j12-login-field-icon {
+      width: 2.1rem;
+      height: 2.1rem;
+    }
+
+    .j12-login-input {
+      font-size: 1.5rem;
+    }
+
+    .j12-login-eye {
+      padding: 0.55rem;
+    }
+
+    .j12-login-eye-icon {
+      width: 2.3rem;
+      height: 2.3rem;
+    }
+
+    .j12-login-remember {
+      gap: 1rem;
+      font-size: 1.25rem;
+    }
+
+    .j12-login-checkbox {
+      width: 2rem;
+      height: 2rem;
+    }
+
+    .j12-login-link {
+      font-size: 1.25rem;
+    }
+
+    .j12-login-submit {
+      height: 5rem;
+      gap: 1.1rem;
+      border-radius: 1rem;
+      font-size: 2rem;
+    }
+
+    .j12-login-submit-icon {
+      width: 2.4rem;
+      height: 2.4rem;
+    }
+
+    .j12-login-divider {
+      gap: 1.25rem;
+      font-size: 1.35rem;
+    }
+
+    .j12-login-first-access {
+      height: 4.75rem;
+      gap: 1rem;
+      border-radius: 1rem;
+      font-size: 1.6rem;
+    }
+
+    .j12-login-first-access-icon {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+
+    .j12-login-signup {
+      font-size: 1.55rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .j12-login-page {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .j12-login-shell {
+      display: grid;
+      width: min(1180px, calc(100vw - 3rem));
+      max-width: none;
+      min-height: min(900px, calc(100svh - 3rem));
+      grid-template-columns: minmax(0, 0.98fr) minmax(420px, 0.88fr);
+      align-items: stretch;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 2rem;
+    }
+
+    .j12-login-hero {
+      align-items: center;
+      padding: clamp(1rem, 2vw, 2rem);
+    }
+
+    .j12-login-hero-image {
+      max-height: calc(100svh - 5rem);
+    }
+
+    .j12-login-content {
+      justify-content: center;
+      padding: clamp(1.75rem, 2.8vw, 3rem);
+    }
+
+    .j12-login-shortcut {
+      min-height: clamp(7.25rem, 12.8vw, 9.5rem);
+      gap: clamp(0.75rem, 1.2vw, 1.1rem);
+      padding: 1rem 0.7rem;
+      border-radius: 1.125rem;
+    }
+
+    .j12-login-shortcut-icon {
+      width: clamp(2.5rem, 4vw, 3.5rem);
+      height: clamp(2.5rem, 4vw, 3.5rem);
+    }
+
+    .j12-login-shortcut-label {
+      font-size: clamp(1.05rem, 1.75vw, 1.55rem);
+      line-height: 1.1;
+    }
+
+    .j12-login-field {
+      height: clamp(4.2rem, 6vw, 5.2rem);
+      gap: 1.25rem;
+      padding: 0 1.5rem;
+      border-radius: 1.125rem;
+    }
+
+    .j12-login-field-icon {
+      width: clamp(1.85rem, 2.4vw, 2.25rem);
+      height: clamp(1.85rem, 2.4vw, 2.25rem);
+    }
+
+    .j12-login-input {
+      font-size: clamp(1.2rem, 1.75vw, 1.6rem);
+    }
+
+    .j12-login-eye {
+      padding: 0.55rem;
+    }
+
+    .j12-login-eye-icon {
+      width: clamp(2rem, 2.8vw, 2.4rem);
+      height: clamp(2rem, 2.8vw, 2.4rem);
+    }
+
+    .j12-login-remember {
+      gap: 0.9rem;
+      font-size: clamp(1rem, 1.45vw, 1.25rem);
+    }
+
+    .j12-login-checkbox {
+      width: clamp(1.55rem, 2.1vw, 1.9rem);
+      height: clamp(1.55rem, 2.1vw, 1.9rem);
+    }
+
+    .j12-login-link {
+      font-size: clamp(1rem, 1.45vw, 1.25rem);
+      white-space: nowrap;
+    }
+
+    .j12-login-submit {
+      height: clamp(4.3rem, 6vw, 5.2rem);
+      gap: 1rem;
+      border-radius: 1rem;
+      font-size: clamp(1.65rem, 2.4vw, 2.2rem);
+    }
+
+    .j12-login-submit-icon {
+      width: clamp(2rem, 3vw, 2.6rem);
+      height: clamp(2rem, 3vw, 2.6rem);
+    }
+
+    .j12-login-divider {
+      gap: 1.25rem;
+      font-size: clamp(1.1rem, 1.5vw, 1.35rem);
+    }
+
+    .j12-login-first-access {
+      height: clamp(4rem, 5.5vw, 4.8rem);
+      gap: 1rem;
+      border-radius: 1rem;
+      font-size: clamp(1.3rem, 1.95vw, 1.75rem);
+    }
+
+    .j12-login-first-access-icon {
+      width: clamp(2.25rem, 3.2vw, 2.8rem);
+      height: clamp(2.25rem, 3.2vw, 2.8rem);
+    }
+
+    .j12-login-signup {
+      font-size: clamp(1.2rem, 1.8vw, 1.55rem);
+    }
+  }
+
+  @media (min-width: 1440px) {
+    .j12-login-shell {
+      width: min(1280px, calc(100vw - 4rem));
+      grid-template-columns: minmax(0, 0.96fr) minmax(460px, 0.82fr);
+    }
+  }
 }
 
 @layer utilities {
