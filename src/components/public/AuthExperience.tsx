@@ -9,13 +9,43 @@ export function AuthExperience({
   description,
   children,
   footer,
+  variant = "marketing",
 }: {
-  eyebrow: string;
-  title: string;
-  description: string;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
   children: ReactNode;
   footer?: ReactNode;
+  variant?: "marketing" | "minimal";
 }) {
+  if (variant === "minimal") {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#050505] px-4 py-8 text-white sm:px-6">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,107,0,0.2),_transparent_34%),linear-gradient(180deg,_rgba(16,16,16,0.98),_rgba(4,4,4,1))]" />
+
+        <section className="relative z-10 flex w-full max-w-md flex-col items-center">
+          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+            <div className="flex h-[72px] w-[72px] items-center justify-center rounded-3xl border border-white/10 bg-black/50 shadow-[0_0_45px_-18px_rgba(255,107,0,0.95)]">
+              <img
+                src={branding.logo}
+                alt={`Logo ${branding.name}`}
+                className="h-12 w-12 object-contain"
+              />
+            </div>
+            <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#ff8b45]">
+              {branding.name}
+            </span>
+          </div>
+
+          <div className="w-full rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(20,20,20,0.96),rgba(9,9,9,0.98))] p-6 shadow-[0_40px_90px_-45px_rgba(255,107,0,0.65)] backdrop-blur sm:p-8">
+            {children}
+            {footer ? <div className="mt-6 border-t border-white/10 pt-5">{footer}</div> : null}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,107,0,0.26),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(255,69,0,0.22),_transparent_28%),linear-gradient(180deg,_rgba(16,16,16,0.96),_rgba(4,4,4,1))]" />

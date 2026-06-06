@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 import {
   AuthButton,
-  AuthCardHeader,
   AuthDivider,
   AuthExperience,
   AuthInput,
@@ -88,17 +87,8 @@ function LoginPage() {
   }
 
   return (
-    <AuthExperience
-      eyebrow="Acesso central J12"
-      title="Alta performance começa na gestão."
-      description="Na J12, você controla alunos, contratos e financeiro em tempo real com velocidade, precisão e domínio total da operação."
-    >
-      <AuthCardHeader
-        title="Bem-vindo à J12"
-        description="Use seu e-mail e senha para acessar a plataforma. Se precisar, recupere seu acesso em poucos passos ou abra uma nova matrícula pública."
-      />
-
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <AuthExperience variant="minimal">
+      <form onSubmit={handleSubmit} className="space-y-5" aria-label="Login J12">
         <AuthInput
           label="E-mail"
           type="email"
