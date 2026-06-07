@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardList, MapPin, TimerReset, Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { SkeletonDashboard, SkeletonForm } from "@/components/ui/skeleton";
 import { usePortalAluno } from "@/lib/aluno-portal";
 import {
   formatAlunoScope,
@@ -24,8 +25,9 @@ function MeuPlanoPage() {
   if (portalAluno.loading) {
     return (
       <AppShell title="Meu Plano">
-        <div className="flex min-h-[50vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="space-y-5">
+          <SkeletonDashboard cards={4} panels={0} withHero={false} />
+          <SkeletonForm fields={6} withActions={false} />
         </div>
       </AppShell>
     );

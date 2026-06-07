@@ -17,6 +17,7 @@ module.exports = {
       error_file: "logs/j12-api.error.log",
       env: {
         NODE_ENV: "production",
+        CORS_ORIGIN: "https://app.j12sports.com.br,https://hml.app.j12sports.com.br",
       },
     },
     {

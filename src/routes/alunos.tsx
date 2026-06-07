@@ -17,6 +17,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { AlunoFormDialog } from "@/components/alunos/AlunoFormDialog";
 import { AlunoPerfilDialog } from "@/components/alunos/AlunoPerfilDialog";
 import { ContratoVisualizarDialog } from "@/components/contratos/ContratoVisualizarDialog";
+import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
 import type { Contrato } from "@/lib/contratos-store";
 import {
   formatAlunoScope,
@@ -266,11 +267,7 @@ function AlunosPage() {
   if (isSelfService && portalAluno.loading) {
     return (
       <TooltipProvider delayDuration={120}>
-        <AppShell title="Meu Perfil">
-          <div className="flex min-h-[50vh] items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
-        </AppShell>
+        <AlunosLoadingState title="Meu Perfil" />
       </TooltipProvider>
     );
   }
@@ -290,14 +287,7 @@ function AlunosPage() {
   if (!isSelfService && loading && alunos.length === 0) {
     return (
       <TooltipProvider delayDuration={120}>
-        <AppShell title="Alunos">
-          <div className="flex min-h-[50vh] items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <span>Carregando alunos reais do MySQL...</span>
-            </div>
-          </div>
-        </AppShell>
+        <AlunosLoadingState title="Alunos" />
       </TooltipProvider>
     );
   }
@@ -595,5 +585,16 @@ function AlunosPage() {
         </AlertDialog>
       </AppShell>
     </TooltipProvider>
+  );
+}
+
+function AlunosLoadingState({ title }: { title: string }) {
+  return (
+    <AppShell title={title}>
+      <div className="space-y-5">
+        <SkeletonDashboard cards={4} panels={1} withHero={false} />
+        <SkeletonTable columns={7} rows={6} />
+      </div>
+    </AppShell>
   );
 }

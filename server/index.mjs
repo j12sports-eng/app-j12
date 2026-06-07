@@ -31,6 +31,8 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const REQUEST_BODY_LIMIT_BYTES = Number(process.env.REQUEST_BODY_LIMIT_BYTES || 1024 * 1024);
 
 const defaultCorsOrigins = [
+  "https://app.j12sports.com.br",
+  "https://hml.app.j12sports.com.br",
   "http://127.0.0.1:3000",
   "http://localhost:3000",
   "http://127.0.0.1:5173",
@@ -39,13 +41,30 @@ const defaultCorsOrigins = [
   "http://localhost:5174",
 ];
 
+function normalizeCorsOrigin(origin) {
+  const value = String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!value) return "";
+  if (value === "*") return "*";
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
+}
+
 const configuredCorsOrigins = String(process.env.CORS_ORIGIN || "")
   .split(",")
-  .map((value) => value.trim())
+  .map(normalizeCorsOrigin)
   .filter(Boolean);
 
 const allowAnyOrigin = configuredCorsOrigins.includes("*");
-const allowedCorsOrigins = new Set([...defaultCorsOrigins, ...configuredCorsOrigins]);
+const allowedCorsOrigins = new Set([
+  ...defaultCorsOrigins.map(normalizeCorsOrigin),
+  ...configuredCorsOrigins,
+]);
 
 const databaseState = {
   ok: false,
@@ -166,6 +185,7 @@ app.use(
 app.use("/aluno", alunoRoutes);
 app.use("/auth", authRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/__api/auth", authRoutes);
 
 app.use(
   express.urlencoded({
@@ -244,16 +264,42 @@ app.use((error, req, res, next) => {
 });
 
 function resolveAllowedOrigin(req) {
-  const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+  const origin =
+    typeof req.headers.origin === "string" ? normalizeCorsOrigin(req.headers.origin) : "";
   if (!origin) return "*";
   if (allowAnyOrigin) return origin;
   if (allowedCorsOrigins.has(origin)) return origin;
   return null;
 }
 
+function getCorsAuditMeta(req, allowedOrigin = null) {
+  const originReceived = typeof req.headers.origin === "string" ? req.headers.origin : null;
+  const hostReceived = typeof req.headers.host === "string" ? req.headers.host : null;
+  const refererReceived = typeof req.headers.referer === "string" ? req.headers.referer : null;
+  const forwardedProto =
+    typeof req.headers["x-forwarded-proto"] === "string"
+      ? req.headers["x-forwarded-proto"].split(",")[0].trim()
+      : "http";
+  const requestedUrl = `${forwardedProto || "http"}://${hostReceived || `127.0.0.1:${PORT}`}${
+    req.url || "/"
+  }`;
+
+  return {
+    requestId: req.id || null,
+    method: req.method || "GET",
+    originReceived,
+    originNormalized: normalizeCorsOrigin(originReceived),
+    hostReceived,
+    refererReceived,
+    requestedUrl,
+    allowedOrigin,
+  };
+}
+
 function applyCors(req, res) {
   const allowedOrigin = resolveAllowedOrigin(req);
   const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+  const corsAllowed = !requestOrigin || Boolean(allowedOrigin);
 
   if (requestOrigin) {
     res.setHeader("Vary", "Origin");
@@ -264,9 +310,18 @@ function applyCors(req, res) {
   }
 
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+  );
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  return !requestOrigin || Boolean(allowedOrigin);
+  log(corsAllowed ? "info" : "warn", corsAllowed ? "cors.allowed" : "cors.blocked", {
+    ...getCorsAuditMeta(req, allowedOrigin),
+    configuredOrigins: Array.from(allowedCorsOrigins),
+  });
+
+  return corsAllowed;
 }
 
 function readJsonBody(req) {
@@ -640,17 +695,30 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if ((pathname === "/auth/login" || pathname === "/api/auth/login") && method === "POST") {
+    if (
+      (pathname === "/auth/login" ||
+        pathname === "/api/auth/login" ||
+        pathname === "/__api/auth/login") &&
+      method === "POST"
+    ) {
       statusCode = await handleLogin(req, res, context);
       return;
     }
 
-    if ((pathname === "/auth/me" || pathname === "/api/auth/me") && method === "GET") {
+    if (
+      (pathname === "/auth/me" || pathname === "/api/auth/me" || pathname === "/__api/auth/me") &&
+      method === "GET"
+    ) {
       statusCode = await handleAuthMe(req, res, context);
       return;
     }
 
-    if ((pathname === "/auth/logout" || pathname === "/api/auth/logout") && method === "POST") {
+    if (
+      (pathname === "/auth/logout" ||
+        pathname === "/api/auth/logout" ||
+        pathname === "/__api/auth/logout") &&
+      method === "POST"
+    ) {
       statusCode = await handleLogout(req, res, context);
       return;
     }

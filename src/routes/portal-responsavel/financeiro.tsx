@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { PortalResponsavelLayout } from "@/components/PortalResponsavelLayout";
 import { PortalHero } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
 import { useResponsavelFinanceiro } from "@/hooks/useResponsavelFinanceiro";
 import { useResponsavelAlunos } from "@/hooks/useResponsavelAlunos";
 import { api, formatApiErrorMessage } from "@/lib/api";
@@ -86,12 +87,8 @@ function FinanceiroResponsavelPage() {
 
         {loading ? (
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-80" />
+            <SkeletonDashboard cards={3} panels={1} withHero={false} />
+            <SkeletonTable columns={4} rows={4} />
           </div>
         ) : erro ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
@@ -217,7 +214,9 @@ function FinanceiroResponsavelPage() {
                         <button
                           type="button"
                           onClick={() => void handleGerarPix(item)}
-                          disabled={creatingPixId === item.id || item.status.toLowerCase() === "pago"}
+                          disabled={
+                            creatingPixId === item.id || item.status.toLowerCase() === "pago"
+                          }
                           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {creatingPixId === item.id ? (

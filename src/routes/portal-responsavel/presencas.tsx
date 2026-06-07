@@ -3,6 +3,7 @@ import { CalendarCheck, ShieldCheck, XCircle } from "lucide-react";
 
 import { PortalResponsavelLayout } from "@/components/PortalResponsavelLayout";
 import { PortalHero } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { useResponsavelAlunos } from "@/hooks/useResponsavelAlunos";
 import { useResponsavelPresencas } from "@/hooks/useResponsavelPresencas";
 
@@ -52,15 +53,7 @@ function PresencasResponsavelPage() {
         />
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="j12-skeleton h-28" />
-              <div className="j12-skeleton h-28" />
-              <div className="j12-skeleton h-28" />
-              <div className="j12-skeleton h-28" />
-            </div>
-            <div className="j12-skeleton h-80" />
-          </div>
+          <SkeletonDashboard cards={4} panels={1} withHero={false} />
         ) : erro ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {erro}
@@ -68,11 +61,7 @@ function PresencasResponsavelPage() {
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <KpiCard
-                label="Presenca"
-                value={`${resumo.percentual_presenca}%`}
-                tone="primary"
-              />
+              <KpiCard label="Presenca" value={`${resumo.percentual_presenca}%`} tone="primary" />
               <KpiCard label="Presentes" value={String(resumo.presentes)} tone="success" />
               <KpiCard label="Faltas" value={String(resumo.faltas)} tone="danger" />
               <KpiCard label="Justificadas" value={String(resumo.justificadas)} tone="primary" />

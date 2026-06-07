@@ -3,6 +3,7 @@ import { CalendarDays, Clock3, MapPin, Target } from "lucide-react";
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { usePortalAluno } from "@/lib/aluno-portal";
 import {
   formatAlunoScope,
@@ -33,14 +34,7 @@ function AgendaAlunoPage() {
         />
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-80" />
-          </div>
+          <SkeletonDashboard cards={3} panels={1} withHero={false} />
         ) : error || !aluno ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {error || "Nao foi possivel carregar a agenda."}
@@ -88,12 +82,13 @@ function AgendaAlunoPage() {
               ) : (
                 <div className="space-y-3">
                   {horarios.map((horario) => (
-                    <article key={horario} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <article
+                      key={horario}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <h3 className="font-bold text-white">
-                            {formatAlunoScope(modalidades)}
-                          </h3>
+                          <h3 className="font-bold text-white">{formatAlunoScope(modalidades)}</h3>
                           <p className="mt-1 text-sm text-slate-400">
                             {[formatAlunoScope(turmas), formatAlunoScope(unidades)].join(" | ")}
                           </p>

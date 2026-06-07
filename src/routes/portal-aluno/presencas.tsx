@@ -3,6 +3,7 @@ import { CalendarCheck, ShieldCheck, XCircle } from "lucide-react";
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { usePresencasAluno } from "@/hooks/usePresencasAluno";
 import { cn } from "@/lib/utils";
 
@@ -30,15 +31,7 @@ function PresencasPage() {
         />
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="j12-skeleton h-28" />
-              <div className="j12-skeleton h-28" />
-              <div className="j12-skeleton h-28" />
-              <div className="j12-skeleton h-28" />
-            </div>
-            <div className="j12-skeleton h-80" />
-          </div>
+          <SkeletonDashboard cards={4} panels={1} withHero={false} />
         ) : erro || !dados ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {erro || "Nao foi possivel carregar as presencas."}

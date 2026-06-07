@@ -4,6 +4,7 @@ import { Navigate } from "@tanstack/react-router";
 
 import { useAuth, type Role } from "@/lib/auth";
 import { logSsr } from "@/lib/ssr-debug";
+import { GlobalSkeletonFallback } from "@/components/ui/skeleton";
 
 type Props = {
   children: ReactNode;
@@ -23,11 +24,7 @@ export function ProtectedRoute({ children, roles }: Props) {
   if (loading) {
     logSsr("[SSR] ProtectedRoute renderizou loading");
 
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        Carregando...
-      </div>
-    );
+    return <GlobalSkeletonFallback />;
   }
 
   if (!isAuthenticated || !user) {

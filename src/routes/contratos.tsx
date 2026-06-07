@@ -23,6 +23,7 @@ import { ResourceSyncBanner } from "@/components/shared/ResourceSyncBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -130,6 +131,15 @@ function ContratosStaffPage({ canManage }: { canManage: boolean }) {
       .reduce((acc, c) => acc + c.valorTotal, 0);
     return { total, ativos, aguardando, valorAtivos };
   }, [contratos]);
+
+  if (contratosStatus.loading && contratos.length === 0) {
+    return (
+      <div className="space-y-5">
+        <SkeletonDashboard cards={4} panels={0} withHero={false} />
+        <SkeletonTable columns={6} rows={6} />
+      </div>
+    );
+  }
 
   function abrirNovo() {
     setEditing(null);
@@ -386,8 +396,9 @@ function ContratosSelfServicePage() {
 
   if (portalAluno.loading || portalContrato.loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-5">
+        <SkeletonDashboard cards={4} panels={0} withHero={false} />
+        <SkeletonTable columns={4} rows={4} />
       </div>
     );
   }

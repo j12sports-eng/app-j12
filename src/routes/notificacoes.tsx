@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Bell, MessageSquareMore } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { usePortalNotificacoes } from "@/lib/aluno-portal";
 
 export const Route = createFileRoute("/notificacoes")({
@@ -18,8 +19,10 @@ function NotificacoesPage() {
   if (portalNotificacoes.loading) {
     return (
       <AppShell title="Notificacoes">
-        <div className="flex min-h-[50vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonCard key={index} lines={2} withAvatar className="min-h-[112px]" />
+          ))}
         </div>
       </AppShell>
     );

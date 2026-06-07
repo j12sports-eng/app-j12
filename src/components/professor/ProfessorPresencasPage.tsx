@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +61,9 @@ function KpiCard({
           <p className="mt-3 text-2xl font-bold text-white md:text-3xl">{value}</p>
           <p className="mt-2 text-sm text-slate-400">{detail}</p>
         </div>
-        <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl border", toneClass)}>
+        <div
+          className={cn("flex h-11 w-11 items-center justify-center rounded-2xl border", toneClass)}
+        >
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -102,9 +105,7 @@ export default function ProfessorPresencasPage() {
           : [];
         setTurmas(loaded);
 
-        if (loaded.length > 0 && !selectedTurmaId) {
-          setSelectedTurmaId(loaded[0].id);
-        }
+        setSelectedTurmaId((current) => current || loaded[0]?.id || "");
       } catch (error) {
         console.error("Erro ao carregar turmas:", error);
         toast.error("Não foi possível carregar as turmas.");
@@ -233,8 +234,8 @@ export default function ProfessorPresencasPage() {
                 Controle de presencas.
               </h1>
               <p className="mt-3 text-sm leading-6 text-slate-300 md:text-base">
-                Registre as presencas e faltas dos alunos nas aulas. Mantenha o histórico
-                atualizado e acompanhe a frequência de sua turma.
+                Registre as presencas e faltas dos alunos nas aulas. Mantenha o histórico atualizado
+                e acompanhe a frequência de sua turma.
               </p>
             </div>
 
@@ -311,9 +312,7 @@ export default function ProfessorPresencasPage() {
 
         {/* Main Content */}
         {loading ? (
-          <section className="j12-surface p-8 text-center">
-            <p className="text-slate-300">Carregando dados...</p>
-          </section>
+          <SkeletonTable columns={3} rows={6} />
         ) : (
           <section className="j12-surface p-4 md:p-5">
             {/* Filters */}

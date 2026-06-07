@@ -3,6 +3,7 @@ import { CheckCircle2, ExternalLink, FileSignature, FileText } from "lucide-reac
 
 import { PortalResponsavelLayout } from "@/components/PortalResponsavelLayout";
 import { PortalHero } from "@/components/shared/PortalPrimitives";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { useResponsavelAlunos } from "@/hooks/useResponsavelAlunos";
 import { useResponsavelContratos } from "@/hooks/useResponsavelContratos";
 
@@ -38,8 +39,8 @@ function ContratoResponsavelPage() {
 
         {loading ? (
           <div className="space-y-4">
-            <div className="j12-skeleton h-32" />
-            <div className="j12-skeleton h-32" />
+            <SkeletonCard lines={2} withAvatar className="min-h-[132px]" />
+            <SkeletonCard lines={2} withAvatar className="min-h-[132px]" />
           </div>
         ) : erro ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">

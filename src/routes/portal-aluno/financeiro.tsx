@@ -3,6 +3,7 @@ import { CalendarDays, CheckCircle2, CreditCard, FileText, Wallet } from "lucide
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
 import { useFinanceiroAluno } from "@/hooks/useFinanceiroAluno";
 import { cn } from "@/lib/utils";
 
@@ -47,12 +48,8 @@ function FinanceiroAlunoPage() {
 
         {loading ? (
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-80" />
+            <SkeletonDashboard cards={3} panels={1} withHero={false} />
+            <SkeletonTable columns={4} rows={4} />
           </div>
         ) : erro ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
@@ -115,9 +112,7 @@ function FinanceiroAlunoPage() {
                           <td className="px-4 py-4 font-semibold text-white">
                             {item.competencia || "Mensalidade J12"}
                           </td>
-                          <td className="px-4 py-4 text-slate-200">
-                            {formatCurrency(item.valor)}
-                          </td>
+                          <td className="px-4 py-4 text-slate-200">{formatCurrency(item.valor)}</td>
                           <td className="px-4 py-4">
                             <span
                               className={cn(
@@ -139,7 +134,10 @@ function FinanceiroAlunoPage() {
 
                 <div className="grid gap-3 lg:hidden">
                   {dados.mensalidades.map((item) => (
-                    <article key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <article
+                      key={item.id}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-bold text-white">

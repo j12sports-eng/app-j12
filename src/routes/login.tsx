@@ -6,7 +6,6 @@ import {
   ClipboardList,
   Eye,
   EyeOff,
-  Loader2,
   LockKeyhole,
   Mail,
   UserPlus,
@@ -17,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import loginHeroImage from "@/assets/login-j12-jessiquinha.png";
+import { Skeleton, SkeletonForm } from "@/components/ui/skeleton";
 import { getRoleHomePath, useAuth } from "@/lib/auth";
 import { logSsr, logSsrRoute } from "@/lib/ssr-debug";
 
@@ -161,6 +161,10 @@ function LoginPage() {
     navigate({ to: destination });
   }
 
+  if (loading && !submitting) {
+    return <LoginSkeleton />;
+  }
+
   return (
     <main className="j12-login-page">
       <div className="j12-login-shell">
@@ -300,10 +304,7 @@ function LoginPage() {
 
             <button type="submit" disabled={submitting || loading} className="j12-login-submit">
               {submitting ? (
-                <>
-                  <Loader2 className="j12-login-submit-icon animate-spin" aria-hidden />
-                  Entrando...
-                </>
+                "Entrando..."
               ) : (
                 <>
                   Entrar
@@ -331,6 +332,34 @@ function LoginPage() {
             </p>
           </form>
         </section>
+      </div>
+    </main>
+  );
+}
+
+function LoginSkeleton() {
+  return (
+    <main className="j12-login-page">
+      <div className="j12-login-shell" role="status" aria-busy="true">
+        <section className="j12-login-hero p-4 md:p-8" aria-label="Carregando imagem do login">
+          <Skeleton className="aspect-[4/5] w-full max-w-[34rem] rounded-3xl md:aspect-[5/4] lg:aspect-[4/5]" />
+        </section>
+
+        <section className="j12-login-content">
+          <div className="j12-login-shortcuts">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="j12-login-shortcut border-white/10" />
+            ))}
+          </div>
+
+          <SkeletonForm fields={2} className="border-0 bg-transparent p-0 shadow-none" />
+
+          <div className="space-y-4">
+            <Skeleton className="h-16 rounded-2xl md:h-20" />
+            <Skeleton className="h-14 rounded-2xl md:h-16" />
+          </div>
+        </section>
+        <span className="sr-only">Carregando login J12</span>
       </div>
     </main>
   );

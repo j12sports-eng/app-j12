@@ -4,6 +4,7 @@ import { CheckCircle2, ExternalLink, FileSignature, FileText } from "lucide-reac
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero } from "@/components/shared/PortalPrimitives";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { useContratoAluno } from "@/hooks/useContratoAluno";
 import { cn } from "@/lib/utils";
 
@@ -46,8 +47,8 @@ function ContratoContent() {
 
         {loading ? (
           <div className="space-y-4">
-            <div className="j12-skeleton h-32" />
-            <div className="j12-skeleton h-64" />
+            <SkeletonCard lines={2} withAvatar className="min-h-[132px]" />
+            <SkeletonCard lines={5} className="min-h-64" />
           </div>
         ) : erro ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">

@@ -3,6 +3,7 @@ import { Clock3, MapPin, Target, Trophy, Users } from "lucide-react";
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { usePortalAluno } from "@/lib/aluno-portal";
 import {
   formatAlunoScope,
@@ -33,15 +34,7 @@ function TreinosAlunoPage() {
         />
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-72" />
-          </div>
+          <SkeletonDashboard cards={4} panels={1} withHero={false} />
         ) : error || !aluno ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {error || "Nao foi possivel carregar os treinos."}
@@ -95,7 +88,10 @@ function TreinosAlunoPage() {
               ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {horarios.map((horario) => (
-                    <article key={horario} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <article
+                      key={horario}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">
                         Treino
                       </p>

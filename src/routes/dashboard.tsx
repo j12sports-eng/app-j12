@@ -42,6 +42,7 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { useFinanceiroAdmin, type Mensalidade } from "@/hooks/useFinanceiroAdmin";
 import { useAuth } from "@/lib/auth";
 import { useAlunos, useAlunosLoading, type Aluno } from "@/lib/alunos-store";
@@ -1482,16 +1483,7 @@ function EmptyState({
 function DashboardSkeleton() {
   return (
     <AppShell title="Dashboard Executivo J12" contentClassName="mx-auto max-w-[1600px] space-y-6">
-      <div className="j12-skeleton h-56" />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => (
-          <div key={index} className="j12-skeleton h-40" />
-        ))}
-      </div>
-      <div className="grid gap-5 xl:grid-cols-2">
-        <div className="j12-skeleton h-96" />
-        <div className="j12-skeleton h-96" />
-      </div>
+      <SkeletonDashboard cards={8} panels={2} />
     </AppShell>
   );
 }

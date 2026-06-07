@@ -13,6 +13,7 @@ import FrequenciaChart from "@/components/FrequenciaChart";
 import { PortalResponsavelLayout } from "@/components/PortalResponsavelLayout";
 import { StudentProfileSummaryCard } from "@/components/portal-responsavel/StudentProfileSummaryCard";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { useDashboardResponsavel } from "@/hooks/useDashboardResponsavel";
 
 export const Route = createFileRoute("/portal-responsavel/dashboard")({
@@ -29,16 +30,7 @@ function formatCurrency(value: number | undefined) {
 function DashboardSkeleton() {
   return (
     <PortalResponsavelLayout>
-      <div className="space-y-6">
-        <div className="j12-skeleton h-28" />
-        <div className="j12-skeleton h-56" />
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="j12-skeleton h-36" />
-          <div className="j12-skeleton h-36" />
-          <div className="j12-skeleton h-36" />
-          <div className="j12-skeleton h-36" />
-        </div>
-      </div>
+      <SkeletonDashboard cards={4} panels={2} />
     </PortalResponsavelLayout>
   );
 }
@@ -133,28 +125,36 @@ function DashboardResponsavelPage() {
             <Trophy className="mb-4 h-5 w-5 text-primary" />
             <p className="text-sm text-zinc-400">Status da matricula</p>
             <p className="mt-2 text-lg font-black text-white">
-              {alunos.length === 1 ? alunos[0]?.status || "ativo" : `${alunos.length} vinculos ativos`}
+              {alunos.length === 1
+                ? alunos[0]?.status || "ativo"
+                : `${alunos.length} vinculos ativos`}
             </p>
           </div>
           <div className="j12-surface p-5">
             <CalendarDays className="mb-4 h-5 w-5 text-primary" />
             <p className="text-sm text-zinc-400">Calendario</p>
             <p className="mt-2 text-lg font-black text-white">
-              {proximasAulas.length > 0 ? `${proximasAulas.length} aula(s) no radar` : "Sem aulas programadas"}
+              {proximasAulas.length > 0
+                ? `${proximasAulas.length} aula(s) no radar`
+                : "Sem aulas programadas"}
             </p>
           </div>
           <div className="j12-surface p-5">
             <MessageSquareText className="mb-4 h-5 w-5 text-primary" />
             <p className="text-sm text-zinc-400">Mensagens recentes</p>
             <p className="mt-2 text-lg font-black text-white">
-              {notificacoes.length > 0 ? `${notificacoes.length} aviso(s)` : "Nenhuma mensagem nova"}
+              {notificacoes.length > 0
+                ? `${notificacoes.length} aviso(s)`
+                : "Nenhuma mensagem nova"}
             </p>
           </div>
           <div className="j12-surface p-5">
             <ShieldCheck className="mb-4 h-5 w-5 text-primary" />
             <p className="text-sm text-zinc-400">Desempenho resumido</p>
             <p className="mt-2 text-lg font-black text-white">
-              {(dados.presenca?.percentual || 0) >= 75 ? "Frequencia consistente" : "Acompanhar presenca"}
+              {(dados.presenca?.percentual || 0) >= 75
+                ? "Frequencia consistente"
+                : "Acompanhar presenca"}
             </p>
           </div>
         </section>
@@ -213,7 +213,10 @@ function DashboardResponsavelPage() {
                   <p className="text-sm text-slate-400">Nenhuma notificacao recente.</p>
                 ) : (
                   notificacoes.map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate font-bold text-white">{item.titulo}</div>

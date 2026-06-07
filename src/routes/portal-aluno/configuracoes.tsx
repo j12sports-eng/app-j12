@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero } from "@/components/shared/PortalPrimitives";
+import { SkeletonForm } from "@/components/ui/skeleton";
 import { usePerfilAluno } from "@/hooks/usePerfilAluno";
 
 export const Route = createFileRoute("/portal-aluno/configuracoes")({
@@ -52,7 +53,7 @@ function ConfiguracoesAlunoPage() {
         />
 
         {loading ? (
-          <div className="j12-skeleton h-96" />
+          <SkeletonForm fields={2} className="min-h-96" />
         ) : erro || !perfil ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {erro || "Nao foi possivel carregar as configuracoes."}
@@ -103,7 +104,11 @@ function ConfiguracoesAlunoPage() {
                 disabled={saving}
                 className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
                 Salvar alteracoes
               </button>
             </form>

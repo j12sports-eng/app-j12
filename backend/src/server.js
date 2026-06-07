@@ -58,7 +58,23 @@ const startupState = {
   readyAt: null,
 };
 
+function normalizeCorsOrigin(origin) {
+  const value = String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!value) return "";
+  if (value === "*") return "*";
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
+}
+
 const allowedOrigins = new Set([
+  "https://app.j12sports.com.br",
+  "https://hml.app.j12sports.com.br",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:5173",
@@ -77,55 +93,77 @@ const allowedOrigins = new Set([
 
 const configuredOrigins = String(process.env.CORS_ORIGIN || "")
   .split(",")
-  .map((value) => value.trim())
+  .map(normalizeCorsOrigin)
   .filter(Boolean);
 
 for (const origin of configuredOrigins) {
   allowedOrigins.add(origin);
 }
 
+const allowAnyOrigin = configuredOrigins.includes("*");
+
+function resolveAllowedOrigin(origin) {
+  const normalizedOrigin = normalizeCorsOrigin(origin);
+
+  if (!normalizedOrigin) return "*";
+  if (allowAnyOrigin) return normalizedOrigin;
+  if (allowedOrigins.has(normalizedOrigin)) return normalizedOrigin;
+
+  return null;
+}
+
+function getCorsAuditMeta(req, allowedOrigin = null) {
+  const originReceived = typeof req.headers.origin === "string" ? req.headers.origin : null;
+  const hostReceived = typeof req.headers.host === "string" ? req.headers.host : null;
+  const refererReceived = typeof req.headers.referer === "string" ? req.headers.referer : null;
+  const forwardedProto =
+    typeof req.headers["x-forwarded-proto"] === "string"
+      ? req.headers["x-forwarded-proto"].split(",")[0].trim()
+      : req.protocol || "http";
+
+  return {
+    method: req.method,
+    originReceived,
+    originNormalized: normalizeCorsOrigin(originReceived),
+    hostReceived,
+    refererReceived,
+    requestedUrl: `${forwardedProto}://${hostReceived || req.get("host") || "localhost"}${
+      req.originalUrl || req.url || "/"
+    }`,
+    allowedOrigin,
+  };
+}
+
+function corsAuditLogger(req, _res, next) {
+  const origin = req.headers.origin;
+  const allowedOrigin = resolveAllowedOrigin(origin);
+  const corsAllowed = !origin || Boolean(allowedOrigin);
+  const meta = {
+    ...getCorsAuditMeta(req, allowedOrigin),
+    configuredOrigins: Array.from(allowedOrigins),
+  };
+
+  if (corsAllowed) {
+    console.log("[CORS] Origem validada:", JSON.stringify(meta));
+  } else {
+    console.warn("[CORS] Origem bloqueada:", JSON.stringify(meta));
+  }
+
+  next();
+}
+
 const corsOptions = {
   origin(origin, callback) {
-    // Permitir requests sem origin (Postman/mobile/apps)
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
-
-    // Permitir origem liberada
-    if (allowedOrigins.has(origin) || configuredOrigins.includes("*")) {
-      callback(null, true);
-      return;
-    }
-
-    console.warn(`[CORS] Origem bloqueada: ${origin}`);
-
-    callback(null, false);
+    callback(null, Boolean(resolveAllowedOrigin(origin)));
   },
 
   credentials: true,
 
-  methods: [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS",
-  ],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
-  allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization",
-  ],
+  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
 
-  exposedHeaders: [
-    "Content-Length",
-    "Content-Type",
-  ],
+  exposedHeaders: ["Content-Length", "Content-Type"],
 
   optionsSuccessStatus: 200,
 };
@@ -147,28 +185,30 @@ if (SocketIOServer) {
   });
 }
 
+app.use(corsAuditLogger);
 app.use(cors(corsOptions));
 
 app.use((req, res, next) => {
-  res.header(
-    "Access-Control-Allow-Origin",
-    req.headers.origin || "*"
-  );
+  const allowedOrigin = resolveAllowedOrigin(req.headers.origin);
+
+  if (!allowedOrigin) {
+    return res.status(403).json({
+      success: false,
+      message: "Origem nao autorizada para acessar esta API.",
+      errorCode: "CORS_BLOCKED",
+    });
+  }
+
+  res.header("Access-Control-Allow-Origin", allowedOrigin);
 
   res.header(
     "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization",
   );
 
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-  );
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
 
-  res.header(
-    "Access-Control-Allow-Credentials",
-    "true"
-  );
+  res.header("Access-Control-Allow-Credentials", "true");
 
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
@@ -380,12 +420,12 @@ async function startServer() {
     console.log("\n========================================");
     console.log("🚀 INICIANDO J12 API");
     console.log("========================================\n");
-    
+
     console.log(`[SERVER] Host: ${HOST}`);
     console.log(`[SERVER] Port: ${PORT}`);
     console.log(`[SERVER] Node Env: ${process.env.NODE_ENV || "development"}`);
     console.log(`[SERVER] Bootstrap Timeout: ${BOOTSTRAP_WARN_TIMEOUT_MS}ms (60s)\n`);
-    
+
     server.listen(PORT, HOST, () => {
       console.log(`✓ [SERVER] API ouvindo em http://${HOST}:${PORT}`);
       console.log(`✓ [ENDPOINTS] Health: http://127.0.0.1:${PORT}/health`);
@@ -394,7 +434,7 @@ async function startServer() {
       console.log("[SERVER] Inicializando banco de dados em background...\n");
       runBootstrapInBackground();
     });
-    
+
     server.on("error", (error) => {
       console.error("[ERROR] Erro no servidor HTTP:", error);
       process.exit(1);

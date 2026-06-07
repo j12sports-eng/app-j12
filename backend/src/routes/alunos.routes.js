@@ -1,6 +1,7 @@
 const express = require("express");
 const { canManageSystem, requireAuth } = require("../../auth.js");
 const alunosController = require("../controllers/alunos.controller.js");
+const { pool } = require("../config/db.js");
 
 const router = express.Router();
 
@@ -73,7 +74,7 @@ router.get("/turma/:id", async (req, res) => {
            )
         ORDER BY nome_completo ASC
       `,
-      [turmaId, turmaId]
+      [turmaId, turmaId],
     );
 
     res.json(alunos);

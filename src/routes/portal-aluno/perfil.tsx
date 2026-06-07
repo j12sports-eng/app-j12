@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard, SkeletonForm } from "@/components/ui/skeleton";
 import { usePerfilAluno } from "@/hooks/usePerfilAluno";
 
 export const Route = createFileRoute("/portal-aluno/perfil")({
@@ -24,12 +25,8 @@ function PerfilAlunoPage() {
 
         {loading ? (
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-72" />
+            <SkeletonDashboard cards={3} panels={0} withHero={false} />
+            <SkeletonForm fields={4} withActions={false} />
           </div>
         ) : erro || !perfil ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
@@ -72,9 +69,21 @@ function PerfilAlunoPage() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <InfoCard label="Nome" value={perfil.nome_completo} icon={<UserRound className="h-4 w-4" />} />
-                <InfoCard label="Email" value={perfil.email_contato} icon={<Mail className="h-4 w-4" />} />
-                <InfoCard label="Telefone" value={perfil.telefone_contato || "-"} icon={<Phone className="h-4 w-4" />} />
+                <InfoCard
+                  label="Nome"
+                  value={perfil.nome_completo}
+                  icon={<UserRound className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Email"
+                  value={perfil.email_contato}
+                  icon={<Mail className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Telefone"
+                  value={perfil.telefone_contato || "-"}
+                  icon={<Phone className="h-4 w-4" />}
+                />
                 <InfoCard
                   label="Modalidade"
                   value={perfil.modalidade_principal || "-"}
@@ -89,15 +98,7 @@ function PerfilAlunoPage() {
   );
 }
 
-function InfoCard({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: ReactNode;
-}) {
+function InfoCard({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">

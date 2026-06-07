@@ -4,6 +4,7 @@ import { Activity, LineChart, ShieldCheck, Target, TrendingUp } from "lucide-rea
 import FrequenciaChart from "@/components/FrequenciaChart";
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { usePresencasAluno } from "@/hooks/usePresencasAluno";
 
 export const Route = createFileRoute("/portal-aluno/avaliacoes")({
@@ -31,15 +32,7 @@ function AvaliacoesAlunoPage() {
         />
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-80" />
-          </div>
+          <SkeletonDashboard cards={4} panels={2} withHero={false} />
         ) : erro || !dados ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {erro || "Nao foi possivel carregar as avaliacoes."}

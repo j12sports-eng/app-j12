@@ -4,6 +4,7 @@ import { ShieldCheck, Trophy, Users } from "lucide-react";
 import { PortalResponsavelLayout } from "@/components/PortalResponsavelLayout";
 import { StudentProfileSummaryCard } from "@/components/portal-responsavel/StudentProfileSummaryCard";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { useResponsavelAlunos } from "@/hooks/useResponsavelAlunos";
 
 export const Route = createFileRoute("/portal-responsavel/meus-filhos")({
@@ -12,7 +13,9 @@ export const Route = createFileRoute("/portal-responsavel/meus-filhos")({
 
 function MeusFilhosPage() {
   const { alunos, loading, erro } = useResponsavelAlunos();
-  const ativos = alunos.filter((aluno) => String(aluno.status || "").toLowerCase() !== "inativo").length;
+  const ativos = alunos.filter(
+    (aluno) => String(aluno.status || "").toLowerCase() !== "inativo",
+  ).length;
 
   return (
     <PortalResponsavelLayout>
@@ -24,14 +27,7 @@ function MeusFilhosPage() {
         />
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-              <div className="j12-skeleton h-32" />
-            </div>
-            <div className="j12-skeleton h-64" />
-          </div>
+          <SkeletonDashboard cards={3} panels={1} withHero={false} />
         ) : erro ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
             {erro}
@@ -58,7 +54,9 @@ function MeusFilhosPage() {
               />
               <PortalKpiCard
                 label="Modalidades"
-                value={String(new Set(alunos.map((aluno) => aluno.modalidade).filter(Boolean)).size)}
+                value={String(
+                  new Set(alunos.map((aluno) => aluno.modalidade).filter(Boolean)).size,
+                )}
                 detail="Atividades diferentes"
                 icon={Trophy}
                 tone="warning"

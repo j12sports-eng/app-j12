@@ -11,6 +11,7 @@ import {
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
 import { PortalHero, PortalKpiCard } from "@/components/shared/PortalPrimitives";
+import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { useDashboardAluno } from "@/hooks/useDashboardAluno";
 import { useNotificacoesAluno } from "@/hooks/useNotificacoesAluno";
 
@@ -43,15 +44,7 @@ function DashboardContent() {
   if (loading) {
     return (
       <PortalAlunoLayout>
-        <div className="space-y-6">
-          <div className="j12-skeleton h-32" />
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="j12-skeleton h-32" />
-            <div className="j12-skeleton h-32" />
-            <div className="j12-skeleton h-36" />
-            <div className="j12-skeleton h-36" />
-          </div>
-        </div>
+        <SkeletonDashboard cards={4} panels={2} />
       </PortalAlunoLayout>
     );
   }
@@ -60,7 +53,7 @@ function DashboardContent() {
     return (
       <PortalAlunoLayout>
         <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-100">
-        {error}
+          {error}
         </div>
       </PortalAlunoLayout>
     );
@@ -69,7 +62,9 @@ function DashboardContent() {
   if (!data) {
     return (
       <PortalAlunoLayout>
-        <div className="j12-empty-state p-8 text-center text-slate-300">Nenhum dado encontrado.</div>
+        <div className="j12-empty-state p-8 text-center text-slate-300">
+          Nenhum dado encontrado.
+        </div>
       </PortalAlunoLayout>
     );
   }
@@ -180,7 +175,10 @@ function DashboardContent() {
                 </div>
               ) : (
                 avisosRecentes.map((item) => (
-                  <article key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <article
+                    key={item.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h3 className="truncate font-bold text-white">{item.titulo}</h3>

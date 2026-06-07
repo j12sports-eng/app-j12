@@ -357,7 +357,7 @@ async function getMePresencas(req, res, next) {
         SELECT
           presenca.id,
           presenca.data_aula,
-          presenca.status,
+          COALESCE(presenca.status_presenca, 'presente') AS status,
           presenca.observacao,
           turma.nome AS turma_nome
         FROM j12_presencas presenca

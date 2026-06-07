@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   UserCog,
 } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonCard, SkeletonForm } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { SettingsSection } from "@/lib/settings/types";
 
@@ -138,11 +138,15 @@ export function SettingsEmptyState({
 
 export function SettingsSectionSkeleton() {
   return (
-    <div className="space-y-4">
-      <Skeleton className="h-28 rounded-[28px] bg-card/70" />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[280px_1fr]">
-        <Skeleton className="h-[420px] rounded-[28px] bg-card/70" />
-        <Skeleton className="h-[420px] rounded-[28px] bg-card/70" />
+    <div className="space-y-6">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <SkeletonCard key={index} lines={2} className="min-h-[132px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[300px_1fr]">
+        <SkeletonForm fields={6} className="min-h-[420px]" />
+        <SkeletonForm fields={8} className="min-h-[420px]" />
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ import { useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 
 import FrequenciaChart from "@/components/FrequenciaChart";
 import { PortalResponsavelLayout } from "@/components/PortalResponsavelLayout";
+import { SkeletonDashboard, SkeletonForm } from "@/components/ui/skeleton";
 import {
   useResponsavelAlunoPerfil,
   type PerfilAlunoCompleto,
@@ -77,7 +78,11 @@ function initials(name: string) {
 
 function statusClass(status: string | undefined) {
   const normalized = String(status || "").toLowerCase();
-  if (normalized.includes("pago") || normalized.includes("ativo") || normalized.includes("enviado")) {
+  if (
+    normalized.includes("pago") ||
+    normalized.includes("ativo") ||
+    normalized.includes("enviado")
+  ) {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
   }
   if (normalized.includes("venc") || normalized.includes("atras") || normalized.includes("falta")) {
@@ -87,15 +92,7 @@ function statusClass(status: string | undefined) {
   return "border-primary/30 bg-primary/10 text-primary";
 }
 
-function InfoCard({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value?: ReactNode;
-  icon?: ReactNode;
-}) {
+function InfoCard({ label, value, icon }: { label: string; value?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -135,14 +132,8 @@ function ProfileSkeleton() {
   return (
     <PortalResponsavelLayout>
       <div className="space-y-5">
-        <div className="j12-skeleton h-64" />
-        <div className="j12-skeleton h-16" />
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="j12-skeleton h-32" />
-          <div className="j12-skeleton h-32" />
-          <div className="j12-skeleton h-32" />
-        </div>
-        <div className="j12-skeleton h-96" />
+        <SkeletonDashboard cards={3} panels={0} />
+        <SkeletonForm fields={8} className="min-h-96" />
       </div>
     </PortalResponsavelLayout>
   );
@@ -240,7 +231,10 @@ function OverviewTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-      <SectionCard title="Identificacao esportiva" description="Resumo operacional do aluno na J12.">
+      <SectionCard
+        title="Identificacao esportiva"
+        description="Resumo operacional do aluno na J12."
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <InfoCard label="Nome completo" value={aluno.nome} />
           <InfoCard label="Idade" value={aluno.idade ? `${aluno.idade} anos` : "-"} />
@@ -255,13 +249,19 @@ function OverviewTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
         </div>
       </SectionCard>
 
-      <SectionCard title="Proximas aulas e rotina" description="Agenda resumida disponivel para a familia.">
+      <SectionCard
+        title="Proximas aulas e rotina"
+        description="Agenda resumida disponivel para a familia."
+      >
         <div className="space-y-3">
           {perfil.proximasAulas.length === 0 ? (
             <EmptyState>Nenhuma aula programada.</EmptyState>
           ) : (
             perfil.proximasAulas.map((aula, index) => (
-              <article key={`${aula.turma}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <article
+                key={`${aula.turma}-${index}`}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-black text-white">{String(aula.turma || "Turma J12")}</p>
@@ -308,7 +308,10 @@ function PersonalTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
         <InfoCard label="Escola" value={aluno.escola} />
         <InfoCard label="Serie escolar" value={aluno.serieEscolar} />
         <InfoCard label="Responsavel" value={aluno.responsavel?.nome} />
-        <InfoCard label="Contato responsavel" value={aluno.responsavel?.whatsapp || aluno.responsavel?.email} />
+        <InfoCard
+          label="Contato responsavel"
+          value={aluno.responsavel?.whatsapp || aluno.responsavel?.email}
+        />
       </div>
     </SectionCard>
   );
@@ -332,12 +335,22 @@ function FinanceTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
         ) : (
           <div className="space-y-3">
             {financeiro.ultimasCobrancas.map((charge: any) => (
-              <article key={String(charge.id)} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <article
+                key={String(charge.id)}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              >
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-black text-white">{charge.descricao || charge.competencia || "Mensalidade"}</p>
-                      <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold", statusClass(charge.status))}>
+                      <p className="font-black text-white">
+                        {charge.descricao || charge.competencia || "Mensalidade"}
+                      </p>
+                      <span
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-xs font-bold",
+                          statusClass(charge.status),
+                        )}
+                      >
                         {charge.status || "pendente"}
                       </span>
                     </div>
@@ -379,7 +392,10 @@ function AttendanceTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
             <EmptyState>Sem dados mensais de frequencia.</EmptyState>
           ) : (
             frequencia.graficoMensal.map((item) => (
-              <div key={item.mes} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div
+                key={item.mes}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              >
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="font-bold text-white">{item.mes}</span>
                   <span className="text-slate-400">{item.percentual}%</span>
@@ -388,7 +404,10 @@ function AttendanceTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
                   <div
                     className="h-full rounded-full bg-primary"
                     style={{
-                      width: item.presentes > 0 ? `${Math.max(8, (item.presentes / maxTotal) * 100)}%` : "0%",
+                      width:
+                        item.presentes > 0
+                          ? `${Math.max(8, (item.presentes / maxTotal) * 100)}%`
+                          : "0%",
                     }}
                   />
                 </div>
@@ -399,13 +418,23 @@ function AttendanceTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
 
         <div className="space-y-3">
           {frequencia.ultimasPresencas.map((item: any) => (
-            <article key={String(item.id)} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <article
+              key={String(item.id)}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-black text-white">{formatDate(item.dataAula || item.data_aula)}</p>
+                  <p className="font-black text-white">
+                    {formatDate(item.dataAula || item.data_aula)}
+                  </p>
                   <p className="mt-1 text-sm text-slate-400">{item.turma || "Treino J12"}</p>
                 </div>
-                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold", statusClass(item.status))}>
+                <span
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs font-bold",
+                    statusClass(item.status),
+                  )}
+                >
                   {item.presente ? "presente" : "falta"}
                 </span>
               </div>
@@ -419,13 +448,19 @@ function AttendanceTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
 
 function EvaluationsTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
   return (
-    <SectionCard title="Avaliacoes e desempenho" description="Evolucao tecnica e observacoes disponiveis.">
+    <SectionCard
+      title="Avaliacoes e desempenho"
+      description="Evolucao tecnica e observacoes disponiveis."
+    >
       {perfil.avaliacoes.length === 0 ? (
         <EmptyState>Nenhuma avaliacao registrada.</EmptyState>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {perfil.avaliacoes.map((avaliacao) => (
-            <article key={avaliacao.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <article
+              key={avaliacao.id}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
+            >
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">
                 {avaliacao.tipo}
               </p>
@@ -443,7 +478,10 @@ function HealthTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
   const saude = perfil.aluno.saude || {};
 
   return (
-    <SectionCard title="Saude" description="Dados de seguranca para treinos e comunicacao emergencial.">
+    <SectionCard
+      title="Saude"
+      description="Dados de seguranca para treinos e comunicacao emergencial."
+    >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <InfoCard label="Alergias" value={saude.alergias} />
         <InfoCard label="Restricoes medicas" value={saude.restricoesMedicas} />
@@ -529,7 +567,10 @@ function DocumentsTab({
     <SectionCard title="Documentos" description="Documentos do aluno, contrato e comprovantes.">
       <div className="grid gap-4 md:grid-cols-2">
         {perfil.documentos.map((document) => (
-          <article key={document.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <article
+            key={document.id}
+            className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
+          >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="truncate text-lg font-black text-white">{document.titulo}</h3>
@@ -538,7 +579,12 @@ function DocumentsTab({
                   Enviado em: {formatDate(document.uploadedAt)}
                 </p>
               </div>
-              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold", statusClass(document.status))}>
+              <span
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs font-bold",
+                  statusClass(document.status),
+                )}
+              >
                 {document.status}
               </span>
             </div>
@@ -562,12 +608,17 @@ function MessagesTab({ perfil }: { perfil: PerfilAlunoCompleto }) {
       ) : (
         <div className="space-y-3">
           {perfil.mensagens.map((message: any) => (
-            <article key={String(message.id)} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <article
+              key={String(message.id)}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-lg font-black text-white">{message.titulo}</p>
                   <p className="mt-2 text-sm leading-6 text-slate-400">{message.mensagem}</p>
-                  <p className="mt-3 text-xs text-slate-500">{formatDate(message.createdAt || message.created_at)}</p>
+                  <p className="mt-3 text-xs text-slate-500">
+                    {formatDate(message.createdAt || message.created_at)}
+                  </p>
                 </div>
                 {!message.lida && (
                   <span className="rounded-full bg-primary/15 px-2.5 py-1 text-xs font-black text-primary">

@@ -40,8 +40,13 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import { FinancialMovementModal } from "@/components/financeiro/movement-modal";
-import { formatBRLFromNumber, formatBRLInput, parseBRL } from "@/components/financeiro/movement-modal/movement-form";
+import {
+  formatBRLFromNumber,
+  formatBRLInput,
+  parseBRL,
+} from "@/components/financeiro/movement-modal/movement-form";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
 import {
   useFinanceiroAdmin,
   type DespesaFinanceira,
@@ -206,14 +211,9 @@ function CategoryBreakdown({
 function LoadingState() {
   return (
     <AppShell title="Financeiro J12">
-      <div className="grid gap-4 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="j12-skeleton h-32" />
-        ))}
-      </div>
-      <div className="mt-6 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="j12-skeleton h-80" />
-        <div className="j12-skeleton h-80" />
+      <div className="space-y-6">
+        <SkeletonDashboard cards={8} panels={2} />
+        <SkeletonTable columns={6} rows={6} />
       </div>
     </AppShell>
   );
@@ -832,34 +832,34 @@ function FinanceiroAdminContent() {
                     <td className="px-4 py-4 text-slate-300">{formatDate(item.data_vencimento)}</td>
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                      <button
-                        onClick={() => openReceiveModal(item)}
-                        disabled={normalizeStatus(item.status) === "pago"}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        Receber
-                      </button>
-                      <button
-                        onClick={() => openEditReceita(item)}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-black transition hover:bg-amber-300"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Editar
-                      </button>
-                      <button
-                        onClick={() =>
-                          setDeleteTarget({
-                            type: "receita",
-                            id: item.id,
-                            label: item.descricao || item.aluno_nome,
-                          })
-                        }
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-red-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-red-400"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Excluir
-                      </button>
+                        <button
+                          onClick={() => openReceiveModal(item)}
+                          disabled={normalizeStatus(item.status) === "pago"}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Receber
+                        </button>
+                        <button
+                          onClick={() => openEditReceita(item)}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-black transition hover:bg-amber-300"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Editar
+                        </button>
+                        <button
+                          onClick={() =>
+                            setDeleteTarget({
+                              type: "receita",
+                              id: item.id,
+                              label: item.descricao || item.aluno_nome,
+                            })
+                          }
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-red-500 px-3 py-2 text-sm font-bold text-white transition hover:bg-red-400"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Excluir
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1154,8 +1154,8 @@ function FinanceiroAdminContent() {
                     <div>
                       <p className="font-bold text-white">Confirme a baixa financeira</p>
                       <p className="mt-1 text-sm text-emerald-100">
-                        O registro sera marcado como pago em {formatDate(recebimentoData)} e a tabela
-                        sera atualizada automaticamente.
+                        O registro sera marcado como pago em {formatDate(recebimentoData)} e a
+                        tabela sera atualizada automaticamente.
                       </p>
                     </div>
                   </div>
@@ -1193,7 +1193,9 @@ function FinanceiroAdminContent() {
                       toast.success("Pagamento confirmado.");
                       closeReceiveModal();
                     } catch (error) {
-                      toast.error(formatApiErrorMessage(error, "Nao foi possivel confirmar pagamento."));
+                      toast.error(
+                        formatApiErrorMessage(error, "Nao foi possivel confirmar pagamento."),
+                      );
                     }
                   }}
                   disabled={actionLoading}
