@@ -16,7 +16,7 @@ function FinanceiroRedirect() {
   if (role === "admin" || role === "coordenador") {
     destination = "/admin/financeiro";
   } else if (role === "professor") {
-    destination = "/professor/presencas";
+    destination = "/admin/presenca";
   } else if (role === "responsavel") {
     destination = "/portal-responsavel/financeiro";
   }
