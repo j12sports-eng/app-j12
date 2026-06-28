@@ -1,7 +1,8 @@
 const express = require("express");
+const { ensureAuthSchema } = require("../db.js");
 const {
   PASSWORD_RULE_MESSAGE,
-  authenticateUser,
+  authenticateUserDetailed,
   changePassword,
   completeStudentFirstAccess,
   createPasswordResetToken,
@@ -13,6 +14,78 @@ const {
 } = require("../auth.js");
 
 const router = express.Router();
+
+function hasEnv(name) {
+  return String(process.env[name] || "").trim().length > 0;
+}
+
+function hasAnyEnv(names) {
+  return names.some(hasEnv);
+}
+
+function getMissingLoginConfig() {
+  const missing = [];
+  const hasDatabaseConfig =
+    hasEnv("DATABASE_URL") || (hasEnv("DB_HOST") && hasEnv("DB_USER") && hasEnv("DB_NAME"));
+
+  if (!hasDatabaseConfig) {
+    missing.push("DATABASE_URL ou DB_HOST/DB_USER/DB_NAME");
+  }
+
+  if (!hasAnyEnv(["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"])) {
+    missing.push("JWT_SECRET");
+  }
+
+  if (!hasAnyEnv(["JWT_EXPIRES", "JWT_EXPIRES_IN", "JWT_EXPIRES_IN_SECONDS"])) {
+    missing.push("JWT_EXPIRES");
+  }
+
+  if (!hasEnv("NODE_ENV")) {
+    missing.push("NODE_ENV");
+  }
+
+  return missing;
+}
+
+function assertLoginRuntimeConfig() {
+  const missing = getMissingLoginConfig();
+  if (missing.length === 0) return;
+
+  const error = new Error(`Variaveis de ambiente ausentes: ${missing.join(", ")}.`);
+  error.statusCode = 500;
+  error.code = "CONFIG_ERROR";
+  error.expose = true;
+  throw error;
+}
+
+function logLogin(level, message, req, meta = {}) {
+  const entry = {
+    requestId: req.id || req.headers["x-request-id"] || null,
+    endpoint: req.originalUrl || req.url || "/auth/login",
+    usuarioInformado: meta.usuarioInformado || null,
+    timestamp: new Date().toISOString(),
+    ambiente: process.env.NODE_ENV || "development",
+    ...meta,
+  };
+
+  delete entry.password;
+  delete entry.senha;
+
+  const line = `[LOGIN] ${message}`;
+  const serialized = JSON.stringify(entry);
+
+  if (level === "error") {
+    console.error(line, serialized);
+    return;
+  }
+
+  if (level === "warn") {
+    console.warn(line, serialized);
+    return;
+  }
+
+  console.log(line, serialized);
+}
 
 router.get("/login", (_req, res) => {
   res.status(405).json({
@@ -27,22 +100,96 @@ function getBaseUrl(req) {
 }
 
 router.post("/login", async (req, res, next) => {
+  let identifier = "";
+
   try {
-    const identifier = String(req.body.login || req.body.email || req.body.identifier || "").trim();
+    logLogin("info", "Iniciando login", req);
+    logLogin("info", "Lendo body", req);
+
+    identifier = String(req.body.login || req.body.email || req.body.identifier || "")
+      .trim()
+      .toLowerCase();
     const password = String(req.body.senha || req.body.password || "");
+    const loginMeta = { usuarioInformado: identifier || null };
 
+    logLogin("info", "Validando entrada", req, {
+      ...loginMeta,
+      hasIdentifier: Boolean(identifier),
+      hasPassword: Boolean(password),
+    });
     if (!identifier || !password) {
-      return res.status(400).json({ message: "Informe login/e-mail e senha." });
+      return res.status(400).json({
+        success: false,
+        message: "Dados invalidos. Informe email/login e senha.",
+        code: "VALIDATION_ERROR",
+        requestId: req.id || null,
+        timestamp: new Date().toISOString(),
+      });
     }
 
-    const user = await authenticateUser(identifier, password);
+    logLogin("info", "Validando ambiente", req, loginMeta);
+    assertLoginRuntimeConfig();
+
+    logLogin("info", "Validando schema de autenticacao", req, loginMeta);
+    await ensureAuthSchema();
+
+    const authResult = await authenticateUserDetailed(identifier, password, {
+      onStep(step, meta) {
+        logLogin("info", step, req, {
+          ...loginMeta,
+          ...meta,
+        });
+      },
+    });
+    const user = authResult.user;
     if (!user) {
-      return res.status(401).json({ message: "Login ou senha invalidos." });
+      logLogin("warn", "Credenciais invalidas", req, {
+        ...loginMeta,
+        found: authResult.found,
+        reason: authResult.reason,
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: "Usuario ou senha invalidos.",
+        code: "AUTH_ERROR",
+        requestId: req.id || null,
+        timestamp: new Date().toISOString(),
+      });
     }
+
+    logLogin("info", "Gerando JWT", req, {
+      ...loginMeta,
+      userId: user.id,
+      role: user.role,
+      source: user.source || null,
+    });
 
     const token = await createSession(user);
-    res.json({ token, user });
+
+    logLogin("info", "Login concluido", req, {
+      ...loginMeta,
+      userId: user.id,
+      role: user.role,
+    });
+
+    res.json({
+      success: true,
+      message: "Login realizado com sucesso.",
+      token,
+      user,
+      requestId: req.id || null,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
+    logLogin("error", "Erro no login", req, {
+      usuarioInformado: identifier || null,
+      errorMessage: error?.message || "Erro desconhecido.",
+      errorCode: error?.code || error?.errorCode || null,
+      statusCode: Number(error?.statusCode || error?.status || 500),
+    });
+    console.error(error);
+    console.error(error?.stack);
     next(error);
   }
 });

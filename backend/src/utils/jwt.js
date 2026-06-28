@@ -1,6 +1,16 @@
 const { createHmac, timingSafeEqual } = require("node:crypto");
 
 const JWT_ALGORITHM = "HS256";
+const JWT_SECRET_ENV_NAMES = ["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"];
+const JWT_EXPIRES_ENV_NAMES = ["JWT_EXPIRES", "JWT_EXPIRES_IN", "JWT_EXPIRES_IN_SECONDS"];
+
+function createJwtConfigError(message, code) {
+  const error = new Error(message);
+  error.statusCode = 500;
+  error.code = code;
+  error.expose = true;
+  return error;
+}
 
 function base64UrlEncode(value) {
   const input = typeof value === "string" ? value : JSON.stringify(value);
@@ -12,21 +22,76 @@ function base64UrlDecode(value) {
 }
 
 function getJwtSecret() {
-  return String(
-    process.env.JWT_SECRET ||
-      process.env.AUTH_JWT_SECRET ||
-      process.env.APP_JWT_SECRET ||
-      process.env.SESSION_SECRET ||
-      process.env.DB_PASSWORD ||
-      "j12-local-secret",
+  const secret = JWT_SECRET_ENV_NAMES.map((name) => process.env[name]).find((value) =>
+    String(value || "").trim(),
   );
+
+  if (!secret) {
+    throw createJwtConfigError("JWT_SECRET nao configurado.", "JWT_SECRET_MISSING");
+  }
+
+  return String(secret);
+}
+
+function parseDurationSeconds(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (!normalized) return NaN;
+
+  if (/^\d+$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  const match = normalized.match(/^(\d+)\s*(s|m|h|d)$/);
+  if (!match) return NaN;
+
+  const amount = Number(match[1]);
+  const unit = match[2];
+  const multipliers = {
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+  };
+
+  return amount * multipliers[unit];
+}
+
+function getJwtExpiresInSeconds(options = {}) {
+  const configured =
+    options.expiresInSeconds ??
+    options.expiresIn ??
+    JWT_EXPIRES_ENV_NAMES.map((name) => process.env[name]).find((value) =>
+      String(value || "").trim(),
+    );
+
+  if (configured == null || String(configured).trim() === "") {
+    throw createJwtConfigError(
+      "JWT_EXPIRES/JWT_EXPIRES_IN/JWT_EXPIRES_IN_SECONDS nao configurado.",
+      "JWT_EXPIRES_MISSING",
+    );
+  }
+
+  const seconds = parseDurationSeconds(configured);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw createJwtConfigError(
+      "JWT_EXPIRES invalido. Use segundos ou sufixos s, m, h, d.",
+      "JWT_EXPIRES_INVALID",
+    );
+  }
+
+  return seconds;
 }
 
 function signJwt(payload, options = {}) {
   const now = Math.floor(Date.now() / 1000);
-  const expiresInSeconds = Number(
-    options.expiresInSeconds || process.env.JWT_EXPIRES_IN_SECONDS || 60 * 60 * 24 * 30,
-  );
+  const expiresInSeconds = getJwtExpiresInSeconds(options);
   const secret = getJwtSecret();
   const header = {
     alg: JWT_ALGORITHM,

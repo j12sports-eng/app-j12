@@ -9,11 +9,31 @@ dotenv.config({
 // ====================================
 // VALIDAÇÃO DE CREDENCIAIS
 // ====================================
-const DB_HOST = process.env.DB_HOST || "108.167.168.27";
-const DB_USER = process.env.DB_USER || "bestt486_appj12";
-const DB_PASSWORD = process.env.DB_PASSWORD || "";
-const DB_NAME = process.env.DB_NAME || "bestt486_appj12";
-const DB_PORT = Number(process.env.DB_PORT || 3306);
+function parseDatabaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return {};
+
+  try {
+    const url = new URL(raw);
+    return {
+      host: url.hostname,
+      user: decodeURIComponent(url.username || ""),
+      password: decodeURIComponent(url.password || ""),
+      database: url.pathname.replace(/^\/+/, ""),
+      port: url.port ? Number(url.port) : 3306,
+    };
+  } catch (error) {
+    console.error("[ERROR] DATABASE_URL invalida:", error?.message || error);
+    return {};
+  }
+}
+
+const DATABASE_URL_CONFIG = parseDatabaseUrl(process.env.DATABASE_URL);
+const DB_HOST = process.env.DB_HOST || DATABASE_URL_CONFIG.host || "108.167.168.27";
+const DB_USER = process.env.DB_USER || DATABASE_URL_CONFIG.user || "bestt486_appj12";
+const DB_PASSWORD = process.env.DB_PASSWORD || DATABASE_URL_CONFIG.password || "";
+const DB_NAME = process.env.DB_NAME || DATABASE_URL_CONFIG.database || "bestt486_appj12";
+const DB_PORT = Number(process.env.DB_PORT || DATABASE_URL_CONFIG.port || 3306);
 
 console.log("[DB] Validando credenciais do banco de dados...");
 if (!DB_HOST || !DB_USER || !DB_NAME) {
@@ -835,7 +855,181 @@ async function transaction(work) {
   }
 }
 
+let authSchemaReady = false;
+let authSchemaPromise = null;
+
+async function ensureAuthSchema() {
+  if (authSchemaReady) return true;
+
+  if (authSchemaPromise) {
+    return authSchemaPromise;
+  }
+
+  authSchemaPromise = (async () => {
+    await query(`
+      CREATE TABLE IF NOT EXISTS j12_usuarios (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        nome VARCHAR(191) NOT NULL,
+        email VARCHAR(191) NOT NULL,
+        senha_hash VARCHAR(255) NOT NULL,
+        perfil VARCHAR(50) NOT NULL DEFAULT 'aluno',
+        aluno_id VARCHAR(64) NULL,
+        professor_id VARCHAR(64) NULL,
+        responsavel_id VARCHAR(64) NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_j12_usuarios_email (email),
+        INDEX idx_j12_usuarios_perfil (perfil),
+        INDEX idx_j12_usuarios_aluno (aluno_id),
+        INDEX idx_j12_usuarios_professor (professor_id),
+        INDEX idx_j12_usuarios_responsavel (responsavel_id)
+      )
+    `);
+    await ensureColumn("j12_usuarios", "nome", "VARCHAR(191) NULL");
+    await ensureColumn("j12_usuarios", "email", "VARCHAR(191) NULL");
+    await ensureColumn("j12_usuarios", "senha_hash", "VARCHAR(255) NULL");
+    await ensureColumn("j12_usuarios", "perfil", "VARCHAR(50) NOT NULL DEFAULT 'aluno'");
+    await ensureColumn("j12_usuarios", "aluno_id", "VARCHAR(64) NULL");
+    await ensureColumn("j12_usuarios", "professor_id", "VARCHAR(64) NULL");
+    await ensureColumn("j12_usuarios", "responsavel_id", "VARCHAR(64) NULL");
+    await ensureColumn("j12_usuarios", "status", "VARCHAR(30) NOT NULL DEFAULT 'ativo'");
+    await ensureColumn("j12_usuarios", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+    await ensureColumn(
+      "j12_usuarios",
+      "updated_at",
+      "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+    );
+    await ensureIndex(
+      "j12_usuarios",
+      "idx_j12_usuarios_perfil",
+      "INDEX `idx_j12_usuarios_perfil` (`perfil`)",
+    );
+    await ensureIndex(
+      "j12_usuarios",
+      "idx_j12_usuarios_aluno",
+      "INDEX `idx_j12_usuarios_aluno` (`aluno_id`)",
+    );
+    await ensureIndex(
+      "j12_usuarios",
+      "idx_j12_usuarios_professor",
+      "INDEX `idx_j12_usuarios_professor` (`professor_id`)",
+    );
+    await ensureIndex(
+      "j12_usuarios",
+      "idx_j12_usuarios_responsavel",
+      "INDEX `idx_j12_usuarios_responsavel` (`responsavel_id`)",
+    );
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(191) NOT NULL,
+        email VARCHAR(191) NOT NULL,
+        login VARCHAR(191) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        password_salt VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        aluno_id VARCHAR(64) NULL,
+        professor_id VARCHAR(64) NULL,
+        responsavel_id VARCHAR(64) NULL,
+        linked_aluno_id VARCHAR(64) NULL,
+        class_scope_json LONGTEXT NULL,
+        phone_whatsapp VARCHAR(50) NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'ativo',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    await ensureColumn("users", "name", "VARCHAR(191) NULL");
+    await ensureColumn("users", "email", "VARCHAR(191) NULL");
+    await ensureColumn("users", "login", "VARCHAR(191) NULL");
+    await ensureColumn("users", "password_hash", "VARCHAR(255) NULL");
+    await ensureColumn("users", "password_salt", "VARCHAR(255) NULL");
+    await ensureColumn("users", "role", "VARCHAR(50) NOT NULL DEFAULT 'aluno'");
+    await ensureColumn("users", "aluno_id", "VARCHAR(64) NULL");
+    await ensureColumn("users", "professor_id", "VARCHAR(64) NULL");
+    await ensureColumn("users", "responsavel_id", "VARCHAR(64) NULL");
+    await ensureColumn("users", "linked_aluno_id", "VARCHAR(64) NULL");
+    await ensureColumn("users", "class_scope_json", "LONGTEXT NULL");
+    await ensureColumn("users", "phone_whatsapp", "VARCHAR(50) NULL");
+    await ensureColumn("users", "status", "VARCHAR(30) NOT NULL DEFAULT 'ativo'");
+    await ensureColumn("users", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+    await ensureColumn(
+      "users",
+      "updated_at",
+      "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+    );
+    await ensureIndex("users", "uniq_users_email", "UNIQUE INDEX `uniq_users_email` (`email`)");
+    await ensureIndex("users", "uniq_users_login", "UNIQUE INDEX `uniq_users_login` (`login`)");
+    await ensureIndex("users", "idx_users_role", "INDEX `idx_users_role` (`role`)");
+    await ensureIndex("users", "idx_users_aluno", "INDEX `idx_users_aluno` (`aluno_id`)");
+    await ensureIndex(
+      "users",
+      "idx_users_professor",
+      "INDEX `idx_users_professor` (`professor_id`)",
+    );
+    await ensureIndex(
+      "users",
+      "idx_users_responsavel",
+      "INDEX `idx_users_responsavel` (`responsavel_id`)",
+    );
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        token VARCHAR(128) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        last_seen_at DATETIME NULL,
+        INDEX idx_sessions_user (user_id),
+        INDEX idx_sessions_expires (expires_at)
+      )
+    `);
+    await ensureColumn("user_sessions", "user_id", "VARCHAR(64) NULL");
+    await ensureColumn(
+      "user_sessions",
+      "created_at",
+      "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+    );
+    await ensureColumn("user_sessions", "expires_at", "DATETIME NULL");
+    await ensureColumn("user_sessions", "last_seen_at", "DATETIME NULL");
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        token VARCHAR(128) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        channel VARCHAR(30) NOT NULL DEFAULT 'email',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL,
+        INDEX idx_password_reset_user (user_id),
+        INDEX idx_password_reset_expires (expires_at)
+      )
+    `);
+    await ensureColumn("password_reset_tokens", "user_id", "VARCHAR(64) NULL");
+    await ensureColumn("password_reset_tokens", "channel", "VARCHAR(30) NOT NULL DEFAULT 'email'");
+    await ensureColumn(
+      "password_reset_tokens",
+      "created_at",
+      "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+    );
+    await ensureColumn("password_reset_tokens", "expires_at", "DATETIME NULL");
+    await ensureColumn("password_reset_tokens", "used_at", "DATETIME NULL");
+
+    authSchemaReady = true;
+    return true;
+  })().finally(() => {
+    authSchemaPromise = null;
+  });
+
+  return authSchemaPromise;
+}
+
 async function ensureSchema() {
+  await ensureAuthSchema();
+
   await query(`
     CREATE TABLE IF NOT EXISTS alunos (
       id VARCHAR(64) PRIMARY KEY,
@@ -2070,6 +2264,7 @@ module.exports = {
   query,
   tableExists,
   transaction,
+  ensureAuthSchema,
   ensureSchema,
   testConnection,
   syncJ12TablesFromLegacy,

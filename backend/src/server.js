@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const express = require("express");
 const http = require("http");
+const { randomUUID } = require("node:crypto");
 const cors = require("cors");
 
 let SocketIOServer = null;
@@ -57,6 +58,62 @@ const startupState = {
   startedAt: new Date().toISOString(),
   readyAt: null,
 };
+
+const DATABASE_ERROR_CODES = new Set([
+  "PROTOCOL_CONNECTION_LOST",
+  "PROTOCOL_SEQUENCE_TIMEOUT",
+  "PROTOCOL_ERROR",
+  "ER_QUERY_INTERRUPTED",
+  "ER_CON_COUNT_ERROR",
+  "ER_ACCESS_DENIED_ERROR",
+  "ER_BAD_DB_ERROR",
+  "ER_DBACCESS_DENIED_ERROR",
+  "ER_NO_SUCH_TABLE",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EACCES",
+  "EPERM",
+  "EPIPE",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENOTFOUND",
+]);
+
+const DATABASE_ERROR_ERRNOS = new Set([
+  -4092, 1040, 1041, 1045, 1049, 1146, 1205, 2002, 2003, 2013,
+]);
+
+function isDatabaseError(error) {
+  return DATABASE_ERROR_CODES.has(error?.code) || DATABASE_ERROR_ERRNOS.has(Number(error?.errno));
+}
+
+function normalizeErrorForResponse(error) {
+  const databaseError = isDatabaseError(error);
+  const statusCode = databaseError
+    ? 503
+    : Number(error?.statusCode || error?.status || error?.status_code || 500);
+  const code =
+    (databaseError ? "DATABASE_UNAVAILABLE" : null) ||
+    error?.errorCode ||
+    error?.code ||
+    (statusCode === 401 ? "AUTH_ERROR" : "INTERNAL_ERROR");
+  const message =
+    databaseError && statusCode >= 500
+      ? "Banco de dados indisponivel ou schema incompleto."
+      : error?.message || "Erro interno do servidor.";
+  const publicMessage =
+    statusCode >= 500 && process.env.NODE_ENV === "production" && !error?.expose && !databaseError
+      ? "Erro interno do servidor. Consulte os logs para mais detalhes."
+      : message;
+
+  return {
+    statusCode,
+    code,
+    message,
+    publicMessage,
+    databaseError,
+  };
+}
 
 function normalizeCorsOrigin(origin) {
   const value = String(origin || "")
@@ -187,6 +244,15 @@ if (SocketIOServer) {
 
 app.use(corsAuditLogger);
 app.use(cors(corsOptions));
+
+app.use((req, res, next) => {
+  req.id =
+    typeof req.headers["x-request-id"] === "string" && req.headers["x-request-id"].trim()
+      ? req.headers["x-request-id"].trim()
+      : randomUUID();
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
 
 app.use((req, res, next) => {
   const allowedOrigin = resolveAllowedOrigin(req.headers.origin);
@@ -354,18 +420,34 @@ app.use((req, res) => {
   });
 });
 
-app.use((error, _req, res, _next) => {
-  const statusCode = Number(error?.statusCode || error?.status || 500);
-  const message =
-    statusCode >= 500 && process.env.NODE_ENV === "production"
-      ? "Erro interno do servidor."
-      : error?.message || "Erro interno do servidor.";
+app.use((error, req, res, _next) => {
+  const details = normalizeErrorForResponse(error);
+  const statusCode = details.statusCode;
+  const timestamp = new Date().toISOString();
+  const code = details.code;
+  const requestId = req?.id || req?.headers?.["x-request-id"] || null;
+  const message = details.publicMessage;
 
-  console.error("Unhandled API error:", error);
+  console.error("[GLOBAL_ERROR]", {
+    requestId,
+    endpoint: req?.originalUrl || req?.url || "/",
+    method: req?.method,
+    statusCode,
+    code,
+    message: error?.message,
+    databaseError: details.databaseError,
+    timestamp,
+    environment: process.env.NODE_ENV || "development",
+  });
+  console.error(error);
+  console.error(error?.stack);
 
   res.status(statusCode).json({
     success: false,
-    error: message,
+    message,
+    code,
+    requestId,
+    timestamp,
   });
 });
 

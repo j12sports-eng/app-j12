@@ -1,9 +1,8 @@
 const bcrypt = require("bcryptjs");
 const { randomBytes, randomUUID, scryptSync, timingSafeEqual } = require("node:crypto");
-const { query, transaction } = require("./db.js");
+const { ensureAuthSchema, query, tableExists, transaction } = require("./db.js");
 const { signJwt, verifyJwt } = require("./src/utils/jwt.js");
 
-const SESSION_TTL_DAYS = Number(process.env.AUTH_SESSION_TTL_DAYS || 30);
 const RESET_TTL_MINUTES = Number(process.env.AUTH_RESET_TTL_MINUTES || 30);
 const PASSWORD_RULE_MESSAGE =
   "A senha deve ter no minimo 8 caracteres, incluindo letra maiuscula, minuscula e numero.";
@@ -48,10 +47,40 @@ function hashPassword(password, salt = randomBytes(16).toString("hex")) {
 }
 
 function verifyPassword(password, salt, expectedHash) {
-  const candidate = Buffer.from(scryptSync(password, salt, 64).toString("hex"), "hex");
-  const expected = Buffer.from(expectedHash, "hex");
+  const normalizedPassword = String(password ?? "");
+  const normalizedSalt = String(salt ?? "");
+  const normalizedHash = String(expectedHash ?? "");
+
+  if (!normalizedPassword || !normalizedSalt || !normalizedHash) {
+    return false;
+  }
+
+  if (!/^[a-f0-9]+$/i.test(normalizedHash)) {
+    return false;
+  }
+
+  const candidate = Buffer.from(
+    scryptSync(normalizedPassword, normalizedSalt, 64).toString("hex"),
+    "hex",
+  );
+  const expected = Buffer.from(normalizedHash, "hex");
   if (candidate.length !== expected.length) return false;
   return timingSafeEqual(candidate, expected);
+}
+
+function verifyBcryptPassword(password, expectedHash) {
+  const normalizedPassword = String(password ?? "");
+  const normalizedHash = String(expectedHash ?? "");
+
+  if (!normalizedPassword || !normalizedHash) {
+    return false;
+  }
+
+  try {
+    return bcrypt.compareSync(normalizedPassword, normalizedHash);
+  } catch {
+    return false;
+  }
 }
 
 function assertStrongPassword(password) {
@@ -116,10 +145,12 @@ function buildLegacyMirrorId(j12UserId) {
 }
 
 async function cleanupExpiredSessions() {
+  await ensureAuthSchema();
   await query("DELETE FROM user_sessions WHERE expires_at <= NOW()");
 }
 
 async function cleanupExpiredPasswordResetTokens() {
+  await ensureAuthSchema();
   await query("DELETE FROM password_reset_tokens WHERE used_at IS NOT NULL OR expires_at <= NOW()");
 }
 
@@ -152,7 +183,14 @@ async function findUserById(userId) {
 }
 
 async function findJ12UserById(userId) {
-  const rows = await query("SELECT * FROM j12_usuarios WHERE id = ? LIMIT 1", [Number(userId)]);
+  const normalizedId = String(userId ?? "").trim();
+  if (!/^\d+$/.test(normalizedId)) {
+    return null;
+  }
+
+  const rows = await query("SELECT * FROM j12_usuarios WHERE id = ? LIMIT 1", [
+    Number(normalizedId),
+  ]);
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
 
@@ -180,6 +218,10 @@ async function maybeLinkJ12UserToStudent(userRow) {
 
   const normalizedEmail = normalizeIdentifier(userRow.email);
   if (!normalizedEmail) {
+    return userRow;
+  }
+
+  if (!(await tableExists("j12_alunos"))) {
     return userRow;
   }
 
@@ -834,31 +876,88 @@ async function ensureAuthSeedData() {
   });
 }
 
-async function authenticateUser(identifier, password) {
+function emitAuthStep(onStep, step, meta = {}) {
+  if (typeof onStep !== "function") return;
+  onStep(step, meta);
+}
+
+async function authenticateUserDetailed(identifier, password, options = {}) {
+  const { onStep } = options;
+
   await cleanupExpiredSessions();
+
+  emitAuthStep(onStep, "Buscando usuario", { source: "j12_usuarios" });
   const j12Row = await maybeLinkJ12UserToStudent(await findJ12UserByIdentifier(identifier));
-  if (j12Row && normalizeLegacyUserStatus(j12Row.status) === "ativo") {
-    const legacyHash = String(j12Row.senha_hash ?? "");
-    if (legacyHash && bcrypt.compareSync(String(password ?? ""), legacyHash)) {
-      const mirroredUser = await upsertLegacyMirrorUser(j12Row, password).catch(() => null);
-      return sanitizeUser({
-        ...(mirroredUser || {}),
-        ...j12Row,
-        __source: "j12_usuarios",
+  if (j12Row) {
+    emitAuthStep(onStep, "Usuario encontrado", {
+      source: "j12_usuarios",
+      userId: String(j12Row.id),
+      status: normalizeLegacyUserStatus(j12Row.status),
+    });
+
+    if (normalizeLegacyUserStatus(j12Row.status) === "ativo") {
+      const legacyHash = String(j12Row.senha_hash ?? "");
+      emitAuthStep(onStep, "Comparando senha", {
+        source: "j12_usuarios",
+        hasHash: Boolean(legacyHash),
       });
+
+      if (verifyBcryptPassword(password, legacyHash)) {
+        const mirroredUser = await upsertLegacyMirrorUser(j12Row, password).catch(() => null);
+        return {
+          user: sanitizeUser({
+            ...(mirroredUser || {}),
+            ...j12Row,
+            __source: "j12_usuarios",
+          }),
+          found: true,
+          source: "j12_usuarios",
+          reason: null,
+        };
+      }
     }
   }
 
+  emitAuthStep(onStep, "Buscando usuario", { source: "users" });
   const row = await findUserByIdentifier(identifier);
-  if (row && String(row.status).toLowerCase() === "ativo") {
-    if (verifyPassword(password, row.password_salt, row.password_hash)) {
-      const sanitized = sanitizeUser({ ...row, __source: "users" });
-      await upsertJ12UserFromAppUser(sanitized, password).catch(() => null);
-      return sanitized;
+  if (row) {
+    emitAuthStep(onStep, "Usuario encontrado", {
+      source: "users",
+      userId: String(row.id),
+      status: String(row.status ?? ""),
+    });
+
+    if (String(row.status).toLowerCase() === "ativo") {
+      emitAuthStep(onStep, "Comparando senha", {
+        source: "users",
+        hasHash: Boolean(row.password_hash),
+        hasSalt: Boolean(row.password_salt),
+      });
+
+      if (verifyPassword(password, row.password_salt, row.password_hash)) {
+        const sanitized = sanitizeUser({ ...row, __source: "users" });
+        await upsertJ12UserFromAppUser(sanitized, password).catch(() => null);
+        return {
+          user: sanitized,
+          found: true,
+          source: "users",
+          reason: null,
+        };
+      }
     }
   }
 
-  return null;
+  return {
+    user: null,
+    found: Boolean(j12Row || row),
+    source: j12Row ? "j12_usuarios" : row ? "users" : null,
+    reason: j12Row || row ? "invalid_password_or_inactive" : "not_found",
+  };
+}
+
+async function authenticateUser(identifier, password) {
+  const result = await authenticateUserDetailed(identifier, password);
+  return result.user;
 }
 
 async function resolveUserForTokenIssue(userOrId) {
@@ -891,23 +990,18 @@ async function createSession(userOrId) {
     throw error;
   }
 
-  return signJwt(
-    {
-      sub: user.id,
-      source: user.source || "users",
-      role: user.role,
-      perfil: user.perfil || user.role,
-      nome: user.nome,
-      email: user.email,
-      aluno_id: user.aluno_id ?? user.studentId ?? null,
-      studentId: user.studentId ?? user.aluno_id ?? null,
-      teacherId: user.teacherId ?? null,
-      responsavelId: user.responsavelId ?? null,
-    },
-    {
-      expiresInSeconds: SESSION_TTL_DAYS * 24 * 60 * 60,
-    },
-  );
+  return signJwt({
+    sub: user.id,
+    source: user.source || "users",
+    role: user.role,
+    perfil: user.perfil || user.role,
+    nome: user.nome,
+    email: user.email,
+    aluno_id: user.aluno_id ?? user.studentId ?? null,
+    studentId: user.studentId ?? user.aluno_id ?? null,
+    teacherId: user.teacherId ?? null,
+    responsavelId: user.responsavelId ?? null,
+  });
 }
 
 async function getUserBySessionToken(token) {
@@ -1026,7 +1120,7 @@ async function changePassword(userId, currentPassword, nextPassword) {
   const j12Row = await findJ12UserById(userId);
   if (j12Row && normalizeLegacyUserStatus(j12Row.status) === "ativo") {
     const legacyHash = String(j12Row.senha_hash ?? "");
-    if (!legacyHash || !bcrypt.compareSync(String(currentPassword ?? ""), legacyHash)) {
+    if (!verifyBcryptPassword(currentPassword, legacyHash)) {
       const error = new Error("A senha atual esta incorreta.");
       error.statusCode = 400;
       throw error;
@@ -1265,6 +1359,7 @@ module.exports = {
   sanitizeUser,
   ensureAuthSeedData,
   authenticateUser,
+  authenticateUserDetailed,
   createSession,
   getUserBySessionToken,
   deleteSession,

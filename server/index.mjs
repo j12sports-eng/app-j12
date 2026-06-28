@@ -15,9 +15,16 @@ const { default: dbModule } = await import("../backend/db.js");
 const { default: authModule } = await import("../backend/auth.js");
 const { default: authRoutes } = await import("../backend/routes/auth.js");
 
-const { pool, query, testConnection, ensureSchema, syncEnrollmentNumberRegistry } = dbModule;
 const {
-  authenticateUser,
+  pool,
+  query,
+  testConnection,
+  ensureAuthSchema,
+  ensureSchema,
+  syncEnrollmentNumberRegistry,
+} = dbModule;
+const {
+  authenticateUserDetailed,
   createSession,
   deleteSession,
   ensureAuthSeedData,
@@ -68,9 +75,14 @@ const allowedCorsOrigins = new Set([
 
 const databaseState = {
   ok: false,
+  authSchemaReady: false,
+  schemaReady: false,
+  schemaError: null,
   checkedAt: null,
   error: null,
 };
+
+let authSchemaInitPromise = null;
 
 const routeDefinitions = [
   { mountPath: "/aluno", modulePath: "./src/routes/aluno.routes.js" },
@@ -140,6 +152,163 @@ function createHttpError(message, statusCode, extra = {}) {
   return error;
 }
 
+const DATABASE_ERROR_CODES = new Set([
+  "PROTOCOL_CONNECTION_LOST",
+  "PROTOCOL_SEQUENCE_TIMEOUT",
+  "PROTOCOL_ERROR",
+  "ER_QUERY_INTERRUPTED",
+  "ER_CON_COUNT_ERROR",
+  "ER_ACCESS_DENIED_ERROR",
+  "ER_BAD_DB_ERROR",
+  "ER_DBACCESS_DENIED_ERROR",
+  "ER_NO_SUCH_TABLE",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EACCES",
+  "EPERM",
+  "EPIPE",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENOTFOUND",
+]);
+
+const DATABASE_ERROR_ERRNOS = new Set([
+  -4092, 1040, 1041, 1045, 1049, 1146, 1205, 2002, 2003, 2013,
+]);
+
+function hasEnv(name) {
+  return String(process.env[name] || "").trim().length > 0;
+}
+
+function hasAnyEnv(names) {
+  return names.some(hasEnv);
+}
+
+function getMissingLoginConfig() {
+  const missing = [];
+  const hasDatabaseConfig =
+    hasEnv("DATABASE_URL") || (hasEnv("DB_HOST") && hasEnv("DB_USER") && hasEnv("DB_NAME"));
+
+  if (!hasDatabaseConfig) {
+    missing.push("DATABASE_URL ou DB_HOST/DB_USER/DB_NAME");
+  }
+
+  if (!hasAnyEnv(["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"])) {
+    missing.push("JWT_SECRET");
+  }
+
+  if (!hasAnyEnv(["JWT_EXPIRES", "JWT_EXPIRES_IN", "JWT_EXPIRES_IN_SECONDS"])) {
+    missing.push("JWT_EXPIRES");
+  }
+
+  if (!hasEnv("NODE_ENV")) {
+    missing.push("NODE_ENV");
+  }
+
+  return missing;
+}
+
+function assertLoginRuntimeConfig() {
+  const missing = getMissingLoginConfig();
+
+  if (missing.length > 0) {
+    throw createHttpError(`Variaveis de ambiente ausentes: ${missing.join(", ")}.`, 500, {
+      code: "CONFIG_ERROR",
+      expose: true,
+      missingConfig: missing,
+    });
+  }
+}
+
+async function ensureAuthSchemaReady(reason, context = {}) {
+  if (databaseState.authSchemaReady) {
+    return true;
+  }
+
+  if (!authSchemaInitPromise) {
+    authSchemaInitPromise = (async () => {
+      log("info", "auth.schema.begin", {
+        reason,
+        requestId: context?.requestId || null,
+      });
+
+      try {
+        await ensureAuthSchema();
+        databaseState.authSchemaReady = true;
+        databaseState.schemaError = null;
+
+        log("info", "auth.schema.ready", {
+          reason,
+          requestId: context?.requestId || null,
+        });
+
+        return true;
+      } catch (error) {
+        const details = serializeError(error);
+        databaseState.authSchemaReady = false;
+        databaseState.schemaError = details;
+
+        log("error", "auth.schema.failed", {
+          reason,
+          requestId: context?.requestId || null,
+          ...details,
+        });
+
+        throw error;
+      }
+    })().finally(() => {
+      authSchemaInitPromise = null;
+    });
+  }
+
+  return authSchemaInitPromise;
+}
+
+function isDatabaseError(error) {
+  return DATABASE_ERROR_CODES.has(error?.code) || DATABASE_ERROR_ERRNOS.has(Number(error?.errno));
+}
+
+function normalizeErrorForResponse(error) {
+  const databaseError = isDatabaseError(error);
+  const statusCode = databaseError
+    ? 503
+    : Number(error?.statusCode || error?.status || error?.status_code || 500);
+  const code =
+    (databaseError ? "DATABASE_UNAVAILABLE" : null) ||
+    error?.errorCode ||
+    error?.code ||
+    (databaseError ? "DATABASE_UNAVAILABLE" : statusCode === 401 ? "AUTH_ERROR" : "INTERNAL_ERROR");
+  const message =
+    databaseError && statusCode >= 500
+      ? "Banco de dados indisponivel ou schema incompleto."
+      : error?.message || "Erro interno do servidor.";
+  const publicMessage =
+    statusCode >= 500 && !error?.expose && !databaseError
+      ? "Erro interno do servidor. Consulte os logs para mais detalhes."
+      : message;
+
+  return {
+    ...serializeError(error),
+    statusCode,
+    code,
+    message,
+    publicMessage,
+    databaseError,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function sendErrorJson(res, statusCode, payload) {
+  sendJson(res, statusCode, {
+    success: false,
+    message: payload.message,
+    code: payload.code,
+    requestId: payload.requestId || null,
+    timestamp: payload.timestamp || new Date().toISOString(),
+    ...(payload.details ? { details: payload.details } : {}),
+  });
+}
+
 function normalizeUser(user) {
   if (!user || typeof user !== "object") return null;
 
@@ -159,6 +328,46 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
     ...extraHeaders,
   });
   res.end(JSON.stringify(payload));
+}
+
+function logLogin(level, message, context, meta = {}) {
+  const entry = {
+    requestId: context?.requestId || null,
+    endpoint: context?.pathname || null,
+    usuarioInformado: meta.usuarioInformado || null,
+    timestamp: new Date().toISOString(),
+    ambiente: NODE_ENV,
+    ...meta,
+  };
+
+  delete entry.password;
+  delete entry.senha;
+
+  const line = `[LOGIN] ${message}`;
+  const serialized = JSON.stringify(entry);
+
+  if (level === "error") {
+    console.error(line, serialized);
+    return;
+  }
+
+  if (level === "warn") {
+    console.warn(line, serialized);
+    return;
+  }
+
+  console.log(line, serialized);
+}
+
+function logLoginError(error, context, meta = {}) {
+  logLogin("error", "Erro no login", context, {
+    ...meta,
+    errorMessage: error?.message || "Erro desconhecido.",
+    errorCode: error?.code || error?.errorCode || null,
+    statusCode: Number(error?.statusCode || error?.status || 500),
+  });
+  console.error(error);
+  console.error(error?.stack);
 }
 
 function formatBodyLimit(limitBytes) {
@@ -229,16 +438,20 @@ for (const route of routeDefinitions) {
 }
 
 app.use((req, res) => {
+  const timestamp = new Date().toISOString();
   sendJson(res, 404, {
+    success: false,
     message: "Rota nao encontrada.",
+    code: "NOT_FOUND",
     path: req.originalUrl || req.url || "/",
     method: req.method || "GET",
     requestId: req.id || null,
+    timestamp,
   });
 });
 
 app.use((error, req, res, next) => {
-  const details = serializeError(error);
+  const details = normalizeErrorForResponse(error);
 
   log("error", "delegated.route.failed", {
     requestId: req.id || null,
@@ -246,20 +459,20 @@ app.use((error, req, res, next) => {
     pathname: req.originalUrl || req.url || "/",
     ...details,
   });
+  console.error(error);
+  console.error(error?.stack);
 
   if (res.headersSent) {
     next(error);
     return;
   }
 
-  sendJson(res, details.statusCode, {
-    message:
-      details.statusCode >= 500
-        ? "Erro interno do servidor. Consulte os logs para mais detalhes."
-        : details.message,
+  sendErrorJson(res, details.statusCode, {
+    message: details.publicMessage,
+    code: details.code,
     requestId: req.id || null,
-    errorCode: details.code,
-    details: NODE_ENV === "production" && details.statusCode >= 500 ? undefined : details,
+    timestamp: details.timestamp,
+    details: NODE_ENV === "production" && details.statusCode >= 500 ? null : details,
   });
 });
 
@@ -421,7 +634,10 @@ function delegateToApp(req, res) {
 
 async function refreshDatabaseState(reason) {
   try {
-    await testConnection();
+    if (reason !== "login-precheck") {
+      await testConnection();
+    }
+
     const rows = await query("SELECT 1 AS ok");
     const ok = Array.isArray(rows) && Number(rows[0]?.ok || 0) === 1;
 
@@ -474,10 +690,21 @@ async function bootstrap() {
   }
 
   try {
+    await ensureAuthSchemaReady("startup", {});
+  } catch (error) {
+    log("error", "startup.auth.schema.failed", serializeError(error));
+  }
+
+  try {
     log("info", "startup.schema.begin");
     await ensureSchema();
+    databaseState.schemaReady = true;
+    databaseState.authSchemaReady = true;
+    databaseState.schemaError = null;
     log("info", "startup.schema.ready");
   } catch (error) {
+    databaseState.schemaReady = false;
+    databaseState.schemaError = serializeError(error);
     log("error", "startup.schema.failed", serializeError(error));
   }
 
@@ -521,6 +748,9 @@ async function handleHealth(req, res, context) {
     },
     database: {
       ok: databaseState.ok,
+      authSchemaReady: databaseState.authSchemaReady,
+      schemaReady: databaseState.schemaReady,
+      schemaError: databaseState.schemaError,
       checkedAt: databaseState.checkedAt,
       host: process.env.DB_HOST || null,
       port: Number(process.env.DB_PORT || 3306),
@@ -533,57 +763,119 @@ async function handleHealth(req, res, context) {
 }
 
 async function handleLogin(req, res, context) {
-  const body = await readJsonBody(req);
-  const identifier = String(body.email || body.login || "")
-    .trim()
-    .toLowerCase();
-  const password = String(body.senha || body.password || "");
+  let identifier = "";
 
-  if (!identifier || !password) {
-    sendJson(res, 400, {
-      message: "Informe email/login e senha para autenticar.",
-      requestId: context.requestId,
-      details: {
-        email: Boolean(identifier),
-        senha: Boolean(password),
+  try {
+    logLogin("info", "Iniciando login", context);
+    logLogin("info", "Lendo body", context);
+
+    const body = await readJsonBody(req);
+    identifier = String(body.email || body.login || body.identifier || "")
+      .trim()
+      .toLowerCase();
+    const password = String(body.senha || body.password || "");
+    const loginMeta = { usuarioInformado: identifier || null };
+
+    logLogin("info", "Validando entrada", context, {
+      ...loginMeta,
+      hasIdentifier: Boolean(identifier),
+      hasPassword: Boolean(password),
+    });
+
+    if (!identifier || !password) {
+      sendErrorJson(res, 400, {
+        message: "Dados invalidos. Informe email/login e senha.",
+        code: "VALIDATION_ERROR",
+        requestId: context.requestId,
+        timestamp: new Date().toISOString(),
+        details: {
+          email: Boolean(identifier),
+          senha: Boolean(password),
+        },
+      });
+      return 400;
+    }
+
+    logLogin("info", "Validando ambiente", context, loginMeta);
+    assertLoginRuntimeConfig();
+
+    logLogin("info", "Verificando banco", context, loginMeta);
+    if (!databaseState.ok) {
+      const connected = await refreshDatabaseState("login-precheck");
+      if (!connected) {
+        throw createHttpError("Banco de dados indisponivel.", 503, {
+          code: "DATABASE_UNAVAILABLE",
+          expose: true,
+        });
+      }
+    }
+
+    logLogin("info", "Validando schema de autenticacao", context, loginMeta);
+    await ensureAuthSchemaReady("login-precheck", context);
+
+    const authResult = await authenticateUserDetailed(identifier, password, {
+      onStep(step, meta) {
+        logLogin("info", step, context, {
+          ...loginMeta,
+          ...meta,
+        });
       },
     });
-    return 400;
-  }
+    const user = normalizeUser(authResult.user);
 
-  const user = normalizeUser(await authenticateUser(identifier, password));
+    if (!user) {
+      log("warn", "auth.login.invalid_credentials", {
+        requestId: context.requestId,
+        identifier,
+        found: authResult.found,
+        reason: authResult.reason,
+      });
 
-  if (!user) {
-    log("warn", "auth.login.invalid_credentials", {
-      requestId: context.requestId,
-      identifier,
+      sendErrorJson(res, 401, {
+        message: "Usuario ou senha invalidos.",
+        code: "AUTH_ERROR",
+        requestId: context.requestId,
+        timestamp: new Date().toISOString(),
+      });
+      return 401;
+    }
+
+    logLogin("info", "Gerando JWT", context, {
+      ...loginMeta,
+      userId: user.id,
+      role: user.role,
+      source: user.source || null,
     });
 
-    sendJson(res, 401, {
-      message: "Email/login ou senha invalidos.",
+    const token = await createSession(user);
+
+    log("info", "auth.login.success", {
       requestId: context.requestId,
-      errorCode: "INVALID_CREDENTIALS",
+      userId: user.id,
+      role: user.role,
     });
-    return 401;
+    logLogin("info", "Login concluido", context, {
+      ...loginMeta,
+      userId: user.id,
+      role: user.role,
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      message: "Login realizado com sucesso.",
+      token,
+      user,
+      requestId: context.requestId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return 200;
+  } catch (error) {
+    logLoginError(error, context, {
+      usuarioInformado: identifier || null,
+    });
+    throw error;
   }
-
-  const token = await createSession(user);
-
-  log("info", "auth.login.success", {
-    requestId: context.requestId,
-    userId: user.id,
-    role: user.role,
-  });
-
-  sendJson(res, 200, {
-    success: true,
-    message: "Login realizado com sucesso.",
-    token,
-    user,
-    requestId: context.requestId,
-  });
-
-  return 200;
 }
 
 async function handleAuthMe(req, res, context) {
@@ -730,7 +1022,7 @@ const server = createServer(async (req, res) => {
 
     statusCode = await delegateToApp(req, res);
   } catch (error) {
-    const details = serializeError(error);
+    const details = normalizeErrorForResponse(error);
     statusCode = details.statusCode;
 
     log("error", "request.failed", {
@@ -739,16 +1031,18 @@ const server = createServer(async (req, res) => {
       pathname,
       ...details,
     });
+    console.error(error);
+    console.error(error?.stack);
 
-    sendJson(res, statusCode, {
-      message:
-        statusCode >= 500
-          ? "Erro interno do servidor. Consulte os logs para mais detalhes."
-          : details.message,
-      requestId,
-      errorCode: details.code,
-      details: NODE_ENV === "production" && statusCode >= 500 ? undefined : details,
-    });
+    if (!res.headersSent && !res.writableEnded) {
+      sendErrorJson(res, statusCode, {
+        message: details.publicMessage,
+        code: details.code,
+        requestId,
+        timestamp: details.timestamp,
+        details: NODE_ENV === "production" && statusCode >= 500 ? null : details,
+      });
+    }
   } finally {
     log("info", "request.finish", {
       requestId,
