@@ -555,6 +555,64 @@ test("FinancialApplicationService blocks invalid financial obligation status tra
   assert.equal(repository.updateCalls.length, 0);
 });
 
+test("FinancialApplicationService lists obligations and summarizes student financial scope", async () => {
+  const repository = new FakeFinancialObligationRepository();
+  repository.seedObligation({
+    amount: 100,
+    enrollmentId: "enrollment-admin-list",
+    id: "obligation-admin-open",
+    obligationType: INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
+    status: FinancialObligationStatus.PENDING,
+    studentPersonId: "person-admin-summary",
+    studentProfileId: "profile-admin-summary",
+  });
+  repository.seedObligation({
+    amount: 50,
+    enrollmentId: "enrollment-admin-paid",
+    id: "obligation-admin-paid",
+    obligationType: INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
+    status: FinancialObligationStatus.PAID,
+    studentPersonId: "person-admin-summary",
+    studentProfileId: "profile-admin-summary",
+  });
+  repository.seedObligation({
+    amount: 25,
+    enrollmentId: "enrollment-admin-overdue",
+    id: "obligation-admin-overdue",
+    obligationType: INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
+    status: FinancialObligationStatus.OVERDUE,
+    studentPersonId: "person-admin-summary",
+    studentProfileId: "profile-admin-summary",
+  });
+  const service = new FinancialApplicationService({
+    enrollmentReader: new FakeEnrollmentReader(),
+    financialObligationRepository: repository,
+  });
+
+  const list = await service.listEnrollmentFinancialObligations({
+    enrollmentId: "enrollment-admin-list",
+  });
+  const summary = await service.getStudentFinancialSummary({
+    studentPersonId: "person-admin-summary",
+    studentProfileId: "profile-admin-summary",
+  });
+
+  assert.equal(list.financialObligationsEndpointReady, true);
+  assert.equal(list.count, 1);
+  assert.equal(list.obligations[0].id, "obligation-admin-open");
+  assert.equal(list.noGatewayIntegration, true);
+
+  assert.equal(summary.financialSummaryEndpointReady, true);
+  assert.equal(summary.count, 3);
+  assert.equal(summary.summary.total, 3);
+  assert.equal(summary.summary.open, 2);
+  assert.equal(summary.summary.paid, 1);
+  assert.equal(summary.summary.overdue, 1);
+  assert.equal(summary.summary.amountTotal, 175);
+  assert.equal(summary.summary.amountOpen, 125);
+  assert.equal(summary.summary.amountPaid, 50);
+});
+
 test("FinancialApplicationService delegates financial obligation repository reads and creates", async () => {
   const calls = [];
   const repository = {
@@ -646,6 +704,8 @@ class FakeFinancialObligationRepository {
       planId: record.planId ?? null,
       source: record.source || "ENROLLMENT",
       status: record.status,
+      studentPersonId: record.studentPersonId ?? null,
+      studentProfileId: record.studentProfileId ?? null,
     };
     this.records.set(this.makeKey(obligation), obligation);
     return obligation;
@@ -688,6 +748,22 @@ class FakeFinancialObligationRepository {
   async findEnrollmentFinancialObligation(input) {
     this.findCalls.push(input);
     return this.records.get(`${input.enrollmentId}:${input.obligationType}`) || null;
+  }
+
+  async listEnrollmentFinancialObligations(input) {
+    this.findCalls.push(["listByEnrollment", input]);
+    return Array.from(this.records.values()).filter(
+      (record) => record.enrollmentId === input.enrollmentId,
+    );
+  }
+
+  async listEnrollmentFinancialObligationsByStudentScope(input) {
+    this.findCalls.push(["listByStudentScope", input]);
+    return Array.from(this.records.values()).filter(
+      (record) =>
+        record.studentPersonId === input.studentPersonId &&
+        record.studentProfileId === input.studentProfileId,
+    );
   }
 
   async findEnrollmentFinancialObligationById(input) {

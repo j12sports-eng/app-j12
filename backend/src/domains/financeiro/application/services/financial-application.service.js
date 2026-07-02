@@ -341,6 +341,55 @@ class FinancialApplicationService {
   }
 
   /**
+   * @param {{ enrollmentId?: string|null, limit?: number|null }} input
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async listEnrollmentFinancialObligations(input = {}) {
+    const enrollmentId = requiredInputText(input.enrollmentId, "enrollmentId", 64);
+    const limit = normalizeResultLimit(input.limit, 100);
+    const obligations = await this
+      .getFinancialObligationAdminRepository()
+      .listEnrollmentFinancialObligations({ enrollmentId, limit });
+
+    return {
+      count: obligations.length,
+      enrollmentId,
+      financialObligationsEndpointReady: true,
+      noGatewayIntegration: true,
+      noNotificationSideEffects: true,
+      obligations,
+    };
+  }
+
+  /**
+   * @param {{ studentPersonId?: string|null, studentProfileId?: string|null, limit?: number|null }} input
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async getStudentFinancialSummary(input = {}) {
+    const studentPersonId = requiredInputText(input.studentPersonId, "studentPersonId", 64);
+    const studentProfileId = requiredInputText(input.studentProfileId, "studentProfileId", 64);
+    const limit = normalizeResultLimit(input.limit, 250);
+    const obligations = await this
+      .getFinancialObligationAdminRepository()
+      .listEnrollmentFinancialObligationsByStudentScope({
+        limit,
+        studentPersonId,
+        studentProfileId,
+      });
+
+    return {
+      count: obligations.length,
+      financialSummaryEndpointReady: true,
+      noGatewayIntegration: true,
+      noNotificationSideEffects: true,
+      obligations,
+      studentPersonId,
+      studentProfileId,
+      summary: buildFinancialObligationsSummary(obligations),
+    };
+  }
+
+  /**
    * @param {Object} input
    * @param {string|null} [input.obligationId]
    * @param {string|Date|null} [input.paidAt]
@@ -538,6 +587,24 @@ class FinancialApplicationService {
     ) {
       throw new TypeError(
         "FinancialApplicationService requires a financialObligationRepository with find-by-id/update-status methods.",
+      );
+    }
+
+    return this.financialObligationRepository;
+  }
+
+  /**
+   * @returns {{ listEnrollmentFinancialObligations: Function, listEnrollmentFinancialObligationsByStudentScope: Function }}
+   */
+  getFinancialObligationAdminRepository() {
+    if (
+      typeof this.financialObligationRepository?.listEnrollmentFinancialObligations !==
+        "function" ||
+      typeof this.financialObligationRepository?.listEnrollmentFinancialObligationsByStudentScope !==
+        "function"
+    ) {
+      throw new TypeError(
+        "FinancialApplicationService requires a financialObligationRepository with admin read methods.",
       );
     }
 
@@ -788,6 +855,57 @@ function assertFinancialObligationStatusTransition(input) {
 }
 
 /**
+ * @param {Record<string, unknown>[]} obligations
+ * @returns {Record<string, unknown>}
+ */
+function buildFinancialObligationsSummary(obligations = []) {
+  const summary = {
+    amountCancelled: 0,
+    amountOpen: 0,
+    amountOverdue: 0,
+    amountPaid: 0,
+    amountTotal: 0,
+    byStatus: {},
+    cancelled: 0,
+    open: 0,
+    overdue: 0,
+    paid: 0,
+    total: obligations.length,
+  };
+
+  for (const obligation of obligations) {
+    const status = normalizeUpperText(readProperty(obligation, "status")) || "UNKNOWN";
+    const amount = Number(readProperty(obligation, "amount") || 0);
+    const normalizedAmount = Number.isFinite(amount) ? amount : 0;
+
+    summary.byStatus[status] = Number(summary.byStatus[status] || 0) + 1;
+    summary.amountTotal += normalizedAmount;
+
+    if (status === FinancialObligationStatus.PAID) {
+      summary.paid += 1;
+      summary.amountPaid += normalizedAmount;
+    } else if (status === FinancialObligationStatus.CANCELLED) {
+      summary.cancelled += 1;
+      summary.amountCancelled += normalizedAmount;
+    } else {
+      summary.open += 1;
+      summary.amountOpen += normalizedAmount;
+
+      if (status === FinancialObligationStatus.OVERDUE) {
+        summary.overdue += 1;
+        summary.amountOverdue += normalizedAmount;
+      }
+    }
+  }
+
+  for (const key of ["amountCancelled", "amountOpen", "amountOverdue", "amountPaid", "amountTotal"]) {
+    summary[key] = Number(summary[key].toFixed(2));
+  }
+
+  return summary;
+}
+
+/**
  * @param {Record<string, unknown>} input
  * @returns {Record<string, unknown>}
  */
@@ -840,6 +958,21 @@ function requiredDateTimeText(value, field) {
   }
 
   return normalized;
+}
+
+/**
+ * @param {unknown} value
+ * @param {number} max
+ * @returns {number}
+ */
+function normalizeResultLimit(value, max) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.min(50, max);
+  }
+
+  return Math.min(Math.trunc(parsed), max);
 }
 
 /**

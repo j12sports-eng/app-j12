@@ -87,6 +87,38 @@ class FinancialFacade {
    * @param {Object} input
    * @returns {Promise<Record<string, unknown>>}
    */
+  listEnrollmentFinancialObligations(input = {}) {
+    const service = this.getFinancialService();
+
+    if (typeof service.listEnrollmentFinancialObligations !== "function") {
+      throw new TypeError(
+        "FinancialFacade requires a financialService.listEnrollmentFinancialObligations function.",
+      );
+    }
+
+    return service.listEnrollmentFinancialObligations(input);
+  }
+
+  /**
+   * @param {Object} input
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  getStudentFinancialSummary(input = {}) {
+    const service = this.getFinancialService();
+
+    if (typeof service.getStudentFinancialSummary !== "function") {
+      throw new TypeError(
+        "FinancialFacade requires a financialService.getStudentFinancialSummary function.",
+      );
+    }
+
+    return service.getStudentFinancialSummary(input);
+  }
+
+  /**
+   * @param {Object} input
+   * @returns {Promise<Record<string, unknown>>}
+   */
   markEnrollmentFinancialObligationAsPaid(input = {}) {
     const service = this.getFinancialService();
 

@@ -204,6 +204,76 @@ test("MySqlEnrollmentFinancialObligationRepository updates obligation status wit
   assert.equal(calls.some((call) => call.sql.includes("UPDATE")), true);
 });
 
+test("MySqlEnrollmentFinancialObligationRepository lists admin obligations by enrollment and student scope", async () => {
+  const calls = [];
+  const rows = [
+    {
+      amount: "100.00",
+      cancelled_at: null,
+      cancelled_by: null,
+      created_at: "2026-07-02 10:00:00",
+      created_by: "admin@j12.local",
+      currency: "BRL",
+      due_date: "2026-07-10",
+      enrollment_id: "enrollment-admin-list",
+      id: "obligation-list-1",
+      metadata_json: null,
+      obligation_type: "INITIAL_ENROLLMENT_OBLIGATION",
+      plan_id: "plan-list",
+      source: "ENROLLMENT",
+      status: "PENDING",
+      updated_at: "2026-07-02 10:00:00",
+    },
+    {
+      amount: "50.00",
+      cancelled_at: null,
+      cancelled_by: null,
+      created_at: "2026-07-02 11:00:00",
+      created_by: "admin@j12.local",
+      currency: "BRL",
+      due_date: "2026-07-11",
+      enrollment_id: "enrollment-admin-list",
+      id: "obligation-list-2",
+      metadata_json: null,
+      obligation_type: "INITIAL_ENROLLMENT_OBLIGATION",
+      plan_id: "plan-list",
+      source: "ENROLLMENT",
+      status: "PAID",
+      updated_at: "2026-07-02 11:00:00",
+    },
+  ];
+  const queryRunner = async (sql, params = []) => {
+    calls.push({ params, sql });
+
+    if (/j12_mensalidades|j12_financeiro_cobrancas|j12_pagamentos|financial_payments/i.test(sql)) {
+      throw new Error(`Unexpected legacy financial read in admin list test: ${sql}`);
+    }
+
+    if (sql.includes("WHERE enrollment_id = ?")) {
+      assert.deepEqual(params, ["enrollment-admin-list", 50]);
+      return rows;
+    }
+
+    assert.match(sql, /INNER JOIN enrollment_financial_obligations/);
+    assert.deepEqual(params, ["person-admin", "profile-admin", 50]);
+    return rows;
+  };
+  const repository = new MySqlEnrollmentFinancialObligationRepository({ queryRunner });
+
+  const byEnrollment = await repository.listEnrollmentFinancialObligations({
+    enrollmentId: "enrollment-admin-list",
+  });
+  const byStudentScope = await repository.listEnrollmentFinancialObligationsByStudentScope({
+    studentPersonId: "person-admin",
+    studentProfileId: "profile-admin",
+  });
+
+  assert.equal(byEnrollment.length, 2);
+  assert.equal(byStudentScope.length, 2);
+  assert.equal(byEnrollment[0].amount, 100);
+  assert.equal(calls.length, 2);
+});
+
 test("MySqlEnrollmentFinancialObligationRepository supports rollback smoke without test data left", async () => {
   let rows = new Map();
   const queryRunner = async (sql, params = []) => {

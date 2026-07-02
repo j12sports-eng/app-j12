@@ -47,6 +47,7 @@ import {
 } from "@/components/financeiro/movement-modal/movement-form";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
+import { FinancialAdminEnrollmentPanel } from "@/features/financial/pages/FinancialAdminEnrollmentPanel";
 import {
   useFinanceiroAdmin,
   type DespesaFinanceira,
@@ -765,6 +766,8 @@ function FinanceiroAdminContent() {
             </div>
           </div>
         </section>
+
+        <FinancialAdminEnrollmentPanel />
 
         <section className="j12-surface p-4 md:p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

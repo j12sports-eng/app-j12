@@ -47,6 +47,10 @@ const {
   ENROLLMENT_ADMIN_ROUTE_BASE_PATH,
   ENROLLMENT_PUBLIC_ROUTE_BASE_PATH,
 } = require("./domains/enrollments/presentation/routes/index.js");
+const {
+  createFinancialAdminRouter,
+  FINANCIAL_ADMIN_ROUTE_BASE_PATH,
+} = require("./domains/financeiro/presentation/routes/index.js");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
@@ -57,6 +61,7 @@ const app = express();
 const server = http.createServer(app);
 const enrollmentAdminRoutes = createEnrollmentAdminRouter();
 const enrollmentPublicRoutes = createEnrollmentPublicRouter();
+const financialAdminRoutes = createFinancialAdminRouter();
 
 global.io = null;
 
@@ -466,6 +471,7 @@ mount(["/dashboard", "/api/dashboard"], dashboardRoutes);
 mount(["/financeiro", "/api/financeiro"], financeiroRoutes);
 mount([ENROLLMENT_ADMIN_ROUTE_BASE_PATH, `/api${ENROLLMENT_ADMIN_ROUTE_BASE_PATH}`], enrollmentAdminRoutes);
 mount([ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`], enrollmentPublicRoutes);
+mount([FINANCIAL_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_ADMIN_ROUTE_BASE_PATH}`], financialAdminRoutes);
 mount(["/modalidades", "/api/modalidades"], modalidadesRoutes);
 mount(["/planos", "/api/planos"], planosRoutes);
 mount(["/presencas", "/api/presencas"], presencasRoutes);

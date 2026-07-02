@@ -331,7 +331,7 @@ function readFirstRow(result) {
  */
 function readRows(result) {
   if (!Array.isArray(result) || result.length === 0) {
-    return null;
+    return [];
   }
 
   const rows = Array.isArray(result[0]) ? result[0] : result;

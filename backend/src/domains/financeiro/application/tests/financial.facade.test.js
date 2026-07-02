@@ -249,6 +249,57 @@ test("FinancialFacade delegates financial obligation repository methods through 
   ]);
 });
 
+test("FinancialFacade delegates financial admin read methods", async () => {
+  const calls = [];
+  const facade = new FinancialFacade({
+    financialService: {
+      async getStudentFinancialSummary(input) {
+        calls.push(["summary", input]);
+        return {
+          input,
+          summaryReady: true,
+        };
+      },
+      async listEnrollmentFinancialObligations(input) {
+        calls.push(["list", input]);
+        return {
+          input,
+          listReady: true,
+        };
+      },
+      async prepareEnrollmentBillingContract(input) {
+        return input;
+      },
+    },
+  });
+
+  const list = await facade.listEnrollmentFinancialObligations({
+    enrollmentId: "enrollment-fin-admin",
+  });
+  const summary = await facade.getStudentFinancialSummary({
+    studentPersonId: "person-fin-admin",
+    studentProfileId: "profile-fin-admin",
+  });
+
+  assert.equal(list.listReady, true);
+  assert.equal(summary.summaryReady, true);
+  assert.deepEqual(calls, [
+    [
+      "list",
+      {
+        enrollmentId: "enrollment-fin-admin",
+      },
+    ],
+    [
+      "summary",
+      {
+        studentPersonId: "person-fin-admin",
+        studentProfileId: "profile-fin-admin",
+      },
+    ],
+  ]);
+});
+
 test("FinancialFacade delegates financial obligation status flow methods", async () => {
   const calls = [];
   const facade = new FinancialFacade({
