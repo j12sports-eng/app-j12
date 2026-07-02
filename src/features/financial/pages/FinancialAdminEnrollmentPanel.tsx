@@ -25,9 +25,13 @@ import {
 import { FinancialStatusBadge } from "../components/FinancialStatusBadge";
 import { useEnrollmentFinancialObligations } from "../hooks/useEnrollmentFinancialObligations";
 import { useFinancialObligationActions } from "../hooks/useFinancialObligationActions";
+import { useFinancialStudentScopeSearch } from "../hooks/useFinancialStudentScopeSearch";
 import { useStudentFinancialSummary } from "../hooks/useStudentFinancialSummary";
 
-import type { EnrollmentFinancialObligation } from "../types/financial.types";
+import type {
+  EnrollmentFinancialObligation,
+  FinancialStudentScope,
+} from "../types/financial.types";
 
 type ActionMode = "mark-paid" | "cancel" | "mark-overdue";
 
@@ -64,6 +68,16 @@ function normalizeStatus(status: string | null | undefined) {
     .toUpperCase();
 }
 
+function scopeSecondaryText(scope: FinancialStudentScope) {
+  return [
+    scope.studentCpf ? `CPF ${scope.studentCpf}` : null,
+    scope.studentEmail || null,
+    scope.profileStatus ? `perfil ${scope.profileStatus}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
 function pickActor(user: unknown) {
   if (!user || typeof user !== "object") return "admin";
 
@@ -80,9 +94,11 @@ function pickActor(user: unknown) {
 export function FinancialAdminEnrollmentPanel() {
   const { user } = useAuth();
   const [enrollmentIdInput, setEnrollmentIdInput] = useState("");
+  const [studentSearchInput, setStudentSearchInput] = useState("");
   const [studentPersonIdInput, setStudentPersonIdInput] = useState("");
   const [studentProfileIdInput, setStudentProfileIdInput] = useState("");
   const [submittedEnrollmentId, setSubmittedEnrollmentId] = useState<string | null>(null);
+  const [submittedStudentSearch, setSubmittedStudentSearch] = useState<string | null>(null);
   const [submittedStudentPersonId, setSubmittedStudentPersonId] = useState<string | null>(null);
   const [submittedStudentProfileId, setSubmittedStudentProfileId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<{
@@ -104,6 +120,11 @@ export function FinancialAdminEnrollmentPanel() {
     studentPersonId: submittedStudentPersonId,
     studentProfileId: submittedStudentProfileId,
   });
+  const scopeSearchQuery = useFinancialStudentScopeSearch({
+    enabled: Boolean(submittedStudentSearch),
+    limit: 8,
+    query: submittedStudentSearch,
+  });
   const actions = useFinancialObligationActions({
     enrollmentId: submittedEnrollmentId,
     studentPersonId: submittedStudentPersonId,
@@ -112,6 +133,7 @@ export function FinancialAdminEnrollmentPanel() {
 
   const loadedObligations = obligationsQuery.data?.obligations;
   const obligations = useMemo(() => loadedObligations || [], [loadedObligations]);
+  const studentScopeResults = scopeSearchQuery.data?.scopes || [];
   const summary = summaryQuery.data?.summary;
   const actor = pickActor(user);
   const canSubmitAction = Boolean(selectedAction?.obligation.id) && !actions.working;
@@ -148,6 +170,34 @@ export function FinancialAdminEnrollmentPanel() {
       return;
     }
 
+    setSubmittedStudentPersonId(studentPersonId);
+    setSubmittedStudentProfileId(studentProfileId);
+  }
+
+  function handleStudentScopeSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const query = studentSearchInput.trim();
+
+    if (query.length < 2) {
+      toast.error("Informe ao menos 2 caracteres para buscar aluno.");
+      return;
+    }
+
+    setSubmittedStudentSearch(query);
+  }
+
+  function selectStudentScope(scope: FinancialStudentScope) {
+    const studentPersonId = String(scope.studentPersonId || "").trim();
+    const studentProfileId = String(scope.studentProfileId || "").trim();
+
+    if (!studentPersonId || !studentProfileId) {
+      toast.error("Resultado sem escopo valido.");
+      return;
+    }
+
+    setStudentPersonIdInput(studentPersonId);
+    setStudentProfileIdInput(studentProfileId);
     setSubmittedStudentPersonId(studentPersonId);
     setSubmittedStudentProfileId(studentProfileId);
   }
@@ -282,6 +332,79 @@ export function FinancialAdminEnrollmentPanel() {
                 </button>
               </div>
             </label>
+          </form>
+
+          <form
+            onSubmit={handleStudentScopeSearch}
+            className="rounded-2xl border border-white/10 bg-black/20 p-4"
+          >
+            <div className="mb-3 flex items-center gap-2 text-sm font-bold text-white">
+              <UserRoundSearch className="h-4 w-4 text-primary" />
+              Buscar aluno
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                value={studentSearchInput}
+                onChange={(event) => setStudentSearchInput(event.target.value)}
+                className="j12-field h-12 w-full px-4"
+                placeholder="Nome, CPF, e-mail ou ID"
+              />
+              <button
+                type="submit"
+                disabled={scopeSearchQuery.isFetching}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {scopeSearchQuery.isFetching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )}
+                Buscar
+              </button>
+            </div>
+
+            {scopeSearchQuery.error && (
+              <div className="mt-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                {formatApiErrorMessage(
+                  scopeSearchQuery.error,
+                  "Nao foi possivel buscar alunos.",
+                )}
+              </div>
+            )}
+
+            {!scopeSearchQuery.isFetching &&
+              submittedStudentSearch &&
+              studentScopeResults.length === 0 &&
+              !scopeSearchQuery.error && (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  Nenhum aluno encontrado.
+                </div>
+              )}
+
+            {studentScopeResults.length > 0 && (
+              <div className="mt-3 grid gap-2">
+                {studentScopeResults.map((scope) => (
+                  <button
+                    key={`${scope.studentPersonId || "person"}-${scope.studentProfileId || "profile"}`}
+                    type="button"
+                    onClick={() => selectStudentScope(scope)}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-primary/40 hover:bg-primary/10"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-white">
+                          {scope.studentName || scope.studentPersonId || "Aluno"}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-slate-400">
+                          {scopeSecondaryText(scope) || "Escopo de aluno"}
+                        </p>
+                      </div>
+                      <FinancialStatusBadge status={scope.status || "NONE"} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </form>
 
           <form

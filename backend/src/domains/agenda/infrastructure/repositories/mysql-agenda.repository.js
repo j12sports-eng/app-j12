@@ -158,11 +158,12 @@ const SELECT_AGENDA_ITEMS_BY_IDEMPOTENCY_KEYS_SQL_PREFIX = `
 `;
 
 /**
- * MySQL read-only repository for the Agenda domain.
+ * MySQL repository for the Agenda domain.
  *
  * This adapter derives schedule candidates from active Enrollment -> Turma
- * links and class schedule fields. It never inserts, updates or deletes rows
- * and it does not touch attendance, finance, notification or public API state.
+ * links and persists only initial planned Agenda items in
+ * enrollment_agenda_items. It does not touch attendance, finance,
+ * notification or public API state.
  */
 class MySqlAgendaRepository {
   /**
@@ -348,9 +349,9 @@ function toAgendaScheduleData(row) {
     enrollmentStatus: nullableText(row?.enrollment_status, 32),
     id: buildDerivedScheduleId({ classId, enrollmentId }),
     limitations: [
-      "Dedicated Agenda table is not implemented.",
       "This schedule is derived from j12_turmas fields.",
       "No attendance, recurrence, cancellation or replacement row was created.",
+      "Initial planned Agenda persistence is handled separately in enrollment_agenda_items.",
     ],
     modality: nullableText(row?.modalidade, 191),
     modalityId: row?.modalidade_id == null ? null : String(row.modalidade_id),
@@ -626,10 +627,10 @@ function buildAgendaSummary({
     classIds,
     hasSchedules: scheduleList.length > 0,
     limitations: [
-      "Dedicated Agenda table is not implemented.",
-      "Schedules are derived from active Enrollment -> Turma links.",
+      "Read summaries are derived from active Enrollment -> Turma links.",
+      "Initial planned Agenda items are persisted separately in enrollment_agenda_items.",
       "Attendance is not created or updated by this repository.",
-      "Recurrence, cancellation and replacement workflows are not implemented.",
+      "Cancellation and replacement workflows are not implemented.",
     ],
     noAttendanceCreated: true,
     noFinancialSideEffects: true,

@@ -11,6 +11,7 @@ const {
   FINANCIAL_BILLING_CONTRACT_STUDENT_MISMATCH_CODE,
   FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION_CODE,
   FINANCIAL_OBLIGATION_SCHEMA_OR_IDEMPOTENCY_GAP_CODE,
+  FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE,
   FinancialObligationStatus,
   FinancialApplicationService,
   INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
@@ -611,6 +612,49 @@ test("FinancialApplicationService lists obligations and summarizes student finan
   assert.equal(summary.summary.amountTotal, 175);
   assert.equal(summary.summary.amountOpen, 125);
   assert.equal(summary.summary.amountPaid, 50);
+});
+
+test("FinancialApplicationService searches financial student scopes through injected reader", async () => {
+  const studentScopeReader = {
+    calls: [],
+    async searchStudentScopes(input) {
+      this.calls.push(input);
+      return [
+        {
+          status: "ACTIVE",
+          studentName: "Joao Atleta",
+          studentPersonId: "person-search",
+          studentProfileId: "profile-search",
+        },
+      ];
+    },
+  };
+  const service = new FinancialApplicationService({
+    enrollmentReader: new FakeEnrollmentReader(),
+    studentScopeReader,
+  });
+
+  const result = await service.searchFinancialStudentScopes({
+    limit: 99,
+    query: "Joao",
+  });
+
+  assert.equal(result.financialStudentScopeSearchReady, true);
+  assert.equal(result.noGatewayIntegration, true);
+  assert.equal(result.noNotificationSideEffects, true);
+  assert.equal(result.count, 1);
+  assert.equal(result.scopes[0].studentPersonId, "person-search");
+  assert.deepEqual(studentScopeReader.calls, [
+    {
+      limit: 25,
+      query: "Joao",
+    },
+  ]);
+
+  await assert.rejects(
+    () => service.searchFinancialStudentScopes({ query: "J" }),
+    { code: FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE },
+  );
 });
 
 test("FinancialApplicationService delegates financial obligation repository reads and creates", async () => {

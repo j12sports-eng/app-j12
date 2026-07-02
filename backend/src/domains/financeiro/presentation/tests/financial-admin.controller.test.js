@@ -25,6 +25,10 @@ test("FinancialAdminController delegates admin operations only to FinancialFacad
         calls.push(["list", input]);
         return { obligations: [] };
       },
+      async searchFinancialStudentScopes(input) {
+        calls.push(["search", input]);
+        return { scopes: [] };
+      },
       async markEnrollmentFinancialObligationAsOverdue(input) {
         calls.push(["overdue", input]);
         return { overdue: true };
@@ -48,6 +52,16 @@ test("FinancialAdminController delegates admin operations only to FinancialFacad
         studentProfileId: "profile-admin",
       },
       query: {},
+    },
+    createResponse(),
+    assertNoNext,
+  );
+  await controller.searchStudentScopes(
+    {
+      query: {
+        limit: "5",
+        q: "Joao",
+      },
     },
     createResponse(),
     assertNoNext,
@@ -96,6 +110,13 @@ test("FinancialAdminController delegates admin operations only to FinancialFacad
       },
     ],
     [
+      "search",
+      {
+        limit: 5,
+        query: "Joao",
+      },
+    ],
+    [
       "paid",
       {
         obligationId: "obligation-paid",
@@ -130,6 +151,7 @@ test("FinancialAdminRouter registers secured administrative endpoints", () => {
     listEnrollmentObligations() {},
     markOverdue() {},
     markPaid() {},
+    searchStudentScopes() {},
   };
   const router = createFinancialAdminRouter({
     accessMiddleware(_req, _res, next) {
@@ -150,6 +172,7 @@ test("FinancialAdminRouter registers secured administrative endpoints", () => {
   assert.equal(FINANCIAL_ADMIN_ROUTE_BASE_PATH, "/admin/financial");
   assert.deepEqual(routes, [
     { methods: ["get"], path: "/enrollments/:enrollmentId/obligations" },
+    { methods: ["get"], path: "/students/search" },
     { methods: ["get"], path: "/students/:studentPersonId/:studentProfileId/summary" },
     { methods: ["post"], path: "/obligations/:obligationId/mark-paid" },
     { methods: ["post"], path: "/obligations/:obligationId/cancel" },

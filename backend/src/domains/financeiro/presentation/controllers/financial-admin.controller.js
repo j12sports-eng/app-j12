@@ -2,12 +2,16 @@ const { FinancialFacade } = require("../../application/facades/financial.facade.
 
 const FINANCIAL_ADMIN_INPUT_REQUIRED_CODE = "FINANCIAL_ADMIN_INPUT_REQUIRED";
 const FINANCIAL_ADMIN_ERROR_CODE = "FINANCIAL_ADMIN_ERROR";
+const FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED_CODE =
+  "FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED";
 
 const CONTROLLED_ERROR_STATUS_BY_CODE = Object.freeze({
   FINANCIAL_ADMIN_INPUT_REQUIRED: 400,
+  FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED: 400,
   FINANCIAL_OBLIGATION_INPUT_REQUIRED: 400,
   FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION: 409,
   FINANCIAL_OBLIGATION_NOT_FOUND: 404,
+  FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED: 400,
 });
 
 /**
@@ -27,10 +31,30 @@ class FinancialAdminController {
       options.financialFacade || options.facade || new FinancialFacade(options);
 
     this.listEnrollmentObligations = this.listEnrollmentObligations.bind(this);
+    this.searchStudentScopes = this.searchStudentScopes.bind(this);
     this.getStudentSummary = this.getStudentSummary.bind(this);
     this.markPaid = this.markPaid.bind(this);
     this.cancel = this.cancel.bind(this);
     this.markOverdue = this.markOverdue.bind(this);
+  }
+
+  /**
+   * GET /admin/financial/students/search
+   */
+  async searchStudentScopes(req, res, next) {
+    try {
+      const input = readStudentScopeSearchInput(req);
+      const validation = validateStudentScopeSearch(input);
+
+      if (!validation.valid) {
+        return sendBadRequest(res, validation);
+      }
+
+      const data = await this.getFacade().searchFinancialStudentScopes(input);
+      return sendSuccess(res, data);
+    } catch (error) {
+      return handleFinancialAdminError(error, res, next);
+    }
   }
 
   /**
@@ -148,6 +172,15 @@ function readStudentSummaryInput(req = {}) {
   };
 }
 
+function readStudentScopeSearchInput(req = {}) {
+  const query = readObject(req.query);
+
+  return {
+    limit: normalizeLimit(query.limit, 25),
+    query: nullableText(query.q ?? query.query ?? query.search, 100),
+  };
+}
+
 function readMarkPaidInput(req = {}) {
   const params = readObject(req.params);
   const body = readObject(req.body);
@@ -198,6 +231,26 @@ function validateRequired(input = {}, fields = []) {
     message: `${fields.join(" and ")} are required.`,
     missingFields,
     valid: missingFields.length === 0,
+  };
+}
+
+function validateStudentScopeSearch(input = {}) {
+  const query = nullableText(input.query, 100);
+
+  if (!query || query.length < 2) {
+    return {
+      code: FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED_CODE,
+      message: "Informe ao menos 2 caracteres para buscar aluno.",
+      missingFields: ["query"],
+      valid: false,
+    };
+  }
+
+  return {
+    code: FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED_CODE,
+    message: "",
+    missingFields: [],
+    valid: true,
   };
 }
 
@@ -260,6 +313,7 @@ module.exports = {
   CONTROLLED_ERROR_STATUS_BY_CODE,
   FINANCIAL_ADMIN_ERROR_CODE,
   FINANCIAL_ADMIN_INPUT_REQUIRED_CODE,
+  FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED_CODE,
   FinancialAdminController,
   handleFinancialAdminError,
   nullableText,
@@ -269,6 +323,8 @@ module.exports = {
   readMarkOverdueInput,
   readMarkPaidInput,
   readStudentSummaryInput,
+  readStudentScopeSearchInput,
   successEnvelope,
+  validateStudentScopeSearch,
   validateRequired,
 };

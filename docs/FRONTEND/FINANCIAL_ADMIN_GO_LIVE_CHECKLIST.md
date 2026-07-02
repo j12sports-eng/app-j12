@@ -29,6 +29,7 @@ Confirmar:
 rota exige usuario autenticado
 rota aceita admin/coordenador
 consulta por enrollmentId
+busca por nome/CPF/e-mail/ids do aluno
 consulta por studentPersonId/studentProfileId
 status PREPARED renderizado
 status PENDING renderizado
@@ -103,7 +104,6 @@ npx eslint src/features/financial/api/financial.api.ts src/features/financial/ty
 ## Riscos
 
 ```text
-busca por nome/CPF ainda depende de escopo pessoa/perfil vindo de outra tela
 go-live completo depende do contrato financeiro resolver plano/valor/vencimento
 lint global do repositorio segue com pendencias preexistentes fora desta tela
 ```

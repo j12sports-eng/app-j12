@@ -27,9 +27,9 @@ const ACTIVE_ENROLLMENT_STATUS = "ACTIVE";
 /**
  * Application service for the Agenda backend domain.
  *
- * The service exposes read-only schedule discovery over the future Agenda
- * boundary. It does not create schedules, attendance, recurrence, financial
- * entries, notifications or public API behavior.
+ * The service exposes schedule discovery and the controlled initial planned
+ * Agenda persistence for ACTIVE enrollments. It never creates attendance,
+ * financial entries, notifications or public API behavior.
  */
 class AgendaApplicationService {
   /**
@@ -303,10 +303,11 @@ class AgendaApplicationService {
         blockers.push(
           createBlocker(
             AGENDA_INITIAL_CREATION_SCHEMA_GAP_CODE,
-            "Initial Agenda creation is blocked until a canonical Agenda table/link schema exists.",
+            "Initial Agenda creation is blocked until canonical Agenda persistence is available.",
             {
               requiredCapabilities: [
                 "agenda table for planned classes",
+                "repository method createInitialAgendaForEnrollment",
                 "enrollment to agenda link",
                 "student person/profile to agenda link",
                 "date/time fields",
@@ -706,10 +707,10 @@ function buildAgendaSummary({
     classIds,
     hasSchedules: scheduleList.length > 0,
     limitations: [
-      "Dedicated Agenda table is not implemented.",
-      "Schedules are derived from active Enrollment -> Turma links.",
+      "Read summaries are derived from active Enrollment -> Turma links.",
+      "Initial planned Agenda persistence uses enrollment_agenda_items when the repository is available.",
       "Attendance is not created or updated by this layer.",
-      "Recurrence, cancellation and replacement workflows are not implemented.",
+      "Cancellation and replacement workflows are not implemented.",
     ],
     noAttendanceCreated: true,
     noFinancialSideEffects: true,
@@ -864,7 +865,10 @@ function buildInitialAgendaPersistenceResult(input = {}) {
     creationBlocked: false,
     duplicateAgendaReusedOrBlocked: true,
     initialAgendaPrepared: true,
+    initialAgendaPersistenceEnabled: true,
+    noScheduleCreated: false,
     persistedAgendaCount: agendaItems.length,
+    readOnly: false,
     reusedCount,
   };
 }

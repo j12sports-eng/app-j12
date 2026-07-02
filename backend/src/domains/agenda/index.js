@@ -4,9 +4,9 @@ const infrastructure = require("./infrastructure/index.js");
 /**
  * Domain boundary for Agenda.
  *
- * This entrypoint exposes the new read-only application facade and MySQL
- * adapter without wiring them into existing routes or changing Agenda,
- * attendance, finance, notification or public API behavior.
+ * This entrypoint exposes the application facade and MySQL adapter for
+ * schedule discovery and controlled initial planned Agenda persistence without
+ * changing attendance, finance, notification or public API behavior.
  */
 module.exports = Object.freeze({
   domain: "agenda",

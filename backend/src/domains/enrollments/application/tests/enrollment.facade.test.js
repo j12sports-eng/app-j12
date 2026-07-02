@@ -28,6 +28,10 @@ test("EnrollmentFacade delegates read and guard operations to the application se
     delegated: "findCurrentActiveEnrollment",
     input: { scope: "active" },
   });
+  assert.deepEqual(await facade.findEnrollmentById("enrollment-by-id"), {
+    delegated: "findEnrollmentById",
+    input: "enrollment-by-id",
+  });
   assert.deepEqual(await facade.getEnrollmentStatusSummary({ scope: "status" }), {
     delegated: "getEnrollmentStatusSummary",
     input: { scope: "status" },
@@ -46,6 +50,7 @@ test("EnrollmentFacade delegates read and guard operations to the application se
     [
       "findCurrentDraftEnrollment",
       "findCurrentActiveEnrollment",
+      "findEnrollmentById",
       "getEnrollmentStatusSummary",
       "ensureEnrollmentCanProceed",
       "ensureNoActiveEnrollment",
@@ -1012,6 +1017,9 @@ function createDelegatingService(calls) {
     },
     findCurrentDraftEnrollment(input) {
       return record("findCurrentDraftEnrollment", input);
+    },
+    findEnrollmentById(id) {
+      return record("findEnrollmentById", id);
     },
     getEnrollmentStatusSummary(input) {
       return record("getEnrollmentStatusSummary", input);

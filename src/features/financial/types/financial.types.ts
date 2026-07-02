@@ -1,4 +1,10 @@
-export type FinancialObligationStatus = "PENDING" | "PAID" | "OVERDUE" | "CANCELLED" | string;
+export type FinancialObligationStatus =
+  | "PREPARED"
+  | "PENDING"
+  | "PAID"
+  | "OVERDUE"
+  | "CANCELLED"
+  | string;
 
 export type EnrollmentFinancialObligation = {
   amount: number | null;
@@ -50,6 +56,29 @@ export type StudentFinancialSummaryResponse = {
   studentPersonId: string;
   studentProfileId: string;
   summary: StudentFinancialSummary;
+};
+
+export type FinancialStudentScope = {
+  hasActiveEnrollment?: boolean;
+  hasDraftEnrollment?: boolean;
+  lastEnrollmentAt?: string | null;
+  profileStatus?: string | null;
+  status?: string | null;
+  studentCpf?: string | null;
+  studentEmail?: string | null;
+  studentName?: string | null;
+  studentPersonId: string | null;
+  studentPhone?: string | null;
+  studentProfileId: string | null;
+};
+
+export type FinancialStudentScopeSearchResponse = {
+  count: number;
+  financialStudentScopeSearchReady?: boolean;
+  noGatewayIntegration?: boolean;
+  noNotificationSideEffects?: boolean;
+  query: string;
+  scopes: FinancialStudentScope[];
 };
 
 export type FinancialObligationActionResponse = {

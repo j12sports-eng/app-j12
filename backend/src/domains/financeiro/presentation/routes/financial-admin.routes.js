@@ -1,4 +1,8 @@
 const express = require("express");
+const { EnrollmentFacade } = require("../../../enrollments/application/facades/enrollment.facade.js");
+const {
+  MySqlEnrollmentRepository,
+} = require("../../../enrollments/infrastructure/repositories/mysql-enrollment.repository.js");
 const { FinancialFacade } = require("../../application/facades/financial.facade.js");
 const {
   MySqlEnrollmentFinancialObligationRepository,
@@ -28,6 +32,7 @@ function createFinancialAdminRouter(options = {}) {
   router.use(accessMiddleware);
 
   router.get("/enrollments/:enrollmentId/obligations", controller.listEnrollmentObligations);
+  router.get("/students/search", controller.searchStudentScopes);
   router.get("/students/:studentPersonId/:studentProfileId/summary", controller.getStudentSummary);
   router.post("/obligations/:obligationId/mark-paid", controller.markPaid);
   router.post("/obligations/:obligationId/cancel", controller.cancel);
@@ -46,10 +51,33 @@ function createFinancialAdminFacade(options = {}) {
     new MySqlEnrollmentFinancialObligationRepository({
       queryRunner: options.queryRunner || null,
     });
+  const studentScopeReader =
+    options.studentScopeReader || createFinancialStudentScopeReader(options);
 
   return new FinancialFacade({
     ...options,
     financialObligationRepository,
+    studentScopeReader,
+  });
+}
+
+function createFinancialStudentScopeReader(options = {}) {
+  if (options.enrollmentFacadeForStudentScopes) {
+    return options.enrollmentFacadeForStudentScopes;
+  }
+
+  const enrollmentRepository =
+    options.enrollmentRepository ||
+    new MySqlEnrollmentRepository({
+      logger: options.logger || console,
+      lockTimeoutSeconds: options.lockTimeoutSeconds,
+      queryRunner: options.queryRunner || null,
+    });
+
+  return new EnrollmentFacade({
+    enrollmentRepository,
+    eventDispatcher: options.eventDispatcher || undefined,
+    logger: options.logger || console,
   });
 }
 
@@ -80,6 +108,7 @@ function getAuthModule() {
 
 module.exports = {
   FINANCIAL_ADMIN_ROUTE_BASE_PATH,
+  createFinancialStudentScopeReader,
   createFinancialAdminFacade,
   createFinancialAdminRouter,
   ensureFinancialAdminAccess,

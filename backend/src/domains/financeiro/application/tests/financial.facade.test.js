@@ -270,6 +270,13 @@ test("FinancialFacade delegates financial admin read methods", async () => {
       async prepareEnrollmentBillingContract(input) {
         return input;
       },
+      async searchFinancialStudentScopes(input) {
+        calls.push(["search", input]);
+        return {
+          input,
+          searchReady: true,
+        };
+      },
     },
   });
 
@@ -280,9 +287,13 @@ test("FinancialFacade delegates financial admin read methods", async () => {
     studentPersonId: "person-fin-admin",
     studentProfileId: "profile-fin-admin",
   });
+  const search = await facade.searchFinancialStudentScopes({
+    query: "Joao",
+  });
 
   assert.equal(list.listReady, true);
   assert.equal(summary.summaryReady, true);
+  assert.equal(search.searchReady, true);
   assert.deepEqual(calls, [
     [
       "list",
@@ -295,6 +306,12 @@ test("FinancialFacade delegates financial admin read methods", async () => {
       {
         studentPersonId: "person-fin-admin",
         studentProfileId: "profile-fin-admin",
+      },
+    ],
+    [
+      "search",
+      {
+        query: "Joao",
       },
     ],
   ]);

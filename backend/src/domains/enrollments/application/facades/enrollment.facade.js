@@ -174,6 +174,18 @@ class EnrollmentFacade {
   }
 
   /**
+   * Finds a persisted Enrollment by id through the official Enrollment facade.
+   * Cross-domain consumers must use this method instead of reaching the
+   * repository or application service directly.
+   *
+   * @param {string|null} id
+   * @returns {Promise<unknown|null>}
+   */
+  findEnrollmentById(id = null) {
+    return this.getEnrollmentService().findEnrollmentById(id);
+  }
+
+  /**
    * @param {Object} input
    * @returns {Promise<unknown|null>}
    */

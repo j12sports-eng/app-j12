@@ -19,6 +19,8 @@ const FINANCIAL_OBLIGATION_NOT_FOUND_CODE =
   "FINANCIAL_OBLIGATION_NOT_FOUND";
 const FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION_CODE =
   "FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION";
+const FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE =
+  "FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED";
 const FinancialObligationStatus = Object.freeze({
   CANCELLED: "CANCELLED",
   OVERDUE: "OVERDUE",
@@ -45,18 +47,21 @@ const PAYABLE_FINANCIAL_OBLIGATION_STATUSES = Object.freeze([
 class FinancialApplicationService {
   /**
    * @param {Object} [options]
-   * @param {{ findEnrollmentById?: (id: string) => Promise<unknown|null>, findById?: (id: string) => Promise<unknown|null> }} [options.enrollmentReader]
-   * @param {Function|Record<string, Function>|null} [options.billingSourceReader]
-   * @param {Record<string, Function>|null} [options.financialObligationRepository]
+ * @param {{ findEnrollmentById?: (id: string) => Promise<unknown|null>, findById?: (id: string) => Promise<unknown|null> }} [options.enrollmentReader]
+ * @param {Function|Record<string, Function>|null} [options.billingSourceReader]
+ * @param {Record<string, Function>|null} [options.financialObligationRepository]
+ * @param {{ searchStudentScopes?: (input: Record<string, unknown>) => Promise<unknown[]> }|null} [options.studentScopeReader]
    */
   constructor({
     enrollmentReader = null,
     billingSourceReader = null,
     financialObligationRepository = null,
+    studentScopeReader = null,
   } = {}) {
     this.enrollmentReader = enrollmentReader;
     this.billingSourceReader = billingSourceReader;
     this.financialObligationRepository = financialObligationRepository;
+    this.studentScopeReader = studentScopeReader;
   }
 
   /**
@@ -390,6 +395,41 @@ class FinancialApplicationService {
   }
 
   /**
+   * Searches Aluno Pessoa/Profile scopes for the financial admin panel through
+   * an injected reader. Financeiro does not duplicate People/Enrollment SQL.
+   *
+   * @param {{ query?: string|null, limit?: number|null }} input
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async searchFinancialStudentScopes(input = {}) {
+    const query = nullableText(input.query ?? input.q ?? input.search, 100);
+
+    if (!query || query.length < 2) {
+      throw controlledError(
+        "Financial student scope search requires at least 2 characters.",
+        FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE,
+        { field: "query" },
+      );
+    }
+
+    const limit = normalizeResultLimit(input.limit, 25);
+    const scopes = await this.getFinancialStudentScopeReader().searchStudentScopes({
+      limit,
+      query,
+    });
+    const scopeList = Array.isArray(scopes) ? scopes : [];
+
+    return {
+      count: scopeList.length,
+      financialStudentScopeSearchReady: true,
+      noGatewayIntegration: true,
+      noNotificationSideEffects: true,
+      query,
+      scopes: scopeList,
+    };
+  }
+
+  /**
    * @param {Object} input
    * @param {string|null} [input.obligationId]
    * @param {string|Date|null} [input.paidAt]
@@ -609,6 +649,19 @@ class FinancialApplicationService {
     }
 
     return this.financialObligationRepository;
+  }
+
+  /**
+   * @returns {{ searchStudentScopes: Function }}
+   */
+  getFinancialStudentScopeReader() {
+    if (typeof this.studentScopeReader?.searchStudentScopes !== "function") {
+      throw new TypeError(
+        "FinancialApplicationService requires a studentScopeReader.searchStudentScopes function.",
+      );
+    }
+
+    return this.studentScopeReader;
   }
 
   /**
@@ -1045,6 +1098,7 @@ module.exports = {
   FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION_CODE,
   FINANCIAL_OBLIGATION_NOT_FOUND_CODE,
   FINANCIAL_OBLIGATION_SCHEMA_OR_IDEMPOTENCY_GAP_CODE,
+  FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE,
   FinancialObligationStatus,
   FinancialApplicationService,
   INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,

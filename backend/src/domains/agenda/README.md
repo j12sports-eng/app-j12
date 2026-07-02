@@ -1,19 +1,26 @@
 # Dominio Agenda
 
-Estrutura reservada para a futura migracao do dominio de agenda.
+Fronteira backend para descoberta de horarios derivados de Turmas e criacao
+controlada da agenda planejada inicial de uma Matricula `ACTIVE`.
 
-## Objetivo futuro
+## Objetivo
 
-Centralizar compromissos, presencas, aulas, eventos, turmas e futuras reservas.
+Centralizar compromissos, presencas, aulas, eventos, turmas e futuras reservas
+sem acoplar consumidores externos a SQL, rotas legadas ou repositories
+concretos.
 
-## Estrutura
+## Estrutura atual
 
-- `controllers/`: futuros controllers do dominio.
-- `services/`: futuros services do dominio.
-- `repositories/`: futuros repositories do dominio.
-- `validators/`: futuros validadores do dominio.
-- `types/`: futuros tipos e contratos do dominio.
+- `application/facades`: ponto de entrada interno via `AgendaFacade`.
+- `application/services`: regras de aplicacao da Agenda.
+- `application/repositories`: contrato esperado do repository.
+- `infrastructure/repositories`: adapter MySQL.
 
 ## Estado atual
 
-Nenhum modulo existente foi migrado nesta Sprint. Agenda e presencas atuais permanecem intactas.
+A Agenda possui camada application/infrastructure e a tabela
+`enrollment_agenda_items` para agenda planejada inicial de Matriculas. A criacao
+e idempotente por matricula, turma, recorrencia semanal, dia e horario.
+
+Presencas, reposicoes, cancelamentos, notificacoes, financeiro, controllers e
+rotas publicas permanecem fora deste dominio nesta etapa.

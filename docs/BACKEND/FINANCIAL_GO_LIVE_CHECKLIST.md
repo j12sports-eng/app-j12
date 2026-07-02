@@ -54,6 +54,7 @@ Rotas administrativas:
 
 ```text
 GET /api/admin/financial/enrollments/:enrollmentId/obligations
+GET /api/admin/financial/students/search?q=:query
 GET /api/admin/financial/students/:studentPersonId/:studentProfileId/summary
 POST /api/admin/financial/obligations/:obligationId/mark-paid
 POST /api/admin/financial/obligations/:obligationId/cancel
@@ -101,6 +102,7 @@ Validar visualmente:
 
 ```text
 consulta por matricula
+busca por aluno nome/CPF/e-mail
 consulta por pessoa/perfil
 status PREPARED
 status PENDING

@@ -4,6 +4,7 @@ import type {
   CancelEnrollmentFinancialObligationInput,
   EnrollmentFinancialObligationsResponse,
   FinancialObligationActionResponse,
+  FinancialStudentScopeSearchResponse,
   MarkEnrollmentFinancialObligationOverdueInput,
   MarkEnrollmentFinancialObligationPaidInput,
   StudentFinancialSummaryResponse,
@@ -40,6 +41,19 @@ export function getStudentFinancialSummary(input: {
       `/admin/financial/students/${studentPersonId}/${studentProfileId}/summary`,
       input.limit,
     ),
+  );
+}
+
+export function searchFinancialStudentScopes(input: { limit?: number; query: string }) {
+  const params = new URLSearchParams();
+  params.set("q", input.query.trim());
+
+  if (Number.isFinite(Number(input.limit)) && Number(input.limit) > 0) {
+    params.set("limit", String(Math.trunc(Number(input.limit))));
+  }
+
+  return api.get<FinancialStudentScopeSearchResponse>(
+    `/admin/financial/students/search?${params.toString()}`,
   );
 }
 

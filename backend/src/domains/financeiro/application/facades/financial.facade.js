@@ -15,6 +15,7 @@ class FinancialFacade {
    * @param {Record<string, unknown>} [options.enrollmentReader]
    * @param {Function|Record<string, Function>|null} [options.billingSourceReader]
    * @param {Record<string, Function>|null} [options.financialObligationRepository]
+   * @param {{ searchStudentScopes?: (input: Record<string, unknown>) => Promise<unknown[]> }|null} [options.studentScopeReader]
    */
   constructor(options = {}) {
     this.financialService =
@@ -24,6 +25,7 @@ class FinancialFacade {
         billingSourceReader: options.billingSourceReader || null,
         enrollmentReader: options.enrollmentReader || null,
         financialObligationRepository: options.financialObligationRepository || null,
+        studentScopeReader: options.studentScopeReader || null,
       });
   }
 
@@ -113,6 +115,22 @@ class FinancialFacade {
     }
 
     return service.getStudentFinancialSummary(input);
+  }
+
+  /**
+   * @param {Object} input
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  searchFinancialStudentScopes(input = {}) {
+    const service = this.getFinancialService();
+
+    if (typeof service.searchFinancialStudentScopes !== "function") {
+      throw new TypeError(
+        "FinancialFacade requires a financialService.searchFinancialStudentScopes function.",
+      );
+    }
+
+    return service.searchFinancialStudentScopes(input);
   }
 
   /**
