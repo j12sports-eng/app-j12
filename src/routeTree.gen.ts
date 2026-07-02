@@ -56,6 +56,7 @@ import { Route as PortalAlunoConfiguracoesRouteImport } from './routes/portal-al
 import { Route as PortalAlunoAvaliacoesRouteImport } from './routes/portal-aluno/avaliacoes'
 import { Route as PortalAlunoAgendaRouteImport } from './routes/portal-aluno/agenda'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
+import { Route as AdminEnrollmentsRouteImport } from './routes/admin/enrollments'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 
 const TurmasRoute = TurmasRouteImport.update({
@@ -301,6 +302,11 @@ const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
   path: '/admin/financeiro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminEnrollmentsRoute = AdminEnrollmentsRouteImport.update({
+  id: '/admin/enrollments',
+  path: '/admin/enrollments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardAlunoIdRoute = DashboardAlunoIdRouteImport.update({
   id: '/aluno/$id',
   path: '/aluno/$id',
@@ -329,6 +335,7 @@ export interface FileRoutesByFullPath {
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
@@ -379,6 +386,7 @@ export interface FileRoutesByTo {
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
@@ -430,6 +438,7 @@ export interface FileRoutesById {
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
@@ -482,6 +491,7 @@ export interface FileRouteTypes {
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/enrollments'
     | '/admin/financeiro'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
@@ -532,6 +542,7 @@ export interface FileRouteTypes {
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/enrollments'
     | '/admin/financeiro'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
@@ -582,6 +593,7 @@ export interface FileRouteTypes {
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/enrollments'
     | '/admin/financeiro'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
@@ -633,6 +645,7 @@ export interface RootRouteChildren {
   ProfessoresRoute: typeof ProfessoresRoute
   TrocarSenhaRoute: typeof TrocarSenhaRoute
   TurmasRoute: typeof TurmasRoute
+  AdminEnrollmentsRoute: typeof AdminEnrollmentsRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
   PortalAlunoAgendaRoute: typeof PortalAlunoAgendaRoute
   PortalAlunoAvaliacoesRoute: typeof PortalAlunoAvaliacoesRoute
@@ -992,6 +1005,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminFinanceiroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/enrollments': {
+      id: '/admin/enrollments'
+      path: '/admin/enrollments'
+      fullPath: '/admin/enrollments'
+      preLoaderRoute: typeof AdminEnrollmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/aluno/$id': {
       id: '/dashboard/aluno/$id'
       path: '/aluno/$id'
@@ -1036,6 +1056,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfessoresRoute: ProfessoresRoute,
   TrocarSenhaRoute: TrocarSenhaRoute,
   TurmasRoute: TurmasRoute,
+  AdminEnrollmentsRoute: AdminEnrollmentsRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
   PortalAlunoAgendaRoute: PortalAlunoAgendaRoute,
   PortalAlunoAvaliacoesRoute: PortalAlunoAvaliacoesRoute,

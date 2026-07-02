@@ -769,24 +769,32 @@ export const financeiroStore = {
   pausarRecorrencia(alunoId: string) {
     const aluno = alunosStore.getById(alunoId);
     if (!aluno) return;
-    alunosStore.update(alunoId, {
-      financeiro: {
-        ...(aluno.financeiro ?? {}),
-        recorrenciaAtiva: false,
-        cobrancaAutomatica: false,
-      },
-    });
+    void alunosStore
+      .update(alunoId, {
+        financeiro: {
+          ...(aluno.financeiro ?? {}),
+          recorrenciaAtiva: false,
+          cobrancaAutomatica: false,
+        },
+      })
+      .catch((error) => {
+        console.error("[financeiro-store] Falha ao pausar recorrencia do aluno.", error);
+      });
   },
   reativarRecorrencia(alunoId: string) {
     const aluno = alunosStore.getById(alunoId);
     if (!aluno) return;
-    alunosStore.update(alunoId, {
-      financeiro: {
-        ...(aluno.financeiro ?? {}),
-        recorrenciaAtiva: true,
-        cobrancaAutomatica: true,
-      },
-    });
+    void alunosStore
+      .update(alunoId, {
+        financeiro: {
+          ...(aluno.financeiro ?? {}),
+          recorrenciaAtiva: true,
+          cobrancaAutomatica: true,
+        },
+      })
+      .catch((error) => {
+        console.error("[financeiro-store] Falha ao reativar recorrencia do aluno.", error);
+      });
   },
   cancelarFuturas(alunoId: string) {
     const today = todayISO();

@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { buildApiUrl } from "./api";
+import { getStoredAuthToken } from "./auth-storage";
 
 export type AlunoStatus = "ativo" | "inativo" | "experimental" | string;
 export type StatusAluno = AlunoStatus;
@@ -219,12 +220,17 @@ export function extractAlunoList(payload: any): any[] {
     payload?.items,
     payload?.rows,
     payload?.results,
+    payload?.aluno,
+    payload?.student,
     payload?.data?.alunos,
+    payload?.data?.aluno,
     payload?.data?.items,
     payload?.data?.rows,
     payload?.data?.results,
+    payload?.data?.student,
     payload?.data?.data,
     payload?.data?.data?.alunos,
+    payload?.data?.data?.aluno,
     payload?.data?.data?.items,
     payload?.data?.data?.rows,
     payload?.data?.data?.results,
@@ -403,6 +409,8 @@ function normalizeAluno(raw: any): Aluno {
 }
 
 export async function loadAlunos(): Promise<Aluno[]> {
+  const previousState = alunosState;
+
   loadingState = true;
 
   errorState = null;
@@ -410,7 +418,7 @@ export async function loadAlunos(): Promise<Aluno[]> {
   emit();
 
   try {
-    const token = localStorage.getItem("j12_auth_token") || "";
+    const token = getStoredAuthToken() || "";
 
     const response = await fetch(buildApiUrl("/alunos"), {
       method: "GET",
@@ -450,11 +458,11 @@ export async function loadAlunos(): Promise<Aluno[]> {
 
     errorState = error?.message || "Erro ao carregar alunos";
 
-    alunosState = [];
+    alunosState = previousState;
 
     emit();
 
-    return [];
+    return previousState;
   } finally {
     loadingState = false;
 
@@ -464,10 +472,47 @@ export async function loadAlunos(): Promise<Aluno[]> {
 
 function serializeAlunoMutation(aluno: Partial<Aluno> & Record<string, unknown>) {
   return {
-    nome_completo: String(aluno.nomeCompleto ?? aluno.nome ?? "").trim(),
-    email_contato: String(aluno.email ?? "").trim(),
-    telefone_contato: String(aluno.telefone ?? "").trim(),
+    ...aluno,
+
+    // Mantém compatibilidade com o backend
+    nome_completo: aluno.nomeCompleto ?? aluno.nome,
+    email_contato: aluno.email,
+    telefone_contato: aluno.telefone,
+
+    data_nascimento: aluno.dataNascimento,
+
+    plano_id: aluno.planoId ?? aluno.plano_id,
+    plano_nome: aluno.planoNome ?? aluno.plano_nome ?? aluno.plano,
+    plano_valor: aluno.planoValor ?? aluno.plano_valor ?? aluno.mensalidade,
+
+    turma_id: aluno.turmaId ?? aluno.turma_id,
   };
+}
+
+async function parseMutationResponse(response: Response) {
+  const raw = await response.text();
+
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function getMutationErrorMessage(status: number, payload: any) {
+  return (
+    payload?.message ||
+    payload?.error ||
+    payload?.data?.message ||
+    payload?.data?.error ||
+    `Erro ${status} ao atualizar aluno`
+  );
+}
+
+function extractSingleAluno(payload: any) {
+  return extractAlunoList(payload)[0] ?? null;
 }
 
 export async function reloadAlunos(): Promise<Aluno[]> {
@@ -506,12 +551,18 @@ export const alunosStore = {
     return next;
   },
 
-  update(id: string | number, payload: Partial<Aluno> & Record<string, unknown>) {
+  async update(id: string | number, payload: Partial<Aluno> & Record<string, unknown>) {
     const current = getAlunoById(id);
 
     if (!current) {
-      return null;
+      throw new Error("Aluno nao encontrado no estado local para atualizacao.");
     }
+
+    const mutation = serializeAlunoMutation({
+      ...current,
+      ...payload,
+      id: current.id,
+    });
 
     const next = normalizeAluno({
       ...current,
@@ -525,30 +576,55 @@ export const alunosStore = {
 
     emit();
 
-    fetch(buildApiUrl(`/alunos/${id}`), {
+    console.log("[alunos-store] PUT /alunos payload:", mutation);
+
+    const response = await fetch(buildApiUrl(`/alunos/${id}`), {
       method: "PUT",
 
       headers: {
         "Content-Type": "application/json",
 
-        Authorization: `Bearer ${localStorage.getItem("j12_auth_token") || ""}`,
+        Authorization: `Bearer ${getStoredAuthToken() || ""}`,
       },
 
-      body: JSON.stringify(
-        serializeAlunoMutation({
-          ...current,
-          ...payload,
-        }),
-      ),
-    })
-      .then(() => {
-        reloadAlunos();
-      })
-      .catch(() => {
-        reloadAlunos();
+      body: JSON.stringify(mutation),
+
+      cache: "no-store",
+    });
+
+    const responsePayload = await parseMutationResponse(response);
+
+    console.log("[alunos-store] PUT /alunos response:", {
+      body: responsePayload,
+      status: response.status,
+    });
+
+    if (!response.ok) {
+      alunosState = alunosState.map((aluno) => {
+        return String(aluno.id) === String(id) ? current : aluno;
       });
 
-    return next;
+      emit();
+
+      throw new Error(getMutationErrorMessage(response.status, responsePayload));
+    }
+
+    const savedRaw = extractSingleAluno(responsePayload);
+    const saved = normalizeAluno({
+      ...mutation,
+      ...(savedRaw ?? {}),
+      id: current.id,
+    });
+
+    alunosState = alunosState.map((aluno) => {
+      return String(aluno.id) === String(id) ? saved : aluno;
+    });
+
+    emit();
+
+    void reloadAlunos();
+
+    return saved;
   },
 };
 

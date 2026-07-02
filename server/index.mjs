@@ -40,6 +40,7 @@ const REQUEST_BODY_LIMIT_BYTES = Number(process.env.REQUEST_BODY_LIMIT_BYTES || 
 const defaultCorsOrigins = [
   "https://app.j12sports.com.br",
   "https://hml.app.j12sports.com.br",
+  "https://www.hml.app.j12sports.com.br",
   "http://127.0.0.1:3000",
   "http://localhost:3000",
   "http://127.0.0.1:5173",
@@ -62,16 +63,69 @@ function normalizeCorsOrigin(origin) {
   }
 }
 
-const configuredCorsOrigins = String(process.env.CORS_ORIGIN || "")
-  .split(",")
-  .map(normalizeCorsOrigin)
-  .filter(Boolean);
+function parseCorsOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map(normalizeCorsOrigin)
+    .filter(Boolean);
+}
+
+const configuredCorsOrigins = [
+  ...parseCorsOrigins(process.env.CORS_ORIGIN),
+  ...parseCorsOrigins(process.env.CORS_ALLOWED_ORIGINS),
+];
 
 const allowAnyOrigin = configuredCorsOrigins.includes("*");
 const allowedCorsOrigins = new Set([
   ...defaultCorsOrigins.map(normalizeCorsOrigin),
   ...configuredCorsOrigins,
 ]);
+
+function getCorsRejectionReason(origin) {
+  const normalizedOrigin = normalizeCorsOrigin(origin);
+
+  if (!origin) return null;
+  if (!normalizedOrigin) return "origin_header_empty";
+  if (allowAnyOrigin || allowedCorsOrigins.has(normalizedOrigin)) return null;
+
+  let originUrl = null;
+  try {
+    originUrl = new URL(normalizedOrigin);
+  } catch {
+    return "origin_header_invalid";
+  }
+
+  const originHostWithoutWww = originUrl.hostname.replace(/^www\./, "");
+
+  for (const allowed of allowedCorsOrigins) {
+    if (allowed === "*") continue;
+
+    let allowedUrl = null;
+    try {
+      allowedUrl = new URL(allowed);
+    } catch {
+      continue;
+    }
+
+    const sameHost = allowedUrl.hostname === originUrl.hostname;
+    const sameHostIgnoringWww =
+      allowedUrl.hostname.replace(/^www\./, "") === originHostWithoutWww;
+
+    if (sameHost && allowedUrl.protocol !== originUrl.protocol) {
+      return `protocol_mismatch_allowed_${allowedUrl.protocol.replace(":", "")}`;
+    }
+
+    if (sameHost && allowedUrl.port !== originUrl.port) {
+      return `port_mismatch_allowed_${allowedUrl.port || "default"}`;
+    }
+
+    if (sameHostIgnoringWww) {
+      return "www_subdomain_variant_not_configured";
+    }
+  }
+
+  return "origin_not_in_allowed_list";
+}
 
 const databaseState = {
   ok: false,
@@ -88,6 +142,9 @@ const routeDefinitions = [
   { mountPath: "/aluno", modulePath: "./src/routes/aluno.routes.js" },
   { mountPath: "/aluno-completo", modulePath: "./src/routes/aluno-completo.routes.js" },
   { mountPath: "/alunos", modulePath: "./src/routes/alunos.routes.js" },
+  { mountPath: "/dashboard", modulePath: "./src/routes/dashboard.routes.js" },
+  { mountPath: "/api/dashboard", modulePath: "./src/routes/dashboard.routes.js" },
+  { mountPath: "/__api/dashboard", modulePath: "./src/routes/dashboard.routes.js" },
 
   { mountPath: "/financeiro", modulePath: "./src/routes/financeiro.routes.js" },
   { mountPath: "/modalidades", modulePath: "./src/routes/modalidades.routes.js" },
@@ -506,6 +563,7 @@ function getCorsAuditMeta(req, allowedOrigin = null) {
     refererReceived,
     requestedUrl,
     allowedOrigin,
+    rejectionReason: getCorsRejectionReason(originReceived),
   };
 }
 
@@ -531,7 +589,8 @@ function applyCors(req, res) {
 
   log(corsAllowed ? "info" : "warn", corsAllowed ? "cors.allowed" : "cors.blocked", {
     ...getCorsAuditMeta(req, allowedOrigin),
-    configuredOrigins: Array.from(allowedCorsOrigins),
+    allowedOrigins: Array.from(allowedCorsOrigins),
+    configuredOrigins: configuredCorsOrigins,
   });
 
   return corsAllowed;

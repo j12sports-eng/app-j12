@@ -1,10 +1,34 @@
 const express = require("express");
+const { canManageSystem, requireAuth } = require("../../auth.js");
+const { getDashboardBirthdays } = require("../services/dashboard-birthdays.service.js");
 
 const db = require("../config/db.js");
 
 const authMiddleware = require("../middlewares/auth.middleware.js");
 
 const router = express.Router();
+
+function ensureManagementAccess(req, res, next) {
+  if (canManageSystem(req.auth)) {
+    next();
+    return;
+  }
+
+  res.status(403).json({
+    success: false,
+    message: "Sem permissao para acessar aniversariantes do dashboard.",
+  });
+}
+
+router.get("/birthdays", requireAuth, ensureManagementAccess, async (_req, res, next) => {
+  try {
+    const birthdays = await getDashboardBirthdays();
+
+    res.json(birthdays);
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * =====================================

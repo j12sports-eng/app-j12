@@ -599,8 +599,10 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
     setSaving(true);
 
     try {
+      console.log("[AlunoFormDialog] payload de aluno antes do envio:", payload);
+
       if (isEdit && aluno) {
-        alunosStore.update(aluno.id, payload);
+        await alunosStore.update(aluno.id, payload);
         toast.success("Aluno atualizado com a nova lógica de vínculo.");
       } else {
         alunosStore.create(payload);

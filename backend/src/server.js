@@ -25,6 +25,7 @@ const { ensureAuthSeedData } = require("../auth.js");
 
 const authRoutes = require("../routes/auth.js");
 const alunoMeRoutes = require("../routes/aluno-me.js");
+const dashboardRoutes = require("./routes/dashboard.routes.js");
 const financeiroRoutes = require("../routes/financeiro.js");
 
 const alunoCompletoRoutes = require("./routes/aluno-completo.routes.js");
@@ -40,6 +41,12 @@ const interRoutes = require("./routes/inter.routes.js");
 const stateRoutes = require("./routes/state.routes.js");
 const turmasRoutes = require("./routes/turmas.routes.js");
 const unidadesRoutes = require("./routes/unidades.routes.js");
+const {
+  createEnrollmentAdminRouter,
+  createEnrollmentPublicRouter,
+  ENROLLMENT_ADMIN_ROUTE_BASE_PATH,
+  ENROLLMENT_PUBLIC_ROUTE_BASE_PATH,
+} = require("./domains/enrollments/presentation/routes/index.js");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
@@ -48,6 +55,8 @@ const BOOTSTRAP_WARN_TIMEOUT_MS = Number(process.env.BOOTSTRAP_WARN_TIMEOUT_MS |
 
 const app = express();
 const server = http.createServer(app);
+const enrollmentAdminRoutes = createEnrollmentAdminRouter();
+const enrollmentPublicRoutes = createEnrollmentPublicRouter();
 
 global.io = null;
 
@@ -132,6 +141,7 @@ function normalizeCorsOrigin(origin) {
 const allowedOrigins = new Set([
   "https://app.j12sports.com.br",
   "https://hml.app.j12sports.com.br",
+  "https://www.hml.app.j12sports.com.br",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:5173",
@@ -148,10 +158,17 @@ const allowedOrigins = new Set([
   "http://127.0.0.1:4173",
 ]);
 
-const configuredOrigins = String(process.env.CORS_ORIGIN || "")
-  .split(",")
-  .map(normalizeCorsOrigin)
-  .filter(Boolean);
+function parseCorsOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map(normalizeCorsOrigin)
+    .filter(Boolean);
+}
+
+const configuredOrigins = [
+  ...parseCorsOrigins(process.env.CORS_ORIGIN),
+  ...parseCorsOrigins(process.env.CORS_ALLOWED_ORIGINS),
+];
 
 for (const origin of configuredOrigins) {
   allowedOrigins.add(origin);
@@ -167,6 +184,52 @@ function resolveAllowedOrigin(origin) {
   if (allowedOrigins.has(normalizedOrigin)) return normalizedOrigin;
 
   return null;
+}
+
+function getCorsRejectionReason(origin) {
+  const normalizedOrigin = normalizeCorsOrigin(origin);
+
+  if (!origin) return null;
+  if (!normalizedOrigin) return "origin_header_empty";
+  if (allowAnyOrigin || allowedOrigins.has(normalizedOrigin)) return null;
+
+  let originUrl = null;
+  try {
+    originUrl = new URL(normalizedOrigin);
+  } catch {
+    return "origin_header_invalid";
+  }
+
+  const originHostWithoutWww = originUrl.hostname.replace(/^www\./, "");
+
+  for (const allowed of allowedOrigins) {
+    if (allowed === "*") continue;
+
+    let allowedUrl = null;
+    try {
+      allowedUrl = new URL(allowed);
+    } catch {
+      continue;
+    }
+
+    const sameHost = allowedUrl.hostname === originUrl.hostname;
+    const sameHostIgnoringWww =
+      allowedUrl.hostname.replace(/^www\./, "") === originHostWithoutWww;
+
+    if (sameHost && allowedUrl.protocol !== originUrl.protocol) {
+      return `protocol_mismatch_allowed_${allowedUrl.protocol.replace(":", "")}`;
+    }
+
+    if (sameHost && allowedUrl.port !== originUrl.port) {
+      return `port_mismatch_allowed_${allowedUrl.port || "default"}`;
+    }
+
+    if (sameHostIgnoringWww) {
+      return "www_subdomain_variant_not_configured";
+    }
+  }
+
+  return "origin_not_in_allowed_list";
 }
 
 function getCorsAuditMeta(req, allowedOrigin = null) {
@@ -188,6 +251,7 @@ function getCorsAuditMeta(req, allowedOrigin = null) {
       req.originalUrl || req.url || "/"
     }`,
     allowedOrigin,
+    rejectionReason: getCorsRejectionReason(originReceived),
   };
 }
 
@@ -197,7 +261,8 @@ function corsAuditLogger(req, _res, next) {
   const corsAllowed = !origin || Boolean(allowedOrigin);
   const meta = {
     ...getCorsAuditMeta(req, allowedOrigin),
-    configuredOrigins: Array.from(allowedOrigins),
+    allowedOrigins: Array.from(allowedOrigins),
+    configuredOrigins,
   };
 
   if (corsAllowed) {
@@ -222,7 +287,7 @@ const corsOptions = {
 
   exposedHeaders: ["Content-Length", "Content-Type"],
 
-  optionsSuccessStatus: 200,
+  optionsSuccessStatus: 204,
 };
 
 if (SocketIOServer) {
@@ -277,7 +342,7 @@ app.use((req, res, next) => {
   res.header("Access-Control-Allow-Credentials", "true");
 
   if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
 
   next();
@@ -397,7 +462,10 @@ mount(["/auth", "/api/auth"], authRoutes);
 mount(["/aluno/me", "/api/aluno/me"], alunoMeRoutes);
 mount(["/aluno-completo", "/api/aluno-completo"], alunoCompletoRoutes);
 mount(["/alunos", "/api/alunos"], alunosRoutes);
+mount(["/dashboard", "/api/dashboard"], dashboardRoutes);
 mount(["/financeiro", "/api/financeiro"], financeiroRoutes);
+mount([ENROLLMENT_ADMIN_ROUTE_BASE_PATH, `/api${ENROLLMENT_ADMIN_ROUTE_BASE_PATH}`], enrollmentAdminRoutes);
+mount([ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`], enrollmentPublicRoutes);
 mount(["/modalidades", "/api/modalidades"], modalidadesRoutes);
 mount(["/planos", "/api/planos"], planosRoutes);
 mount(["/presencas", "/api/presencas"], presencasRoutes);

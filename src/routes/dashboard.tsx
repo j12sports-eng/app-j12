@@ -41,6 +41,7 @@ import {
 } from "recharts";
 
 import { AppShell } from "@/components/AppShell";
+import { BirthdaysDashboardCard } from "@/components/dashboard/BirthdaysDashboardCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { SkeletonDashboard } from "@/components/ui/skeleton";
 import { useFinanceiroAdmin, type Mensalidade } from "@/hooks/useFinanceiroAdmin";
@@ -209,6 +210,8 @@ function ExecutiveDashboard() {
           <ExecutiveCard key={card.title} {...card} />
         ))}
       </section>
+
+      <BirthdaysDashboardCard />
 
       <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Panel>

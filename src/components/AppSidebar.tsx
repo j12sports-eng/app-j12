@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Bell,
+  ClipboardCheck,
   CalendarCheck,
   ClipboardList,
   DollarSign,
@@ -79,6 +80,13 @@ const ITEMS: AppSidebarNavItem[] = [
     to: "/aula-experimental",
     label: "Aula Experimental",
     icon: Sparkles,
+    roles: ["admin", "coordenador"],
+    section: "operation",
+  },
+  {
+    to: "/admin/enrollments",
+    label: "Matriculas",
+    icon: ClipboardCheck,
     roles: ["admin", "coordenador"],
     section: "operation",
   },
@@ -277,7 +285,8 @@ export function AppSidebar({
                 {items.map((item) => {
                   const activePaths = [item.to, ...(item.activePaths || [])];
                   const active = activePaths.some(
-                    (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+                    (path) =>
+                      location.pathname === path || location.pathname.startsWith(`${path}/`),
                   );
                   const Icon = item.icon;
 

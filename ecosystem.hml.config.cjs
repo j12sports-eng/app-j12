@@ -19,7 +19,7 @@ module.exports = {
         NODE_ENV: "production",
         HOST: "127.0.0.1",
         PORT: "3001",
-        CORS_ORIGIN: "https://hml.app.j12sports.com.br",
+        CORS_ORIGIN: "https://hml.app.j12sports.com.br,https://www.hml.app.j12sports.com.br",
       },
     },
     {

@@ -40,7 +40,14 @@ import { useTurmas } from "@/lib/turmas-store";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { usePortalAluno } from "@/lib/aluno-portal";
 
+type AlunosSearch = {
+  alunoId?: string;
+};
+
 export const Route = createFileRoute("/alunos")({
+  validateSearch: (search: Record<string, unknown>): AlunosSearch => ({
+    alunoId: typeof search.alunoId === "string" ? search.alunoId : undefined,
+  }),
   component: () => (
     <RequireAuth>
       <AlunosPage />
@@ -130,6 +137,7 @@ function WhatsappAction({ aluno }: { aluno: Aluno }) {
 
 function AlunosPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const { hasRole, user, isSelfService } = useAuth();
   const canEdit = hasRole("admin", "coordenador");
   const userRole = user?.role;
@@ -219,6 +227,16 @@ function AlunosPage() {
   }, [isSelfService]);
 
   useEffect(() => {
+    if (!search.alunoId || alunos.length === 0) return;
+
+    const selected = alunos.find((aluno) => String(aluno.id) === search.alunoId);
+
+    if (selected && perfil?.id !== selected.id) {
+      setPerfil(selected);
+    }
+  }, [alunos, perfil?.id, search.alunoId]);
+
+  useEffect(() => {
     console.log("[alunos-page] Total renderizado:", alunos.length);
   }, [alunos.length]);
 
@@ -235,11 +253,40 @@ function AlunosPage() {
     setPerfil(aluno);
   }, []);
 
-  const handlePerfilOpenChange = useCallback((nextOpen: boolean) => {
+  const handlePerfilOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        setPerfil(null);
+
+        if (search.alunoId) {
+          void navigate({
+            to: "/alunos",
+            search: { alunoId: undefined },
+            replace: true,
+          });
+        }
+      }
+    },
+    [navigate, search.alunoId],
+  );
+
+  const handleFormOpenChange = useCallback((nextOpen: boolean) => {
+    setOpenForm(nextOpen);
+
     if (!nextOpen) {
-      setPerfil(null);
+      setEditing(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!perfil) return;
+
+    const updated = alunos.find((aluno) => String(aluno.id) === String(perfil.id));
+
+    if (updated && updated !== perfil) {
+      setPerfil(updated);
+    }
+  }, [alunos, perfil]);
 
   const handleContratoOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
@@ -548,7 +595,7 @@ function AlunosPage() {
           )}
         </div>
 
-        <AlunoFormDialog open={openForm} onOpenChange={setOpenForm} aluno={editing} />
+        <AlunoFormDialog open={openForm} onOpenChange={handleFormOpenChange} aluno={editing} />
 
         <AlunoPerfilDialog
           open={!!perfil}

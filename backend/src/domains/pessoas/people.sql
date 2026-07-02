@@ -1,0 +1,26 @@
+CREATE TABLE IF NOT EXISTS people (
+  id VARCHAR(64) PRIMARY KEY,
+  nome VARCHAR(191) NOT NULL,
+  cpf VARCHAR(20) NULL,
+  rg VARCHAR(30) NULL,
+  sexo VARCHAR(30) NULL,
+  data_nascimento DATE NULL,
+  email VARCHAR(191) NULL,
+  telefone VARCHAR(50) NULL,
+  celular VARCHAR(50) NULL,
+  cep VARCHAR(20) NULL,
+  logradouro VARCHAR(191) NULL,
+  numero VARCHAR(30) NULL,
+  bairro VARCHAR(191) NULL,
+  cidade VARCHAR(191) NULL,
+  estado VARCHAR(50) NULL,
+  complemento VARCHAR(191) NULL,
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX idx_people_nome (nome),
+  INDEX idx_people_cpf (cpf),
+  INDEX idx_people_email (email),
+  INDEX idx_people_ativo (ativo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
