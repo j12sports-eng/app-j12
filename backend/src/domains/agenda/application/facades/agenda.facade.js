@@ -86,6 +86,62 @@ class AgendaFacade {
   }
 
   /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  validateAgendaEvent(input = {}) {
+    return this.getAgendaService().validateAgendaEvent(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  rescheduleAgendaEvent(input = {}) {
+    return this.getAgendaService().rescheduleAgendaEvent(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  previewRecurrence(input = {}) {
+    return this.getAgendaService().previewRecurrence(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  createRecurrenceSeries(input = {}) {
+    return this.getAgendaService().createRecurrenceSeries(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  getRecurrenceSeries(input = {}) {
+    return this.getAgendaService().getRecurrenceSeries(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  updateRecurrence(input = {}) {
+    return this.getAgendaService().updateRecurrence(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  cancelRecurrence(input = {}) {
+    return this.getAgendaService().cancelRecurrence(input);
+  }
+
+  /**
    * @returns {AgendaApplicationService}
    */
   getAgendaService() {

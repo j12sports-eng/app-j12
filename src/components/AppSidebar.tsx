@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Bell,
+  CalendarClock,
   ClipboardCheck,
   CalendarCheck,
   ClipboardList,
@@ -74,6 +75,13 @@ const ITEMS: AppSidebarNavItem[] = [
     label: "Presenca",
     icon: CalendarCheck,
     roles: ["admin", "coordenador", "professor"],
+    section: "operation",
+  },
+  {
+    to: "/admin/agenda",
+    label: "Agenda",
+    icon: CalendarClock,
+    roles: ["admin", "coordenador"],
     section: "operation",
   },
   {

@@ -4,10 +4,18 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardCheck,
+  Clock3,
+  GitBranch,
   GraduationCap,
+  ListChecks,
   Loader2,
+  PlusCircle,
+  Repeat2,
+  Save,
   Search,
   ShieldCheck,
+  Trash2,
+  X,
   UserRoundSearch,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,15 +27,30 @@ import { cn } from "@/lib/utils";
 
 import { AgendaTimeline } from "../components/AgendaTimeline";
 import { useAgenda } from "../hooks/useAgenda";
+import { useAgendaConflictValidation } from "../hooks/useAgendaConflictValidation";
+import { useAgendaDragDrop } from "../hooks/useAgendaDragDrop";
+import { formatAgendaDateKey, parseAgendaDate } from "../hooks/useAgendaCalendar";
+import { useAgendaRecurrence } from "../hooks/useAgendaRecurrence";
 import { useAttendance } from "../hooks/useAttendance";
 
 import type {
   AgendaAdminSummaryResponse,
+  AgendaCalendarEvent,
   AgendaClassSchedulesResponse,
+  AgendaConflict,
   AgendaLookupInput,
   AgendaLookupMode,
+  AgendaRecurrenceFrequency,
+  AgendaRecurrenceIntervalUnit,
+  AgendaRecurrenceMutationPayload,
+  AgendaRecurrenceOccurrence,
+  AgendaRecurrenceOperationScope,
+  AgendaRecurrenceResponse,
+  AgendaRescheduleTarget,
   AgendaSchedule,
+  AgendaCalendarView,
 } from "../types/agenda.types";
+import { AgendaCalendar } from "../components/AgendaCalendar";
 
 const LOOKUP_OPTIONS: Array<{
   icon: typeof UserRoundSearch;
@@ -37,6 +60,36 @@ const LOOKUP_OPTIONS: Array<{
   { icon: UserRoundSearch, label: "Aluno", mode: "student" },
   { icon: ClipboardCheck, label: "Matricula", mode: "enrollment" },
   { icon: GraduationCap, label: "Turma", mode: "class" },
+];
+
+const WEEKDAY_OPTIONS = [
+  { label: "Dom", value: 0 },
+  { label: "Seg", value: 1 },
+  { label: "Ter", value: 2 },
+  { label: "Qua", value: 3 },
+  { label: "Qui", value: 4 },
+  { label: "Sex", value: 5 },
+  { label: "Sab", value: 6 },
+] as const;
+
+const RECURRENCE_FREQUENCY_OPTIONS: Array<{
+  label: string;
+  value: AgendaRecurrenceFrequency;
+}> = [
+  { label: "Diaria", value: "DAILY" },
+  { label: "Semanal", value: "WEEKLY" },
+  { label: "Quinzenal", value: "BIWEEKLY" },
+  { label: "Mensal", value: "MONTHLY" },
+  { label: "Personalizada", value: "CUSTOM" },
+];
+
+const RECURRENCE_SCOPE_OPTIONS: Array<{
+  label: string;
+  value: AgendaRecurrenceOperationScope;
+}> = [
+  { label: "Esta", value: "THIS_OCCURRENCE" },
+  { label: "Proximas", value: "THIS_AND_FOLLOWING" },
+  { label: "Serie", value: "SERIES" },
 ];
 
 function normalizeText(value: unknown) {
@@ -89,7 +142,9 @@ function readBlockers(data: AgendaAdminSummaryResponse | AgendaClassSchedulesRes
 
 function countInactiveClasses(schedules: AgendaSchedule[]) {
   return schedules.filter((schedule) => {
-    const status = normalizeUpper(schedule.classStatus || schedule.status || schedule.scheduleStatus);
+    const status = normalizeUpper(
+      schedule.classStatus || schedule.status || schedule.scheduleStatus,
+    );
     return ["INACTIVE", "INATIVA", "INATIVO", "CANCELLED", "CANCELADA", "CANCELADO"].includes(
       status,
     );
@@ -102,11 +157,39 @@ function countRegisteredAttendance(schedules: AgendaSchedule[]) {
 
     return Boolean(
       schedule.present === true ||
-        schedule.present === false ||
-        schedule.attendanceRegisteredAt ||
-        ["PRESENT", "PRESENTE", "ABSENT", "FALTA", "JUSTIFIED", "JUSTIFICADA"].includes(status),
+      schedule.present === false ||
+      schedule.attendanceRegisteredAt ||
+      ["PRESENT", "PRESENTE", "ABSENT", "FALTA", "JUSTIFIED", "JUSTIFICADA"].includes(status),
     );
   }).length;
+}
+
+function hasCriticalConflicts(conflicts: AgendaConflict[] | undefined) {
+  return (conflicts || []).some(
+    (conflict) => conflict.blocking !== false && normalizeUpper(conflict.severity) !== "WARNING",
+  );
+}
+
+function readConflictEventIds(conflicts: AgendaConflict[] | undefined) {
+  return Array.from(
+    new Set(
+      (conflicts || [])
+        .map((conflict) => conflict.conflictEventId)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+function readConflictTone(conflicts: AgendaConflict[] | undefined) {
+  if (hasCriticalConflicts(conflicts)) {
+    return "border-red-400/40 bg-red-500/10 text-red-100";
+  }
+
+  if ((conflicts || []).length > 0) {
+    return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+  }
+
+  return "border-emerald-400/25 bg-emerald-500/10 text-emerald-100";
 }
 
 function readEmptyMessage(submitted: AgendaLookupInput | null) {
@@ -132,6 +215,15 @@ function AgendaAdminContent() {
   const [enrollmentId, setEnrollmentId] = useState("");
   const [classId, setClassId] = useState("");
   const [submitted, setSubmitted] = useState<AgendaLookupInput | null>(null);
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [calendarView, setCalendarView] = useState<AgendaCalendarView>("week");
+  const [rescheduleEvent, setRescheduleEvent] = useState<AgendaCalendarEvent | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleStartTime, setRescheduleStartTime] = useState("");
+  const [rescheduleEndTime, setRescheduleEndTime] = useState("");
+  const [rescheduleProfessorName, setRescheduleProfessorName] = useState("");
+  const [rescheduleCourtName, setRescheduleCourtName] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   const agendaQuery = useAgenda({
     classId: submitted?.classId || null,
@@ -145,6 +237,44 @@ function AgendaAdminContent() {
   const attendance = useAttendance();
 
   const schedules = useMemo(() => readSchedules(agendaQuery.data), [agendaQuery.data]);
+  const dragDrop = useAgendaDragDrop({
+    queryInput: submitted,
+    schedules: submitted ? schedules : [],
+  });
+  const rescheduleTarget = useMemo<AgendaRescheduleTarget | null>(() => {
+    if (!rescheduleEvent) {
+      return null;
+    }
+
+    const parsedDate = parseAgendaDate(rescheduleDate);
+
+    if (!parsedDate) {
+      return null;
+    }
+
+    return {
+      courtName: rescheduleCourtName.trim() || null,
+      date: parsedDate,
+      endTime: rescheduleEndTime.trim() || null,
+      professorName: rescheduleProfessorName.trim() || null,
+      reason: rescheduleReason.trim() || null,
+      startTime: rescheduleStartTime.trim() || null,
+    };
+  }, [
+    rescheduleCourtName,
+    rescheduleDate,
+    rescheduleEndTime,
+    rescheduleEvent,
+    rescheduleProfessorName,
+    rescheduleReason,
+    rescheduleStartTime,
+  ]);
+  const conflictValidation = useAgendaConflictValidation({
+    enabled: Boolean(rescheduleEvent),
+    event: rescheduleEvent,
+    target: rescheduleTarget,
+  });
+  const conflictEventIds = readConflictEventIds(conflictValidation.data?.conflicts);
   const blockers = readBlockers(agendaQuery.data);
   const inactiveClasses = countInactiveClasses(schedules);
   const registeredAttendance = countRegisteredAttendance(schedules);
@@ -207,6 +337,82 @@ function AgendaAdminContent() {
     }
 
     toast.success("Chamada preparada localmente. Nenhuma presenca foi gravada.");
+  }
+
+  function openRescheduleDialog(event: AgendaCalendarEvent) {
+    setRescheduleEvent(event);
+    setRescheduleDate(event.dateKey || formatAgendaDateKey(event.date));
+    setRescheduleStartTime(event.schedule.startTime || "");
+    setRescheduleEndTime(event.schedule.endTime || "");
+    setRescheduleProfessorName(event.schedule.professorName || "");
+    setRescheduleCourtName(event.schedule.courtName || event.schedule.quadraName || "");
+    setRescheduleReason("");
+  }
+
+  function closeRescheduleDialog() {
+    setRescheduleEvent(null);
+    setRescheduleDate("");
+    setRescheduleStartTime("");
+    setRescheduleEndTime("");
+    setRescheduleProfessorName("");
+    setRescheduleCourtName("");
+    setRescheduleReason("");
+  }
+
+  async function handleCalendarDrop(
+    event: AgendaCalendarEvent,
+    target: { date: Date; startTime?: string | null },
+  ) {
+    const nextTarget: AgendaRescheduleTarget = {
+      date: target.date,
+      endTime: event.schedule.endTime || null,
+      startTime: target.startTime || event.schedule.startTime || null,
+    };
+    const validation = dragDrop.validateMove(event, nextTarget);
+
+    if (!validation.ok) {
+      toast.error(validation.reason || "Movimentacao invalida.");
+      return;
+    }
+
+    try {
+      const response = await dragDrop.rescheduleEvent(event, nextTarget);
+      toast.success(response.message || "Evento reagendado.");
+    } catch (error) {
+      toast.error(formatApiErrorMessage(error, "Nao foi possivel reagendar o evento."));
+    }
+  }
+
+  async function handleConfirmReschedule() {
+    if (!rescheduleEvent || !rescheduleTarget) {
+      toast.error("Informe data e horario para reagendar.");
+      return;
+    }
+
+    const localValidation = dragDrop.validateMove(rescheduleEvent, rescheduleTarget);
+
+    if (!localValidation.ok) {
+      toast.error(localValidation.reason || "Reagendamento invalido.");
+      return;
+    }
+
+    if (conflictValidation.isFetching) {
+      toast.error("Aguarde a validacao de conflitos.");
+      return;
+    }
+
+    if (hasCriticalConflicts(conflictValidation.data?.conflicts)) {
+      toast.error("Resolva os conflitos criticos antes de confirmar.");
+      return;
+    }
+
+    try {
+      const response = await dragDrop.rescheduleEvent(rescheduleEvent, rescheduleTarget);
+      toast.success(response.message || "Evento reagendado.");
+      closeRescheduleDialog();
+    } catch (error) {
+      toast.error(formatApiErrorMessage(error, "Nao foi possivel reagendar o evento."));
+    }
   }
 
   return (
@@ -357,6 +563,22 @@ function AgendaAdminContent() {
           </section>
         )}
 
+        <AgendaCalendar
+          conflictEventIds={conflictEventIds}
+          dragDropEnabled={Boolean(submitted)}
+          errorMessage={errorMessage}
+          loading={agendaQuery.isFetching}
+          onDateChange={setCalendarDate}
+          onEventDrop={handleCalendarDrop}
+          onEventRescheduleRequest={openRescheduleDialog}
+          onPrepareAttendance={handlePrepareAttendance}
+          onViewChange={setCalendarView}
+          reschedulingEventId={dragDrop.reschedulingEventId}
+          schedules={submitted ? schedules : []}
+          selectedDate={calendarDate}
+          view={calendarView}
+        />
+
         <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
           <AgendaTimeline
             emptyMessage={readEmptyMessage(submitted)}
@@ -404,6 +626,27 @@ function AgendaAdminContent() {
             )}
           </aside>
         </section>
+
+        <AgendaRescheduleDialog
+          conflicts={conflictValidation.data?.conflicts || []}
+          date={rescheduleDate}
+          endTime={rescheduleEndTime}
+          event={rescheduleEvent}
+          isSaving={dragDrop.isRescheduling}
+          isValidating={conflictValidation.isFetching}
+          onClose={closeRescheduleDialog}
+          onConfirm={handleConfirmReschedule}
+          onCourtNameChange={setRescheduleCourtName}
+          onDateChange={setRescheduleDate}
+          onEndTimeChange={setRescheduleEndTime}
+          onProfessorNameChange={setRescheduleProfessorName}
+          onReasonChange={setRescheduleReason}
+          onStartTimeChange={setRescheduleStartTime}
+          professorName={rescheduleProfessorName}
+          courtName={rescheduleCourtName}
+          reason={rescheduleReason}
+          startTime={rescheduleStartTime}
+        />
       </div>
     </AppShell>
   );
@@ -454,6 +697,200 @@ function SubmitButton({ loading }: { loading: boolean }) {
   );
 }
 
+function AgendaRescheduleDialog({
+  conflicts,
+  courtName,
+  date,
+  endTime,
+  event,
+  isSaving,
+  isValidating,
+  onClose,
+  onConfirm,
+  onCourtNameChange,
+  onDateChange,
+  onEndTimeChange,
+  onProfessorNameChange,
+  onReasonChange,
+  onStartTimeChange,
+  professorName,
+  reason,
+  startTime,
+}: {
+  conflicts: AgendaConflict[];
+  courtName: string;
+  date: string;
+  endTime: string;
+  event: AgendaCalendarEvent | null;
+  isSaving: boolean;
+  isValidating: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onCourtNameChange: (value: string) => void;
+  onDateChange: (value: string) => void;
+  onEndTimeChange: (value: string) => void;
+  onProfessorNameChange: (value: string) => void;
+  onReasonChange: (value: string) => void;
+  onStartTimeChange: (value: string) => void;
+  professorName: string;
+  reason: string;
+  startTime: string;
+}) {
+  if (!event) {
+    return null;
+  }
+
+  const critical = hasCriticalConflicts(conflicts);
+  const confirmDisabled = isSaving || isValidating || critical;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm md:items-center">
+      <form
+        onSubmit={(nativeEvent) => {
+          nativeEvent.preventDefault();
+          onConfirm();
+        }}
+        className="w-full max-w-xl rounded-3xl border border-white/10 bg-zinc-950 p-5 shadow-2xl md:p-6"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-primary">
+              <Clock3 className="h-3.5 w-3.5" />
+              Reagendar
+            </div>
+            <h2 className="mt-3 truncate text-xl font-black text-white">{event.title}</h2>
+            <p className="mt-1 text-sm text-slate-400">{event.timeLabel}</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
+            aria-label="Fechar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <RescheduleField label="Data">
+            <input
+              type="date"
+              value={date}
+              onChange={(nativeEvent) => onDateChange(nativeEvent.target.value)}
+              className="j12-field h-11 w-full px-3"
+            />
+          </RescheduleField>
+          <RescheduleField label="Inicio">
+            <input
+              type="time"
+              value={startTime}
+              onChange={(nativeEvent) => onStartTimeChange(nativeEvent.target.value)}
+              className="j12-field h-11 w-full px-3"
+            />
+          </RescheduleField>
+          <RescheduleField label="Fim">
+            <input
+              type="time"
+              value={endTime}
+              onChange={(nativeEvent) => onEndTimeChange(nativeEvent.target.value)}
+              className="j12-field h-11 w-full px-3"
+            />
+          </RescheduleField>
+          <RescheduleField label="Professor">
+            <input
+              value={professorName}
+              onChange={(nativeEvent) => onProfessorNameChange(nativeEvent.target.value)}
+              className="j12-field h-11 w-full px-3"
+              placeholder="Professor"
+            />
+          </RescheduleField>
+          <RescheduleField label="Quadra">
+            <input
+              value={courtName}
+              onChange={(nativeEvent) => onCourtNameChange(nativeEvent.target.value)}
+              className="j12-field h-11 w-full px-3"
+              placeholder="Quadra"
+            />
+          </RescheduleField>
+          <RescheduleField label="Motivo">
+            <input
+              value={reason}
+              onChange={(nativeEvent) => onReasonChange(nativeEvent.target.value)}
+              className="j12-field h-11 w-full px-3"
+              placeholder="Motivo"
+            />
+          </RescheduleField>
+        </div>
+
+        <div className={cn("mt-5 rounded-2xl border p-4", readConflictTone(conflicts))}>
+          <div className="flex items-start gap-3">
+            {isValidating ? (
+              <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-primary" />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-5 w-5" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-white">
+                {isValidating
+                  ? "Validando conflitos"
+                  : conflicts.length > 0
+                    ? "Conflitos encontrados"
+                    : "Sem conflito critico"}
+              </p>
+              <div className="mt-2 grid gap-2 text-sm">
+                {conflicts.length === 0 ? (
+                  <p>Nenhum bloqueio retornado para este periodo.</p>
+                ) : (
+                  conflicts.map((conflict, index) => (
+                    <p key={`${conflict.code || "conflict"}-${index}`}>
+                      {conflict.blocking === false ? "Aviso" : "Critico"}:{" "}
+                      {conflict.message || conflict.code || "Conflito sem mensagem."}
+                    </p>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={confirmDisabled}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Confirmar
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function RescheduleField({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold text-slate-300">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 function MetricCard({
   detail,
   icon: Icon,
@@ -481,7 +918,9 @@ function MetricCard({
           <p className="mt-3 text-3xl font-black text-white">{value}</p>
           <p className="mt-2 text-sm leading-6 text-slate-400">{detail}</p>
         </div>
-        <span className={cn("flex h-11 w-11 items-center justify-center rounded-2xl border", toneClass)}>
+        <span
+          className={cn("flex h-11 w-11 items-center justify-center rounded-2xl border", toneClass)}
+        >
           <Icon className="h-5 w-5" />
         </span>
       </div>

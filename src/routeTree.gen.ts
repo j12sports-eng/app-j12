@@ -57,6 +57,7 @@ import { Route as PortalAlunoAvaliacoesRouteImport } from './routes/portal-aluno
 import { Route as PortalAlunoAgendaRouteImport } from './routes/portal-aluno/agenda'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
 import { Route as AdminEnrollmentsRouteImport } from './routes/admin/enrollments'
+import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 
 const TurmasRoute = TurmasRouteImport.update({
@@ -307,6 +308,11 @@ const AdminEnrollmentsRoute = AdminEnrollmentsRouteImport.update({
   path: '/admin/enrollments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminAgendaRoute = AdminAgendaRouteImport.update({
+  id: '/admin/agenda',
+  path: '/admin/agenda',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardAlunoIdRoute = DashboardAlunoIdRouteImport.update({
   id: '/aluno/$id',
   path: '/aluno/$id',
@@ -335,6 +341,7 @@ export interface FileRoutesByFullPath {
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/agenda': typeof AdminAgendaRoute
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
@@ -386,6 +393,7 @@ export interface FileRoutesByTo {
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/agenda': typeof AdminAgendaRoute
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
@@ -438,6 +446,7 @@ export interface FileRoutesById {
   '/professores': typeof ProfessoresRoute
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
+  '/admin/agenda': typeof AdminAgendaRoute
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
@@ -491,6 +500,7 @@ export interface FileRouteTypes {
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/agenda'
     | '/admin/enrollments'
     | '/admin/financeiro'
     | '/portal-aluno/agenda'
@@ -542,6 +552,7 @@ export interface FileRouteTypes {
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/agenda'
     | '/admin/enrollments'
     | '/admin/financeiro'
     | '/portal-aluno/agenda'
@@ -593,6 +604,7 @@ export interface FileRouteTypes {
     | '/professores'
     | '/trocar-senha'
     | '/turmas'
+    | '/admin/agenda'
     | '/admin/enrollments'
     | '/admin/financeiro'
     | '/portal-aluno/agenda'
@@ -645,6 +657,7 @@ export interface RootRouteChildren {
   ProfessoresRoute: typeof ProfessoresRoute
   TrocarSenhaRoute: typeof TrocarSenhaRoute
   TurmasRoute: typeof TurmasRoute
+  AdminAgendaRoute: typeof AdminAgendaRoute
   AdminEnrollmentsRoute: typeof AdminEnrollmentsRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
   PortalAlunoAgendaRoute: typeof PortalAlunoAgendaRoute
@@ -1012,6 +1025,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEnrollmentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/agenda': {
+      id: '/admin/agenda'
+      path: '/admin/agenda'
+      fullPath: '/admin/agenda'
+      preLoaderRoute: typeof AdminAgendaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/aluno/$id': {
       id: '/dashboard/aluno/$id'
       path: '/aluno/$id'
@@ -1056,6 +1076,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfessoresRoute: ProfessoresRoute,
   TrocarSenhaRoute: TrocarSenhaRoute,
   TurmasRoute: TurmasRoute,
+  AdminAgendaRoute: AdminAgendaRoute,
   AdminEnrollmentsRoute: AdminEnrollmentsRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
   PortalAlunoAgendaRoute: PortalAlunoAgendaRoute,

@@ -23,6 +23,14 @@ const AGENDA_INITIAL_PERSISTENCE_REPOSITORY_UNAVAILABLE_CODE =
   "AGENDA_INITIAL_PERSISTENCE_REPOSITORY_UNAVAILABLE";
 const AGENDA_REPOSITORY_READ_ERROR_CODE = "AGENDA_REPOSITORY_READ_ERROR";
 const ACTIVE_ENROLLMENT_STATUS = "ACTIVE";
+const {
+  AGENDA_CONFLICT_VALIDATION_FAILED_CODE,
+  AgendaConflictValidationService,
+  normalizeAgendaEvent,
+} = require("./agenda-conflict-validation.service.js");
+const {
+  AgendaRecurrenceService,
+} = require("./agenda-recurrence.service.js");
 
 /**
  * Application service for the Agenda backend domain.
@@ -408,6 +416,155 @@ class AgendaApplicationService {
         canCreateAgenda: false,
       });
     }
+  }
+
+  /**
+   * Centralized conflict validation entrypoint for Agenda create/edit/move flows.
+   *
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async validateAgendaEvent(input = {}) {
+    return this.createConflictValidationService().validateAgendaEvent(input);
+  }
+
+  /**
+   * Validates and, when possible, persists a reschedule of a canonical Agenda item.
+   *
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async rescheduleAgendaEvent(input = {}) {
+    const repository = this.getAgendaRepository();
+    const eventId = nullableText(
+      input.eventId || input.agendaItemId || input.scheduleId || input.calendarEventId || input.id,
+      191,
+    );
+    const run = async (agendaRepository = repository) => {
+      const validator = new AgendaConflictValidationService({
+        agendaRepository,
+        classFacade: this.classFacade,
+      });
+      const validation = await validator.validateAgendaEvent({
+        ...input,
+        action: "RESCHEDULE",
+        eventId,
+        lockForUpdate: true,
+      });
+
+      if (!validation.canConfirm) {
+        throw controlledError(
+          "Agenda event cannot be confirmed because critical conflicts were found.",
+          AGENDA_CONFLICT_VALIDATION_FAILED_CODE,
+          { validation },
+        );
+      }
+
+      const normalizedEvent = normalizeAgendaEvent({
+        ...input,
+        action: "RESCHEDULE",
+        eventId,
+      });
+      const updatedSchedule =
+        normalizedEvent.agendaItemId &&
+        typeof agendaRepository.updateAgendaItemSchedule === "function"
+          ? await agendaRepository.updateAgendaItemSchedule({
+              agendaItemId: normalizedEvent.agendaItemId,
+              courtId: normalizedEvent.courtId,
+              courtName: normalizedEvent.courtName,
+              date: normalizedEvent.date,
+              dayOfWeek: normalizedEvent.dayOfWeek,
+              endTime: normalizedEvent.endTime,
+              professorId: normalizedEvent.professorId,
+              professorName: normalizedEvent.professorName,
+              reason: nullableText(input.reason, 500),
+              startTime: normalizedEvent.startTime,
+            })
+          : null;
+      const schedule = updatedSchedule || buildRescheduledScheduleFromInput(input, normalizedEvent);
+
+      return {
+        agendaConflictValidation: validation,
+        agendaDragDropRescheduleEnabled: true,
+        conflictDetected: validation.conflictDetected,
+        conflicts: validation.conflicts,
+        message: updatedSchedule
+          ? "Evento da Agenda reagendado com validacao de conflitos."
+          : "Reagendamento validado; evento derivado nao possui linha persistida para atualizar.",
+        noBackendSchemaChange: !updatedSchedule,
+        noFinancialSideEffects: true,
+        noNotificationSideEffects: true,
+        schedule,
+        updatedSchedule: schedule,
+        warnings: validation.warnings,
+      };
+    };
+
+    if (typeof repository.withAgendaTransaction === "function") {
+      return repository.withAgendaTransaction(run);
+    }
+
+    return run(repository);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async previewRecurrence(input = {}) {
+    return this.createRecurrenceService().previewRecurrence(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async createRecurrenceSeries(input = {}) {
+    return this.createRecurrenceService().createRecurrenceSeries(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async getRecurrenceSeries(input = {}) {
+    return this.createRecurrenceService().getRecurrenceSeries(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async updateRecurrence(input = {}) {
+    return this.createRecurrenceService().updateRecurrence(input);
+  }
+
+  /**
+   * @param {Record<string, unknown>} [input]
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async cancelRecurrence(input = {}) {
+    return this.createRecurrenceService().cancelRecurrence(input);
+  }
+
+  /**
+   * @returns {AgendaConflictValidationService}
+   */
+  createConflictValidationService() {
+    return new AgendaConflictValidationService({
+      agendaRepository: this.agendaRepository,
+      classFacade: this.classFacade,
+    });
+  }
+
+  /**
+   * @returns {AgendaRecurrenceService}
+   */
+  createRecurrenceService() {
+    return new AgendaRecurrenceService({
+      agendaRepository: this.agendaRepository,
+      classFacade: this.classFacade,
+    });
   }
 
   /**
@@ -875,6 +1032,37 @@ function buildInitialAgendaPersistenceResult(input = {}) {
 
 /**
  * @param {Record<string, unknown>} input
+ * @param {Record<string, unknown>} normalizedEvent
+ * @returns {Record<string, unknown>}
+ */
+function buildRescheduledScheduleFromInput(input = {}, normalizedEvent = {}) {
+  return {
+    agendaItemId: normalizedEvent.agendaItemId || input.agendaItemId || null,
+    classId: normalizedEvent.classId || input.classId || null,
+    courtId: normalizedEvent.courtId || input.courtId || input.quadraId || null,
+    courtName: normalizedEvent.courtName || input.courtName || input.quadraName || null,
+    endTime: normalizedEvent.endTime || input.toEndTime || input.endTime || null,
+    enrollmentId: normalizedEvent.enrollmentId || input.enrollmentId || null,
+    id: normalizedEvent.agendaItemId || input.scheduleId || input.calendarEventId || null,
+    noAttendanceCreated: true,
+    noFinancialSideEffects: true,
+    noNotificationSideEffects: true,
+    persistedAgenda: Boolean(normalizedEvent.agendaItemId),
+    professorId: normalizedEvent.professorId || input.professorId || null,
+    professorName: normalizedEvent.professorName || input.professorName || null,
+    quadraId: normalizedEvent.courtId || input.quadraId || input.courtId || null,
+    quadraName: normalizedEvent.courtName || input.quadraName || input.courtName || null,
+    scheduleDate: normalizedEvent.date || input.toDate || input.date || null,
+    scheduleStatus: "ACTIVE",
+    startTime: normalizedEvent.startTime || input.toStartTime || input.startTime || null,
+    status: "ACTIVE",
+    studentPersonId: normalizedEvent.studentPersonId || input.studentPersonId || null,
+    studentProfileId: normalizedEvent.studentProfileId || input.studentProfileId || null,
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} input
  * @returns {{ studentPersonId: string|null, studentProfileId: string|null, valid: boolean }}
  */
 function normalizeStudentScope(input = {}) {
@@ -1104,9 +1292,10 @@ function nullableText(value, max = 65535) {
  * @param {string} code
  * @returns {Error}
  */
-function controlledError(message, code) {
+function controlledError(message, code, details = {}) {
   const error = new Error(message);
   error.code = code;
+  error.details = details;
   return error;
 }
 
@@ -1127,6 +1316,7 @@ module.exports = {
   AGENDA_INITIAL_IDEMPOTENCY_GAP_CODE,
   AGENDA_INITIAL_PERSISTENCE_ERROR_CODE,
   AGENDA_INITIAL_PERSISTENCE_REPOSITORY_UNAVAILABLE_CODE,
+  AGENDA_CONFLICT_VALIDATION_FAILED_CODE,
   AGENDA_REPOSITORY_REQUIRED_CODE,
   AgendaApplicationService,
   buildAgendaSummary,
