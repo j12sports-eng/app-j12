@@ -1,9 +1,5 @@
-/**
- * Domain boundary for Quadras.
- *
- * This entrypoint intentionally exposes no business logic. It exists only to
- * reserve the future domain boundary without changing current runtime imports.
- */
 module.exports = Object.freeze({
-  domain: "quadras",
+  ...require("./application/services/court-rental.service.js"),
+  ...require("./presentation/controllers/court-rental.controller.js"),
+  ...require("./presentation/routes/index.js"),
 });

@@ -70,8 +70,13 @@ function DashboardContent() {
   }
 
   const percentual = Number(data.presenca?.percentual || 0);
-  const avisosNovos = notificacoes.filter((item) => !item.lida).length;
-  const avisosRecentes = notificacoes.slice(0, 3);
+  const proximasAulas = data.proximasAulas || [];
+  const proximosEventos = data.proximosEventos || [];
+  const avisosBase = data.avisos?.length ? data.avisos : notificacoes;
+  const avisosNovos = Number(
+    data.indicadores?.avisosNaoLidos ?? avisosBase.filter((item) => !item.lida).length,
+  );
+  const avisosRecentes = avisosBase.slice(0, 3);
 
   return (
     <PortalAlunoLayout>
@@ -121,7 +126,7 @@ function DashboardContent() {
             <Target className="mb-4 h-5 w-5 text-primary" />
             <p className="text-sm text-slate-400">Proximos treinos</p>
             <p className="mt-2 text-lg font-bold text-white">
-              {data.plano?.nome ? "Rotina ativa no plano" : "A definir"}
+              {proximasAulas[0]?.startTime || proximasAulas[0]?.dayOfWeek || "A definir"}
             </p>
           </div>
           <div className="j12-surface p-5">
@@ -134,7 +139,9 @@ function DashboardContent() {
           <div className="j12-surface p-5">
             <CalendarDays className="mb-4 h-5 w-5 text-primary" />
             <p className="text-sm text-slate-400">Proximos eventos</p>
-            <p className="mt-2 text-lg font-bold text-white">Sem eventos publicados</p>
+            <p className="mt-2 text-lg font-bold text-white">
+              {proximosEventos.length ? `${proximosEventos.length} publicado(s)` : "Sem eventos publicados"}
+            </p>
           </div>
         </section>
 
@@ -165,35 +172,65 @@ function DashboardContent() {
 
           <div className="j12-surface p-5">
             <div className="mb-4 flex items-center gap-2 text-sm font-bold text-white">
-              <Bell className="h-4 w-4 text-primary" />
-              Comunicados recentes
+              <CalendarDays className="h-4 w-4 text-primary" />
+              Proximas aulas
             </div>
             <div className="space-y-3">
-              {avisosRecentes.length === 0 ? (
+              {proximasAulas.length === 0 ? (
                 <div className="j12-empty-state p-5 text-sm text-slate-300">
-                  Nenhum comunicado recente.
+                  Nenhuma aula publicada.
                 </div>
               ) : (
-                avisosRecentes.map((item) => (
+                proximasAulas.slice(0, 3).map((item) => (
                   <article
                     key={item.id}
                     className="rounded-2xl border border-white/10 bg-white/5 p-4"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="truncate font-bold text-white">{item.titulo}</h3>
-                        <p className="mt-1 line-clamp-2 text-sm text-slate-400">{item.mensagem}</p>
-                      </div>
-                      {!item.lida && (
-                        <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-bold text-primary">
-                          Novo
-                        </span>
-                      )}
-                    </div>
+                    <h3 className="truncate font-bold text-white">
+                      {item.className || item.turmaName || "Aula J12"}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {[item.scheduleDate || item.dayOfWeek, item.startTime, item.unitName]
+                        .filter(Boolean)
+                        .join(" | ")}
+                    </p>
                   </article>
                 ))
               )}
             </div>
+          </div>
+        </section>
+
+        <section className="j12-surface p-5">
+          <div className="mb-4 flex items-center gap-2 text-sm font-bold text-white">
+            <Bell className="h-4 w-4 text-primary" />
+            Comunicados recentes
+          </div>
+          <div className="space-y-3">
+            {avisosRecentes.length === 0 ? (
+              <div className="j12-empty-state p-5 text-sm text-slate-300">
+                Nenhum comunicado recente.
+              </div>
+            ) : (
+              avisosRecentes.map((item) => (
+                <article
+                  key={item.id}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-bold text-white">{item.titulo}</h3>
+                      <p className="mt-1 line-clamp-2 text-sm text-slate-400">{item.mensagem}</p>
+                    </div>
+                    {!item.lida && (
+                      <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-bold text-primary">
+                        Novo
+                      </span>
+                    )}
+                  </div>
+                </article>
+              ))
+            )}
           </div>
         </section>
       </div>

@@ -726,6 +726,64 @@ test("AgendaApplicationService creates initial agenda through repository without
   ]);
 });
 
+test("AgendaApplicationService keeps notifications disabled when recipients are not explicit", async () => {
+  let notificationCalls = 0;
+  const service = new AgendaApplicationService({
+    agendaRepository: createRescheduleRepository(),
+    notificationService: {
+      async enqueueAgendaNotification() {
+        notificationCalls += 1;
+        throw new Error("notification must not be called");
+      },
+    },
+  });
+
+  const result = await service.rescheduleAgendaEvent({
+    agendaItemId: "agenda-1",
+    classId: 7,
+    dayOfWeek: 1,
+    requestedBy: "admin-1",
+    toDate: "2026-07-13",
+    toEndTime: "09:00",
+    toStartTime: "08:00",
+  });
+
+  assert.equal(result.noNotificationSideEffects, true);
+  assert.equal(result.notificationSideEffects, undefined);
+  assert.equal(notificationCalls, 0);
+});
+
+test("AgendaApplicationService enqueues notifications only for explicit recipients", async () => {
+  const notificationPayloads = [];
+  const service = new AgendaApplicationService({
+    agendaRepository: createRescheduleRepository(),
+    notificationService: {
+      async enqueueAgendaNotification(payload) {
+        notificationPayloads.push(payload);
+        return { queuedCount: 1 };
+      },
+    },
+  });
+
+  const result = await service.rescheduleAgendaEvent({
+    agendaItemId: "agenda-1",
+    classId: 7,
+    notificationChannels: ["IN_APP"],
+    notificationRecipients: [{ id: "student-1", type: "STUDENT" }],
+    requestedBy: "admin-1",
+    toDate: "2026-07-13",
+    toEndTime: "09:00",
+    toStartTime: "08:00",
+  });
+
+  assert.equal(result.noNotificationSideEffects, false);
+  assert.equal(result.notificationSideEffects, true);
+  assert.equal(result.agendaNotification.queuedCount, 1);
+  assert.equal(notificationPayloads.length, 1);
+  assert.equal(notificationPayloads[0].agendaItemId, "agenda-1");
+  assert.deepEqual(notificationPayloads[0].recipients, [{ id: "student-1", type: "STUDENT" }]);
+});
+
 test("AgendaApplicationService reuses duplicate initial agenda through repository", async () => {
   const service = new AgendaApplicationService({
     agendaRepository: {
@@ -791,3 +849,32 @@ test("AgendaApplicationService reuses duplicate initial agenda through repositor
   assert.equal(result.duplicateAgendaReusedOrBlocked, true);
   assert.equal(result.noAttendanceCreated, true);
 });
+
+function createRescheduleRepository() {
+  return {
+    async findAgendaAdministrativeBlocks() {
+      return [];
+    },
+    async findAgendaConflictCandidates() {
+      return [];
+    },
+    async findSchedulesByClass() {
+      return [];
+    },
+    async findSchedulesByEnrollment() {
+      return [];
+    },
+    async findSchedulesByStudent() {
+      return [];
+    },
+    async updateAgendaItemSchedule(input) {
+      return {
+        agendaItemId: input.agendaItemId,
+        classId: 7,
+        dayOfWeek: input.dayOfWeek,
+        endTime: input.endTime,
+        startTime: input.startTime,
+      };
+    },
+  };
+}

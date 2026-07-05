@@ -25,6 +25,7 @@ const { ensureAuthSeedData } = require("../auth.js");
 
 const authRoutes = require("../routes/auth.js");
 const alunoMeRoutes = require("../routes/aluno-me.js");
+const professorMeRoutes = require("../routes/professor-me.js");
 const dashboardRoutes = require("./routes/dashboard.routes.js");
 const financeiroRoutes = require("../routes/financeiro.js");
 
@@ -55,6 +56,19 @@ const {
   createAgendaAdminRouter,
   AGENDA_ADMIN_ROUTE_BASE_PATH,
 } = require("./domains/agenda/presentation/routes/index.js");
+const {
+  createCourtRentalRouter,
+  COURT_RENTAL_ROUTE_BASE_PATH,
+} = require("./domains/quadras/presentation/routes/index.js");
+const {
+  createChampionshipAdminRouter,
+  CHAMPIONSHIP_ADMIN_ROUTE_BASE_PATH,
+} = require("./domains/campeonatos/presentation/routes/index.js");
+const {
+  createNotificationRouter,
+  NOTIFICATION_LEGACY_ROUTE_BASE_PATH,
+  NOTIFICATION_ROUTE_BASE_PATH,
+} = require("./domains/notificacoes/presentation/routes/index.js");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
@@ -67,6 +81,9 @@ const enrollmentAdminRoutes = createEnrollmentAdminRouter();
 const enrollmentPublicRoutes = createEnrollmentPublicRouter();
 const financialAdminRoutes = createFinancialAdminRouter();
 const agendaAdminRoutes = createAgendaAdminRouter();
+const courtRentalRoutes = createCourtRentalRouter();
+const championshipAdminRoutes = createChampionshipAdminRouter();
+const notificationRoutes = createNotificationRouter();
 
 global.io = null;
 
@@ -223,8 +240,7 @@ function getCorsRejectionReason(origin) {
     }
 
     const sameHost = allowedUrl.hostname === originUrl.hostname;
-    const sameHostIgnoringWww =
-      allowedUrl.hostname.replace(/^www\./, "") === originHostWithoutWww;
+    const sameHostIgnoringWww = allowedUrl.hostname.replace(/^www\./, "") === originHostWithoutWww;
 
     if (sameHost && allowedUrl.protocol !== originUrl.protocol) {
       return `protocol_mismatch_allowed_${allowedUrl.protocol.replace(":", "")}`;
@@ -470,14 +486,38 @@ app.get("/api/test", (_req, res) => {
 app.use(interRoutes);
 mount(["/auth", "/api/auth"], authRoutes);
 mount(["/aluno/me", "/api/aluno/me"], alunoMeRoutes);
+mount(["/professor/me", "/api/professor/me"], professorMeRoutes);
 mount(["/aluno-completo", "/api/aluno-completo"], alunoCompletoRoutes);
 mount(["/alunos", "/api/alunos"], alunosRoutes);
 mount(["/dashboard", "/api/dashboard"], dashboardRoutes);
 mount(["/financeiro", "/api/financeiro"], financeiroRoutes);
-mount([ENROLLMENT_ADMIN_ROUTE_BASE_PATH, `/api${ENROLLMENT_ADMIN_ROUTE_BASE_PATH}`], enrollmentAdminRoutes);
-mount([ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`], enrollmentPublicRoutes);
-mount([FINANCIAL_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_ADMIN_ROUTE_BASE_PATH}`], financialAdminRoutes);
+mount(
+  [ENROLLMENT_ADMIN_ROUTE_BASE_PATH, `/api${ENROLLMENT_ADMIN_ROUTE_BASE_PATH}`],
+  enrollmentAdminRoutes,
+);
+mount(
+  [ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`],
+  enrollmentPublicRoutes,
+);
+mount(
+  [FINANCIAL_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_ADMIN_ROUTE_BASE_PATH}`],
+  financialAdminRoutes,
+);
 mount([AGENDA_ADMIN_ROUTE_BASE_PATH, `/api${AGENDA_ADMIN_ROUTE_BASE_PATH}`], agendaAdminRoutes);
+mount([COURT_RENTAL_ROUTE_BASE_PATH, `/api${COURT_RENTAL_ROUTE_BASE_PATH}`], courtRentalRoutes);
+mount(
+  [CHAMPIONSHIP_ADMIN_ROUTE_BASE_PATH, `/api${CHAMPIONSHIP_ADMIN_ROUTE_BASE_PATH}`],
+  championshipAdminRoutes,
+);
+mount(
+  [
+    NOTIFICATION_ROUTE_BASE_PATH,
+    `/api${NOTIFICATION_ROUTE_BASE_PATH}`,
+    NOTIFICATION_LEGACY_ROUTE_BASE_PATH,
+    `/api${NOTIFICATION_LEGACY_ROUTE_BASE_PATH}`,
+  ],
+  notificationRoutes,
+);
 mount(["/modalidades", "/api/modalidades"], modalidadesRoutes);
 mount(["/planos", "/api/planos"], planosRoutes);
 mount(["/presencas", "/api/presencas"], presencasRoutes);

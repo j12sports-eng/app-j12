@@ -13,9 +13,7 @@ function normalizeUpper(value: unknown) {
 function isInactiveClass(schedule: AgendaSchedule) {
   const status = normalizeUpper(schedule.classStatus || schedule.status || schedule.scheduleStatus);
 
-  return ["INACTIVE", "INATIVA", "INATIVO", "CANCELLED", "CANCELADA", "CANCELADO"].includes(
-    status,
-  );
+  return ["INACTIVE", "INATIVA", "INATIVO", "CANCELLED", "CANCELADA", "CANCELADO"].includes(status);
 }
 
 function hasRegisteredAttendance(schedule: AgendaSchedule) {
@@ -23,11 +21,11 @@ function hasRegisteredAttendance(schedule: AgendaSchedule) {
 
   return Boolean(
     schedule.present === true ||
-      schedule.present === false ||
-      schedule.attendanceRegisteredAt ||
-      ["PRESENT", "PRESENTE", "ABSENT", "FALTA", "JUSTIFIED", "JUSTIFICADA"].includes(
-        attendanceStatus,
-      ),
+    schedule.present === false ||
+    schedule.attendanceRegisteredAt ||
+    ["PRESENT", "PRESENTE", "ABSENT", "FALTA", "JUSTIFIED", "JUSTIFICADA"].includes(
+      attendanceStatus,
+    ),
   );
 }
 

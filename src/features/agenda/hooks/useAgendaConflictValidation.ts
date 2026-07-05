@@ -74,9 +74,11 @@ export function useAgendaConflictValidation({
 
   return useQuery({
     enabled: Boolean(enabled && payload && hasRequiredValidationFields(payload)),
+    gcTime: 60_000,
     queryFn: () => validateAgendaEvent(payload as AgendaConflictValidationPayload),
     queryKey: ["agenda", "conflict-validation", keyPayload],
+    refetchOnWindowFocus: false,
     retry: false,
-    staleTime: 0,
+    staleTime: 5_000,
   });
 }

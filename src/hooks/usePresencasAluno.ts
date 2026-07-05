@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 
@@ -89,38 +89,20 @@ function normalizePresencas(payload: PresencasApiResponse): PresencasPayload {
 }
 
 export function usePresencasAluno() {
-  const [dados, setDados] = useState<PresencasPayload | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    async function carregar() {
-      try {
-        setLoading(true);
-        setErro("");
-
-        const response = await api.get<PresencasApiResponse>("/aluno/me/presencas");
-
-        setDados(normalizePresencas(response));
-      } catch (error: any) {
-        console.error(error);
-
-        setErro(error?.message || "Erro ao carregar presencas");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    carregar();
-  }, []);
+  const query = useQuery({
+    enabled: typeof window !== "undefined",
+    queryFn: async () => normalizePresencas(await api.get<PresencasApiResponse>("/aluno/me/presencas")),
+    queryKey: ["portal-aluno", "presencas"],
+    retry: 1,
+    staleTime: 30_000,
+  });
+  const dados = query.data ?? null;
 
   return {
     dados,
     resumo: dados?.resumo,
     presencas: dados?.presencas || [],
-    loading,
-    erro,
+    loading: query.isLoading,
+    erro: query.error instanceof Error ? query.error.message : "",
   };
 }

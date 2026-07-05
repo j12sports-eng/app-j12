@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 type Contrato = {
@@ -12,33 +12,17 @@ type Contrato = {
 };
 
 export function useContratoAluno() {
-  const [contrato, setContrato] = useState<Contrato | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    async function carregar() {
-      try {
-        const response = await api.get<Contrato>("/aluno/me/contrato");
-
-        setContrato(response);
-      } catch (err) {
-        console.error(err);
-
-        setErro("Erro ao carregar contrato");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    carregar();
-  }, []);
+  const query = useQuery({
+    enabled: typeof window !== "undefined",
+    queryFn: () => api.get<Contrato | null>("/aluno/me/contrato"),
+    queryKey: ["portal-aluno", "contrato"],
+    retry: 1,
+    staleTime: 60_000,
+  });
 
   return {
-    contrato,
-    loading,
-    erro,
+    contrato: query.data ?? null,
+    loading: query.isLoading,
+    erro: query.error instanceof Error ? query.error.message : "",
   };
 }

@@ -6,16 +6,14 @@ const AGENDA_ENROLLMENT_FACADE_READER_UNAVAILABLE_CODE =
 const AGENDA_ENROLLMENT_FACADE_ERROR_CODE = "AGENDA_ENROLLMENT_FACADE_ERROR";
 const AGENDA_ENROLLMENT_NOT_FOUND_CODE = "AGENDA_ENROLLMENT_NOT_FOUND";
 const AGENDA_ENROLLMENT_NOT_ACTIVE_CODE = "AGENDA_ENROLLMENT_NOT_ACTIVE";
-const AGENDA_ENROLLMENT_STUDENT_SCOPE_MISSING_CODE =
-  "AGENDA_ENROLLMENT_STUDENT_SCOPE_MISSING";
+const AGENDA_ENROLLMENT_STUDENT_SCOPE_MISSING_CODE = "AGENDA_ENROLLMENT_STUDENT_SCOPE_MISSING";
 const AGENDA_ENROLLMENT_SCHEDULES_NOT_FOUND_CODE = "AGENDA_ENROLLMENT_SCHEDULES_NOT_FOUND";
 const AGENDA_CLASS_FACADE_UNAVAILABLE_CODE = "AGENDA_CLASS_FACADE_UNAVAILABLE";
 const AGENDA_CLASS_FACADE_READER_UNAVAILABLE_CODE = "AGENDA_CLASS_FACADE_READER_UNAVAILABLE";
 const AGENDA_CLASS_FACADE_ERROR_CODE = "AGENDA_CLASS_FACADE_ERROR";
 const AGENDA_CLASS_NOT_FOUND_OR_INACTIVE_CODE = "AGENDA_CLASS_NOT_FOUND_OR_INACTIVE";
 const AGENDA_INITIAL_CLASS_LINK_REQUIRED_CODE = "AGENDA_INITIAL_CLASS_LINK_REQUIRED";
-const AGENDA_INITIAL_CLASS_SCHEDULE_NOT_TRUSTED_CODE =
-  "AGENDA_INITIAL_CLASS_SCHEDULE_NOT_TRUSTED";
+const AGENDA_INITIAL_CLASS_SCHEDULE_NOT_TRUSTED_CODE = "AGENDA_INITIAL_CLASS_SCHEDULE_NOT_TRUSTED";
 const AGENDA_INITIAL_CREATION_SCHEMA_GAP_CODE = "AGENDA_INITIAL_CREATION_SCHEMA_GAP";
 const AGENDA_INITIAL_IDEMPOTENCY_GAP_CODE = "AGENDA_INITIAL_IDEMPOTENCY_GAP";
 const AGENDA_INITIAL_PERSISTENCE_ERROR_CODE = "AGENDA_INITIAL_PERSISTENCE_ERROR";
@@ -28,16 +26,18 @@ const {
   AgendaConflictValidationService,
   normalizeAgendaEvent,
 } = require("./agenda-conflict-validation.service.js");
+const { AgendaRecurrenceService } = require("./agenda-recurrence.service.js");
 const {
-  AgendaRecurrenceService,
-} = require("./agenda-recurrence.service.js");
+  AgendaNotificationEventType,
+} = require("../../../notificacoes/application/contracts/agenda-notification.contract.js");
 
 /**
  * Application service for the Agenda backend domain.
  *
  * The service exposes schedule discovery and the controlled initial planned
  * Agenda persistence for ACTIVE enrollments. It never creates attendance,
- * financial entries, notifications or public API behavior.
+ * financial entries or public API behavior. Notification side effects are
+ * opt-in and require explicit recipients in the command payload.
  */
 class AgendaApplicationService {
   /**
@@ -45,11 +45,18 @@ class AgendaApplicationService {
    * @param {import("../repositories/agenda.repository.js").AgendaRepository} [options.agendaRepository]
    * @param {Record<string, unknown>} [options.enrollmentFacade]
    * @param {Record<string, unknown>} [options.classFacade]
+   * @param {Record<string, Function>|null} [options.notificationService]
    */
-  constructor({ agendaRepository = null, classFacade = null, enrollmentFacade = null } = {}) {
+  constructor({
+    agendaRepository = null,
+    classFacade = null,
+    enrollmentFacade = null,
+    notificationService = null,
+  } = {}) {
     this.agendaRepository = agendaRepository;
     this.classFacade = classFacade;
     this.enrollmentFacade = enrollmentFacade;
+    this.notificationService = notificationService;
   }
 
   /**
@@ -242,10 +249,7 @@ class AgendaApplicationService {
     const schedules = normalizeScheduleList(schedulesResult.schedules);
     const classIds = readClassIdsFromSchedules(schedules);
     const classValidation = await this.validateClassesWithFacade(classIds);
-    const blockers = [
-      ...schedulesResult.blockers,
-      ...classValidation.blockers,
-    ];
+    const blockers = [...schedulesResult.blockers, ...classValidation.blockers];
 
     if (schedules.length === 0) {
       blockers.push(
@@ -398,10 +402,16 @@ class AgendaApplicationService {
         }),
       );
 
-      return buildInitialAgendaPersistenceResult({
+      const result = buildInitialAgendaPersistenceResult({
         ...preparation,
         ...persistence,
       });
+
+      return this.notifyAgendaEventSafely(
+        AgendaNotificationEventType.AGENDA_EVENT_CREATED,
+        input,
+        result,
+      );
     } catch (error) {
       return buildInitialAgendaPreparation({
         ...preparation,
@@ -500,11 +510,16 @@ class AgendaApplicationService {
       };
     };
 
-    if (typeof repository.withAgendaTransaction === "function") {
-      return repository.withAgendaTransaction(run);
-    }
+    const result =
+      typeof repository.withAgendaTransaction === "function"
+        ? await repository.withAgendaTransaction(run)
+        : await run(repository);
 
-    return run(repository);
+    return this.notifyAgendaEventSafely(
+      resolveRescheduleNotificationEventType(input),
+      input,
+      result,
+    );
   }
 
   /**
@@ -520,7 +535,12 @@ class AgendaApplicationService {
    * @returns {Promise<Record<string, unknown>>}
    */
   async createRecurrenceSeries(input = {}) {
-    return this.createRecurrenceService().createRecurrenceSeries(input);
+    const result = await this.createRecurrenceService().createRecurrenceSeries(input);
+    return this.notifyAgendaEventSafely(
+      AgendaNotificationEventType.AGENDA_RECURRENCE_CHANGED,
+      input,
+      result,
+    );
   }
 
   /**
@@ -536,7 +556,12 @@ class AgendaApplicationService {
    * @returns {Promise<Record<string, unknown>>}
    */
   async updateRecurrence(input = {}) {
-    return this.createRecurrenceService().updateRecurrence(input);
+    const result = await this.createRecurrenceService().updateRecurrence(input);
+    return this.notifyAgendaEventSafely(
+      AgendaNotificationEventType.AGENDA_RECURRENCE_CHANGED,
+      input,
+      result,
+    );
   }
 
   /**
@@ -544,7 +569,77 @@ class AgendaApplicationService {
    * @returns {Promise<Record<string, unknown>>}
    */
   async cancelRecurrence(input = {}) {
-    return this.createRecurrenceService().cancelRecurrence(input);
+    const result = await this.createRecurrenceService().cancelRecurrence(input);
+    return this.notifyAgendaEventSafely(
+      AgendaNotificationEventType.AGENDA_RECURRENCE_CHANGED,
+      input,
+      result,
+    );
+  }
+
+  /**
+   * @param {string} eventType
+   * @param {Record<string, unknown>} input
+   * @param {Record<string, unknown>} result
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async notifyAgendaEventSafely(eventType, input = {}, result = {}) {
+    const notificationService = this.notificationService;
+    const recipients = readNotificationRecipients(input);
+
+    if (
+      recipients.length === 0 ||
+      !notificationService ||
+      typeof notificationService.enqueueAgendaNotification !== "function"
+    ) {
+      return result;
+    }
+
+    const agendaItemId = resolveAgendaNotificationItemId(input, result);
+    const recurrenceSeriesId = resolveAgendaNotificationSeriesId(input, result);
+
+    if (!agendaItemId && !recurrenceSeriesId) {
+      return {
+        ...result,
+        agendaNotificationSkipped: {
+          reason: "MISSING_AGENDA_REFERENCE",
+        },
+      };
+    }
+
+    try {
+      const agendaNotification = await notificationService.enqueueAgendaNotification({
+        agendaItemId,
+        actorId: input.actorId || input.requestedBy || input.createdBy,
+        channels: readNotificationChannels(input),
+        classId:
+          input.classId || result.classId || result.schedule?.classId || result.series?.classId,
+        eventType: input.notificationEventType || eventType,
+        idempotencyKey: input.notificationIdempotencyKey,
+        message: input.notificationMessage,
+        metadata: buildNotificationMetadata(input, result),
+        notificationType: input.notificationType || input.notificationEventType || eventType,
+        occurrenceKey: input.occurrenceKey || result.occurrence?.key,
+        recipients,
+        recurrenceSeriesId,
+        title: input.notificationTitle,
+      });
+
+      return {
+        ...result,
+        agendaNotification,
+        noNotificationSideEffects: false,
+        notificationSideEffects: true,
+      };
+    } catch (error) {
+      return {
+        ...result,
+        agendaNotificationWarning: {
+          code: nullableText(error?.code, 100) || "AGENDA_NOTIFICATION_ENQUEUE_FAILED",
+          message: readErrorMessage(error),
+        },
+      };
+    }
   }
 
   /**
@@ -794,8 +889,8 @@ class AgendaApplicationService {
     const repository = this.agendaRepository;
     return Boolean(
       repository &&
-        typeof repository === "object" &&
-        typeof repository.createInitialAgendaForEnrollment === "function",
+      typeof repository === "object" &&
+      typeof repository.createInitialAgendaForEnrollment === "function",
     );
   }
 }
@@ -964,8 +1059,8 @@ function buildInitialAgendaPreparation({
   const blockerList = normalizeBlockerList(blockers);
   const hasClassLink = Boolean(
     (classId !== null && classId !== undefined) ||
-      classIds.length > 0 ||
-      candidateList.some((candidate) => candidate.classId ?? candidate.class_id),
+    classIds.length > 0 ||
+    candidateList.some((candidate) => candidate.classId ?? candidate.class_id),
   );
   const hasTrustedClassSchedule = candidateList.some(hasTrustedScheduleFields);
   const agendaCanBeCreated = Boolean(canCreateAgenda && blockerList.length === 0);
@@ -1167,9 +1262,7 @@ function validateTrustedScheduleCandidates(scheduleCandidates) {
  */
 function hasTrustedScheduleFields(schedule) {
   const classId = normalizeClassId(schedule?.classId ?? schedule?.class_id);
-  const daysOfWeek = Array.isArray(schedule?.daysOfWeek)
-    ? schedule.daysOfWeek.filter(Boolean)
-    : [];
+  const daysOfWeek = Array.isArray(schedule?.daysOfWeek) ? schedule.daysOfWeek.filter(Boolean) : [];
   const startTime = nullableText(schedule?.startTime ?? schedule?.start_time, 20);
 
   return Boolean(classId && daysOfWeek.length > 0 && startTime);
@@ -1243,8 +1336,10 @@ function isActiveClassRecord(classRecord) {
     return active;
   }
 
-  const normalized = nullableText(readFirstDefined(classRecord, ["status", "rawStatus"]), 32)
-    ?.toLowerCase();
+  const normalized = nullableText(
+    readFirstDefined(classRecord, ["status", "rawStatus"]),
+    32,
+  )?.toLowerCase();
 
   if (["inativa", "inativo", "inactive", "false", "0"].includes(normalized || "")) {
     return false;
@@ -1265,6 +1360,91 @@ function createBlocker(code, message, details = {}) {
     details,
     message,
   };
+}
+
+function resolveRescheduleNotificationEventType(input = {}) {
+  if (input.notificationEventType) {
+    return input.notificationEventType;
+  }
+
+  if (input.professorId || input.professorName) {
+    return AgendaNotificationEventType.AGENDA_PROFESSOR_CHANGED;
+  }
+
+  if (input.courtId || input.courtName || input.quadraId || input.quadraName) {
+    return AgendaNotificationEventType.AGENDA_COURT_CHANGED;
+  }
+
+  return AgendaNotificationEventType.AGENDA_EVENT_RESCHEDULED;
+}
+
+function readNotificationRecipients(input = {}) {
+  const recipients =
+    input.notificationRecipients || input.recipients || input.destinatarios || input.destinations;
+
+  return Array.isArray(recipients)
+    ? recipients.filter((recipient) => recipient && typeof recipient === "object")
+    : [];
+}
+
+function readNotificationChannels(input = {}) {
+  const channels = input.notificationChannels || input.channels;
+  return Array.isArray(channels) && channels.length > 0 ? channels : undefined;
+}
+
+function resolveAgendaNotificationItemId(input = {}, result = {}) {
+  return nullableText(
+    input.agendaItemId ||
+      input.eventId ||
+      input.scheduleId ||
+      input.calendarEventId ||
+      result.agendaItemId ||
+      result.schedule?.agendaItemId ||
+      result.schedule?.id ||
+      result.updatedSchedule?.agendaItemId ||
+      result.updatedSchedule?.id ||
+      result.series?.agendaItemId ||
+      normalizeFirstObject(result.agendaItems)?.id,
+    64,
+  );
+}
+
+function resolveAgendaNotificationSeriesId(input = {}, result = {}) {
+  return nullableText(
+    input.recurrenceSeriesId ||
+      input.seriesId ||
+      result.recurrenceSeriesId ||
+      result.series?.id ||
+      result.split?.newSeries?.id ||
+      result.split?.series?.id ||
+      result.exception?.seriesId,
+    64,
+  );
+}
+
+function buildNotificationMetadata(input = {}, result = {}) {
+  return compactObject({
+    action: input.action,
+    cancellation: result.recurrenceCancelled === true,
+    className: input.className || result.schedule?.className || result.series?.className,
+    occurrenceKey: input.occurrenceKey || result.occurrence?.key,
+    reason: input.reason,
+    recurrenceScope: input.scope || input.recurrenceScope || result.scope,
+    source: "agenda-application-service",
+    updated: result.recurrenceUpdated === true,
+  });
+}
+
+function normalizeFirstObject(value) {
+  return Array.isArray(value)
+    ? value.find((item) => item && typeof item === "object") || null
+    : null;
+}
+
+function compactObject(value = {}) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== ""),
+  );
 }
 
 /**

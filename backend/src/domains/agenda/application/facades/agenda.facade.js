@@ -1,6 +1,4 @@
-const {
-  AgendaApplicationService,
-} = require("../services/agenda-application.service.js");
+const { AgendaApplicationService } = require("../services/agenda-application.service.js");
 
 /**
  * Facade for the Agenda backend domain.
@@ -16,6 +14,7 @@ class AgendaFacade {
    * @param {import("../repositories/agenda.repository.js").AgendaRepository} [options.agendaRepository]
    * @param {Record<string, unknown>} [options.classFacade]
    * @param {Record<string, unknown>} [options.enrollmentFacade]
+   * @param {Record<string, Function>|null} [options.notificationService]
    */
   constructor(options = {}) {
     const injectedService = options.agendaService || options.agendaApplicationService;
@@ -26,6 +25,7 @@ class AgendaFacade {
         agendaRepository: options.agendaRepository,
         classFacade: options.classFacade,
         enrollmentFacade: options.enrollmentFacade,
+        notificationService: options.notificationService,
       });
   }
 

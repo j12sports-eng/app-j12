@@ -49,18 +49,20 @@ Prefixos suportados:
 
 ## Principais Dominios
 
-| Dominio | Rotas principais | Fonte |
-| --- | --- | --- |
-| Auth | `/auth/*`, `/api/auth/*`, `/__api/auth/*` | `backend/routes/auth.js` |
-| Alunos | `/alunos`, `/api/alunos` | `backend/src/routes/alunos.routes.js` |
-| Financeiro | `/financeiro`, `/api/financeiro` | `backend/src/routes/financeiro.routes.js` + legado |
-| Turmas | `/turmas`, `/api/turmas` | `backend/src/routes/turmas.routes.js` |
-| Planos | `/planos`, `/api/planos` | `backend/src/routes/planos.routes.js` |
-| Professores | `/professores`, `/api/professores` | `backend/src/routes/professores.routes.js` |
-| Responsaveis | `/responsavel`, `/responsaveis` | `backend/src/routes/responsaveis.routes.js` |
-| Publico | `/public/*`, `/api/public/*` | `backend/src/routes/public.routes.js` |
-| Estado remoto | `/state/:collection`, `/api/state/:collection` | `backend/src/routes/state.routes.js` |
-| Banco Inter/Pix | `/pix/*`, `/inter/*`, `/webhooks/inter` | `backend/src/routes/inter.routes.js` |
+| Dominio         | Rotas principais                                               | Fonte                                              |
+| --------------- | -------------------------------------------------------------- | -------------------------------------------------- |
+| Auth            | `/auth/*`, `/api/auth/*`, `/__api/auth/*`                      | `backend/routes/auth.js`                           |
+| Alunos          | `/alunos`, `/api/alunos`                                       | `backend/src/routes/alunos.routes.js`              |
+| Financeiro      | `/financeiro`, `/api/financeiro`                               | `backend/src/routes/financeiro.routes.js` + legado |
+| Quadras         | `/admin/quadras`, `/api/admin/quadras`, `/__api/admin/quadras` | `backend/src/domains/quadras`                      |
+| Campeonatos     | `/admin/campeonatos`, `/api/admin/campeonatos`                 | `backend/src/domains/campeonatos`                  |
+| Turmas          | `/turmas`, `/api/turmas`                                       | `backend/src/routes/turmas.routes.js`              |
+| Planos          | `/planos`, `/api/planos`                                       | `backend/src/routes/planos.routes.js`              |
+| Professores     | `/professores`, `/api/professores`                             | `backend/src/routes/professores.routes.js`         |
+| Responsaveis    | `/responsavel`, `/responsaveis`                                | `backend/src/routes/responsaveis.routes.js`        |
+| Publico         | `/public/*`, `/api/public/*`                                   | `backend/src/routes/public.routes.js`              |
+| Estado remoto   | `/state/:collection`, `/api/state/:collection`                 | `backend/src/routes/state.routes.js`               |
+| Banco Inter/Pix | `/pix/*`, `/inter/*`, `/webhooks/inter`                        | `backend/src/routes/inter.routes.js`               |
 
 ## Erros
 
@@ -79,7 +81,9 @@ Endpoints:
 ## Links Relacionados
 
 - [Rotas](./ROTAS.md)
+- [Sprint 17.2 Campeonatos](./SPRINT_17_2_CAMPEONATOS_GERENCIAMENTO.md)
+- [Sprint 17.1 Campeonatos](./SPRINT_17_1_CAMPEONATOS_ARQUITETURA.md)
+- [Sprint 16 Quadras](./SPRINT_16_QUADRAS.md)
 - [Autenticacao](./AUTENTICACAO.md)
 - [Middlewares](./MIDDLEWARES.md)
 - [Banco Modelo](../BANCO/MODELO.md)
-

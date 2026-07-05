@@ -36,6 +36,8 @@ As rotas sao file-based em `src/routes` e geram `src/routeTree.gen.ts`.
 - `/presencas`.
 - `/financeiro`.
 - `/admin/financeiro`.
+- `/admin/quadras`.
+- `/admin/campeonatos`.
 - `/planos`.
 - `/contratos`.
 - `/configuracoes`.
@@ -85,6 +87,8 @@ flowchart TD
 ## Links Relacionados
 
 - [Portais](./PORTAIS.md)
+- [Sprint 17.2 Campeonatos](./SPRINT_17_2_CAMPEONATOS_GERENCIAMENTO.md)
+- [Sprint 17.1 Campeonatos](./SPRINT_17_1_CAMPEONATOS_ARQUITETURA.md)
+- [Sprint 16 Quadras](./SPRINT_16_QUADRAS.md)
 - [Permissoes](../ARQUITETURA/PERMISSOES.md)
 - [App Shell](./COMPONENTES.md)
-

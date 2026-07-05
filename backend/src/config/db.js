@@ -2256,7 +2256,7 @@ setInterval(async () => {
   } catch (err) {
     console.error("[mysql] keepalive error:", err.message);
   }
-}, 30000);
+}, 30000).unref?.();
 
 module.exports = {
   MYSQL_CONFIG,

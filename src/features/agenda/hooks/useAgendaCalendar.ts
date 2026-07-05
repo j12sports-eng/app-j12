@@ -18,6 +18,7 @@ type AgendaCalendarInput = {
 };
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"] as const;
+const MAX_FRONTEND_RECURRENCE_SCAN_DAYS = 3700;
 const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   month: "long",
   year: "numeric",
@@ -159,7 +160,16 @@ export function parseAgendaDate(value: unknown) {
 
   const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== Number(match[1]) ||
+    parsed.getMonth() + 1 !== Number(match[2]) ||
+    parsed.getDate() !== Number(match[3])
+  ) {
+    return null;
+  }
+
+  return parsed;
 }
 
 export function getAgendaCalendarPeriod(
@@ -380,8 +390,7 @@ function recurrenceDateMatches(
       const monthDiff = monthsBetween(startDate, date);
       return (
         monthDiff % intervalValue === 0 &&
-        date.getDate() ===
-          clampDayOfMonth(date.getFullYear(), date.getMonth(), startDate.getDate())
+        date.getDate() === clampDayOfMonth(date.getFullYear(), date.getMonth(), startDate.getDate())
       );
     }
 
@@ -460,6 +469,54 @@ function createEvent(
   };
 }
 
+function maxDate(left: Date, right: Date) {
+  return left > right ? normalizeDate(left) : normalizeDate(right);
+}
+
+function minDate(left: Date, right: Date) {
+  return left < right ? normalizeDate(left) : normalizeDate(right);
+}
+
+function shouldStartScanAtWindow(maxOccurrences: number | null) {
+  if (maxOccurrences) {
+    return false;
+  }
+
+  return true;
+}
+
+function forEachRecurrenceScanDay({
+  endDate,
+  onDay,
+  schedule,
+  startDate,
+}: {
+  endDate: Date;
+  onDay: (day: Date) => boolean | void;
+  schedule: AgendaSchedule;
+  startDate: Date;
+}) {
+  let current = normalizeDate(startDate);
+  const end = normalizeDate(endDate);
+  let scannedDays = 0;
+
+  while (current <= end && scannedDays < MAX_FRONTEND_RECURRENCE_SCAN_DAYS) {
+    if (onDay(current) === false) {
+      return;
+    }
+
+    scannedDays += 1;
+    current = addDays(current, 1);
+  }
+
+  if (current <= end && import.meta.env.DEV) {
+    console.warn("[agenda] Projecao de recorrencia truncada no frontend.", {
+      maxScanDays: MAX_FRONTEND_RECURRENCE_SCAN_DAYS,
+      scheduleId: schedule.id || schedule.agendaItemId,
+    });
+  }
+}
+
 export function buildAgendaCalendarEvents(
   schedules: AgendaSchedule[],
   period: AgendaCalendarPeriod,
@@ -492,32 +549,39 @@ export function buildAgendaCalendarEvents(
         const maxOccurrences =
           readPositiveInteger(schedule.recurrenceMaxOccurrences) ||
           readPositiveInteger((schedule as { maxOccurrences?: number | null }).maxOccurrences);
-        const generationEnd = recurrenceEnd && recurrenceEnd < period.endDate
-          ? recurrenceEnd
-          : period.endDate;
-        const generationDays = eachDay(recurrenceStart, addYears(generationEnd, 0));
+        const generationEnd =
+          recurrenceEnd && recurrenceEnd < period.endDate ? recurrenceEnd : period.endDate;
+        const scanStart = shouldStartScanAtWindow(maxOccurrences)
+          ? maxDate(recurrenceStart, period.startDate)
+          : recurrenceStart;
+        const scanEnd = minDate(generationEnd, period.endDate);
         const events: AgendaCalendarEvent[] = [];
         let occurrenceCount = 0;
 
-        for (const day of generationDays) {
-          if (!recurrenceDateMatches(schedule, day, recurrenceStart, recurrenceFrequency)) {
-            continue;
-          }
+        forEachRecurrenceScanDay({
+          endDate: scanEnd,
+          schedule,
+          startDate: scanStart,
+          onDay: (day) => {
+            if (!recurrenceDateMatches(schedule, day, recurrenceStart, recurrenceFrequency)) {
+              return;
+            }
 
-          occurrenceCount += 1;
+            occurrenceCount += 1;
 
-          if (maxOccurrences && occurrenceCount > maxOccurrences) {
-            break;
-          }
+            if (maxOccurrences && occurrenceCount > maxOccurrences) {
+              return false;
+            }
 
-          const dateKey = formatAgendaDateKey(day);
+            const dateKey = formatAgendaDateKey(day);
 
-          if (dateKey < startKey || dateKey > endKey) {
-            continue;
-          }
+            if (dateKey < startKey || dateKey > endKey) {
+              return;
+            }
 
-          events.push(createEvent(schedule, day, scheduleIndex + occurrenceCount, true));
-        }
+            events.push(createEvent(schedule, day, scheduleIndex + occurrenceCount, true));
+          },
+        });
 
         return events;
       }

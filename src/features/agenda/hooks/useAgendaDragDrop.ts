@@ -284,7 +284,7 @@ export function buildAgendaValidationPayload({
     action: "VALIDATE",
     eventId: event.id,
     isRecurringProjection: event.isRecurringProjection,
-    recurrenceUpdateScope: event.isRecurringProjection ? "INSTANCE" : null,
+    recurrenceUpdateScope: event.isRecurringProjection ? "THIS_OCCURRENCE" : null,
   };
 }
 

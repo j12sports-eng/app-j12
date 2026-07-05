@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AppSidebar, type AppSidebarAccount, type AppSidebarNavItem } from "./AppSidebar";
+import { NotificationBell } from "./NotificationBell";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth, type Role } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -164,6 +165,8 @@ export function AppShell({
                   Operacao em tempo real
                 </div>
               </div>
+
+              <NotificationBell />
 
               <button
                 onClick={logout}

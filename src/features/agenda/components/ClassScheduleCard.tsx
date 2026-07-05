@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   UserRound,
 } from "lucide-react";
+import { memo } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -40,7 +41,10 @@ function formatDays(schedule: AgendaSchedule) {
     return "Dias nao informados";
   }
 
-  return days.map((day) => normalizeText(day)).filter(Boolean).join(", ");
+  return days
+    .map((day) => normalizeText(day))
+    .filter(Boolean)
+    .join(", ");
 }
 
 function readClassName(schedule: AgendaSchedule) {
@@ -58,9 +62,7 @@ function readScheduleStatus(schedule: AgendaSchedule) {
 function isInactiveClass(schedule: AgendaSchedule) {
   const status = normalizeUpper(schedule.classStatus || schedule.status || schedule.scheduleStatus);
 
-  return ["INACTIVE", "INATIVA", "INATIVO", "CANCELLED", "CANCELADA", "CANCELADO"].includes(
-    status,
-  );
+  return ["INACTIVE", "INATIVA", "INATIVO", "CANCELLED", "CANCELADA", "CANCELADO"].includes(status);
 }
 
 function hasAttendance(schedule: AgendaSchedule) {
@@ -68,9 +70,9 @@ function hasAttendance(schedule: AgendaSchedule) {
 
   return Boolean(
     schedule.present === true ||
-      schedule.present === false ||
-      schedule.attendanceRegisteredAt ||
-      ["PRESENT", "PRESENTE", "ABSENT", "FALTA", "JUSTIFIED", "JUSTIFICADA"].includes(status),
+    schedule.present === false ||
+    schedule.attendanceRegisteredAt ||
+    ["PRESENT", "PRESENTE", "ABSENT", "FALTA", "JUSTIFIED", "JUSTIFICADA"].includes(status),
   );
 }
 
@@ -92,7 +94,7 @@ function statusStyle(schedule: AgendaSchedule) {
   return "border-primary/25 bg-primary/10 text-primary";
 }
 
-export function ClassScheduleCard({
+export const ClassScheduleCard = memo(function ClassScheduleCard({
   disabled = false,
   onPrepareAttendance,
   schedule,
@@ -108,7 +110,12 @@ export function ClassScheduleCard({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn("rounded-full border px-3 py-1 text-xs font-bold", statusStyle(schedule))}>
+            <span
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-bold",
+                statusStyle(schedule),
+              )}
+            >
               {inactive ? "Turma inativa" : readScheduleStatus(schedule)}
             </span>
             <AttendanceBadge schedule={schedule} />
@@ -153,7 +160,11 @@ export function ClassScheduleCard({
           label="Modalidade"
           value={schedule.modality || "Modalidade nao informada"}
         />
-        <InfoPill icon={MapPin} label="Unidade" value={schedule.unitName || "Unidade nao informada"} />
+        <InfoPill
+          icon={MapPin}
+          label="Unidade"
+          value={schedule.unitName || "Unidade nao informada"}
+        />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -170,7 +181,9 @@ export function ClassScheduleCard({
       </div>
     </article>
   );
-}
+});
+
+ClassScheduleCard.displayName = "ClassScheduleCard";
 
 function InfoPill({
   icon: Icon,

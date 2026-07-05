@@ -21,18 +21,34 @@ type UseAgendaRecurrenceInput = {
 export function useAgendaRecurrence({ queryInput }: UseAgendaRecurrenceInput) {
   const queryClient = useQueryClient();
 
-  const previewMutation = useMutation<AgendaRecurrenceResponse, Error, AgendaRecurrenceMutationPayload>({
+  const previewMutation = useMutation<
+    AgendaRecurrenceResponse,
+    Error,
+    AgendaRecurrenceMutationPayload
+  >({
     mutationFn: previewAgendaRecurrence,
   });
-  const createMutation = useMutation<AgendaRecurrenceResponse, Error, AgendaRecurrenceMutationPayload>({
+  const createMutation = useMutation<
+    AgendaRecurrenceResponse,
+    Error,
+    AgendaRecurrenceMutationPayload
+  >({
     mutationFn: createAgendaRecurrenceSeries,
     onSuccess: () => invalidateAgendaQuery(queryClient, queryInput),
   });
-  const updateMutation = useMutation<AgendaRecurrenceResponse, Error, AgendaRecurrenceMutationPayload>({
+  const updateMutation = useMutation<
+    AgendaRecurrenceResponse,
+    Error,
+    AgendaRecurrenceMutationPayload
+  >({
     mutationFn: updateAgendaRecurrence,
     onSuccess: () => invalidateAgendaQuery(queryClient, queryInput),
   });
-  const cancelMutation = useMutation<AgendaRecurrenceResponse, Error, AgendaRecurrenceMutationPayload>({
+  const cancelMutation = useMutation<
+    AgendaRecurrenceResponse,
+    Error,
+    AgendaRecurrenceMutationPayload
+  >({
     mutationFn: cancelAgendaRecurrence,
     onSuccess: () => invalidateAgendaQuery(queryClient, queryInput),
   });
@@ -56,6 +72,7 @@ function invalidateAgendaQuery(
   queryInput: AgendaLookupInput | null,
 ) {
   if (!queryInput) {
+    void queryClient.invalidateQueries({ queryKey: ["agenda", "admin"] });
     return;
   }
 

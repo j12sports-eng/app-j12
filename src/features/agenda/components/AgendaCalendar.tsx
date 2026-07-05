@@ -272,6 +272,7 @@ export function AgendaCalendar({
                 <button
                   key={option.view}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => onViewChange(option.view)}
                   className={cn(
                     "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold transition",
@@ -728,7 +729,11 @@ function EventActionBar({
           disabled={saving}
           className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+          {saving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Pencil className="h-3.5 w-3.5" />
+          )}
           Reagendar
         </button>
       )}

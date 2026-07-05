@@ -3,7 +3,9 @@ const { ClassFacade } = require("../../../classes/application/facades/class.faca
 const {
   MySqlClassRepository,
 } = require("../../../classes/infrastructure/repositories/mysql-class.repository.js");
-const { EnrollmentFacade } = require("../../../enrollments/application/facades/enrollment.facade.js");
+const {
+  EnrollmentFacade,
+} = require("../../../enrollments/application/facades/enrollment.facade.js");
 const {
   MySqlEnrollmentRepository,
 } = require("../../../enrollments/infrastructure/repositories/mysql-enrollment.repository.js");
@@ -12,8 +14,12 @@ const {
   MySqlAgendaRepository,
 } = require("../../infrastructure/repositories/mysql-agenda.repository.js");
 const {
-  AgendaAdminController,
-} = require("../controllers/agenda-admin.controller.js");
+  NotificationFacade,
+} = require("../../../notificacoes/application/facades/notification.facade.js");
+const {
+  MySqlNotificationRepository,
+} = require("../../../notificacoes/infrastructure/repositories/mysql-notification.repository.js");
+const { AgendaAdminController } = require("../controllers/agenda-admin.controller.js");
 
 const AGENDA_ADMIN_ROUTE_BASE_PATH = "/admin/agenda";
 
@@ -47,14 +53,8 @@ function createAgendaAdminRouter(options = {}) {
   router.get("/recurrences/:seriesId", controller.getRecurrenceSeries);
   router.patch("/recurrences/:seriesId", controller.updateRecurrence);
   router.delete("/recurrences/:seriesId", controller.cancelRecurrence);
-  router.patch(
-    "/recurrences/:seriesId/occurrences/:occurrenceKey",
-    controller.updateRecurrence,
-  );
-  router.delete(
-    "/recurrences/:seriesId/occurrences/:occurrenceKey",
-    controller.cancelRecurrence,
-  );
+  router.patch("/recurrences/:seriesId/occurrences/:occurrenceKey", controller.updateRecurrence);
+  router.delete("/recurrences/:seriesId/occurrences/:occurrenceKey", controller.cancelRecurrence);
 
   return router;
 }
@@ -78,6 +78,7 @@ function createAgendaAdminFacade(options = {}) {
     agendaRepository,
     classFacade,
     enrollmentFacade,
+    notificationService: options.notificationService || createAgendaNotificationFacade(options),
   });
 }
 
@@ -117,6 +118,22 @@ function createAgendaEnrollmentFacade(options = {}) {
   });
 }
 
+function createAgendaNotificationFacade(options = {}) {
+  if (options.notificationFacade || options.notificationService) {
+    return options.notificationFacade || options.notificationService;
+  }
+
+  const notificationRepository =
+    options.notificationRepository ||
+    new MySqlNotificationRepository({
+      queryRunner: options.queryRunner || null,
+    });
+
+  return new NotificationFacade({
+    notificationRepository,
+  });
+}
+
 function ensureAgendaAdminAccess(req, res, next) {
   const user = req?.auth || req?.user;
 
@@ -148,6 +165,7 @@ module.exports = {
   createAgendaAdminRouter,
   createAgendaClassFacade,
   createAgendaEnrollmentFacade,
+  createAgendaNotificationFacade,
   ensureAgendaAdminAccess,
   getAuthModule,
 };

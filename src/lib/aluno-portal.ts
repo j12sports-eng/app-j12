@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Aluno } from "./alunos-store";
 import type { Transacao } from "./financeiro-store";
 import { mysqlApi } from "./mysql-api";
@@ -37,6 +38,75 @@ export interface PortalNotificacao {
   createdAt: string;
 }
 
+export interface PortalAgendaAula {
+  agendaItemId?: string | null;
+  agendaSource?: string | null;
+  classId?: string | null;
+  className?: string | null;
+  dayOfWeek?: string | null;
+  endTime?: string | null;
+  id: string;
+  modality?: string | null;
+  professorName?: string | null;
+  scheduleDate?: string | null;
+  scheduleStatus?: string | null;
+  source?: string | null;
+  startTime?: string | null;
+  status?: string | null;
+  turmaName?: string | null;
+  type?: string | null;
+  unitName?: string | null;
+}
+
+export interface PortalAgendaHistorico {
+  attendanceStatus?: string | null;
+  className?: string | null;
+  date?: string | null;
+  id: string;
+  modality?: string | null;
+  observations?: string | null;
+  present?: boolean | null;
+  scheduleDate?: string | null;
+}
+
+export interface PortalAgenda {
+  agendaSource?: string | null;
+  aulas: PortalAgendaAula[];
+  eventos: PortalAgendaAula[];
+  historico: PortalAgendaHistorico[];
+  proximasAulas: PortalAgendaAula[];
+  scheduleCount: number;
+  summary?: {
+    historicoCount?: number;
+    proximasAulas?: number;
+    totalAulas?: number;
+  };
+}
+
+export interface PortalCarteirinha {
+  aluno: {
+    fotoUrl?: string | null;
+    id: string;
+    modalidade?: string | null;
+    nome: string;
+    turma?: string | null;
+  };
+  matricula: {
+    desde?: string | null;
+    numero?: string | null;
+    plano?: string | null;
+    status?: string | null;
+  };
+  qrCodeDataUrl?: string | null;
+  qrPayload: string;
+  responsavel?: {
+    nome?: string | null;
+    parentesco?: string | null;
+    telefone?: string | null;
+  } | null;
+  statusMatricula?: string | null;
+}
+
 type PortalState<T> = {
   data: T;
   loading: boolean;
@@ -45,41 +115,26 @@ type PortalState<T> = {
 };
 
 function usePortalResource<T>(
+  queryKey: readonly unknown[],
   load: () => Promise<T>,
   initialData: T,
   enabled = true,
 ): PortalState<T> {
-  const [data, setData] = useState<T>(initialData);
-  const [loading, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-
+  const query = useQuery({
+    enabled: enabled && typeof window !== "undefined",
+    queryFn: load,
+    queryKey,
+    retry: 1,
+    staleTime: 30_000,
+  });
   const refresh = useCallback(async () => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const next = await load();
-      setData(next);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar dados.");
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled, load]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    await query.refetch();
+  }, [query]);
 
   return {
-    data,
-    loading,
-    error,
+    data: query.data ?? initialData,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
     refresh,
   };
 }
@@ -87,7 +142,7 @@ function usePortalResource<T>(
 export function usePortalAluno(enabled = true) {
   const loadAluno = useCallback(async () => mysqlApi.get<Aluno | null>("/aluno/me"), []);
 
-  return usePortalResource<Aluno | null>(loadAluno, null, enabled);
+  return usePortalResource<Aluno | null>(["portal-aluno", "aluno"], loadAluno, null, enabled);
 }
 
 export function usePortalFinanceiro(enabled = true) {
@@ -127,7 +182,12 @@ export function usePortalFinanceiro(enabled = true) {
       : [];
   }, []);
 
-  return usePortalResource<Transacao[]>(loadFinanceiro, [], enabled);
+  return usePortalResource<Transacao[]>(
+    ["portal-aluno", "financeiro-legado"],
+    loadFinanceiro,
+    [],
+    enabled,
+  );
 }
 
 export function usePortalPresencas(enabled = true) {
@@ -153,7 +213,12 @@ export function usePortalPresencas(enabled = true) {
       : [];
   }, []);
 
-  return usePortalResource<PortalPresenca[]>(loadPresencas, [], enabled);
+  return usePortalResource<PortalPresenca[]>(
+    ["portal-aluno", "presencas-legado"],
+    loadPresencas,
+    [],
+    enabled,
+  );
 }
 
 export function usePortalContrato(enabled = true) {
@@ -182,7 +247,12 @@ export function usePortalContrato(enabled = true) {
     return contrato as PortalContrato | null;
   }, []);
 
-  return usePortalResource<PortalContrato | null>(loadContrato, null, enabled);
+  return usePortalResource<PortalContrato | null>(
+    ["portal-aluno", "contrato"],
+    loadContrato,
+    null,
+    enabled,
+  );
 }
 
 export function usePortalNotificacoes(enabled = true) {
@@ -191,5 +261,54 @@ export function usePortalNotificacoes(enabled = true) {
     return Array.isArray(notificacoes) ? notificacoes : [];
   }, []);
 
-  return usePortalResource<PortalNotificacao[]>(loadNotificacoes, [], enabled);
+  return usePortalResource<PortalNotificacao[]>(
+    ["portal-aluno", "notificacoes-legado"],
+    loadNotificacoes,
+    [],
+    enabled,
+  );
+}
+
+export function usePortalAgenda(enabled = true) {
+  const loadAgenda = useCallback(async () => {
+    const agenda = await mysqlApi.get<Partial<PortalAgenda>>("/aluno/me/agenda");
+
+    return {
+      agendaSource: agenda.agendaSource ?? null,
+      aulas: Array.isArray(agenda.aulas) ? agenda.aulas : [],
+      eventos: Array.isArray(agenda.eventos) ? agenda.eventos : [],
+      historico: Array.isArray(agenda.historico) ? agenda.historico : [],
+      proximasAulas: Array.isArray(agenda.proximasAulas) ? agenda.proximasAulas : [],
+      scheduleCount: Number(agenda.scheduleCount || agenda.aulas?.length || 0),
+      summary: agenda.summary || {},
+    };
+  }, []);
+
+  return usePortalResource<PortalAgenda>(
+    ["portal-aluno", "agenda"],
+    loadAgenda,
+    {
+      aulas: [],
+      eventos: [],
+      historico: [],
+      proximasAulas: [],
+      scheduleCount: 0,
+      summary: {},
+    },
+    enabled,
+  );
+}
+
+export function usePortalCarteirinha(enabled = true) {
+  const loadCarteirinha = useCallback(
+    async () => mysqlApi.get<PortalCarteirinha>("/aluno/me/carteirinha"),
+    [],
+  );
+
+  return usePortalResource<PortalCarteirinha | null>(
+    ["portal-aluno", "carteirinha"],
+    loadCarteirinha,
+    null,
+    enabled,
+  );
 }

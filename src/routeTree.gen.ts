@@ -53,12 +53,16 @@ import { Route as PortalAlunoFinanceiroRouteImport } from './routes/portal-aluno
 import { Route as PortalAlunoDashboardRouteImport } from './routes/portal-aluno/dashboard'
 import { Route as PortalAlunoContratoRouteImport } from './routes/portal-aluno/contrato'
 import { Route as PortalAlunoConfiguracoesRouteImport } from './routes/portal-aluno/configuracoes'
+import { Route as PortalAlunoCarteirinhaRouteImport } from './routes/portal-aluno/carteirinha'
 import { Route as PortalAlunoAvaliacoesRouteImport } from './routes/portal-aluno/avaliacoes'
 import { Route as PortalAlunoAgendaRouteImport } from './routes/portal-aluno/agenda'
+import { Route as AdminQuadrasRouteImport } from './routes/admin/quadras'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
 import { Route as AdminEnrollmentsRouteImport } from './routes/admin/enrollments'
+import { Route as AdminCampeonatosRouteImport } from './routes/admin/campeonatos'
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
+import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
 
 const TurmasRoute = TurmasRouteImport.update({
   id: '/turmas',
@@ -288,6 +292,11 @@ const PortalAlunoConfiguracoesRoute =
     path: '/portal-aluno/configuracoes',
     getParentRoute: () => rootRouteImport,
   } as any)
+const PortalAlunoCarteirinhaRoute = PortalAlunoCarteirinhaRouteImport.update({
+  id: '/portal-aluno/carteirinha',
+  path: '/portal-aluno/carteirinha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalAlunoAvaliacoesRoute = PortalAlunoAvaliacoesRouteImport.update({
   id: '/portal-aluno/avaliacoes',
   path: '/portal-aluno/avaliacoes',
@@ -296,6 +305,11 @@ const PortalAlunoAvaliacoesRoute = PortalAlunoAvaliacoesRouteImport.update({
 const PortalAlunoAgendaRoute = PortalAlunoAgendaRouteImport.update({
   id: '/portal-aluno/agenda',
   path: '/portal-aluno/agenda',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminQuadrasRoute = AdminQuadrasRouteImport.update({
+  id: '/admin/quadras',
+  path: '/admin/quadras',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
@@ -308,6 +322,11 @@ const AdminEnrollmentsRoute = AdminEnrollmentsRouteImport.update({
   path: '/admin/enrollments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCampeonatosRoute = AdminCampeonatosRouteImport.update({
+  id: '/admin/campeonatos',
+  path: '/admin/campeonatos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminAgendaRoute = AdminAgendaRouteImport.update({
   id: '/admin/agenda',
   path: '/admin/agenda',
@@ -318,6 +337,12 @@ const DashboardAlunoIdRoute = DashboardAlunoIdRouteImport.update({
   path: '/aluno/$id',
   getParentRoute: () => DashboardRoute,
 } as any)
+const AdminCampeonatosInscricoesRoute =
+  AdminCampeonatosInscricoesRouteImport.update({
+    id: '/inscricoes',
+    path: '/inscricoes',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -342,10 +367,13 @@ export interface FileRoutesByFullPath {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
+  '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/quadras': typeof AdminQuadrasRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
+  '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
   '/portal-aluno/configuracoes': typeof PortalAlunoConfiguracoesRoute
   '/portal-aluno/contrato': typeof PortalAlunoContratoRoute
   '/portal-aluno/dashboard': typeof PortalAlunoDashboardRoute
@@ -369,6 +397,7 @@ export interface FileRoutesByFullPath {
   '/portal-aluno/': typeof PortalAlunoIndexRoute
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
+  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRoute
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
 }
 export interface FileRoutesByTo {
@@ -394,10 +423,13 @@ export interface FileRoutesByTo {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
+  '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/quadras': typeof AdminQuadrasRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
+  '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
   '/portal-aluno/configuracoes': typeof PortalAlunoConfiguracoesRoute
   '/portal-aluno/contrato': typeof PortalAlunoContratoRoute
   '/portal-aluno/dashboard': typeof PortalAlunoDashboardRoute
@@ -421,6 +453,7 @@ export interface FileRoutesByTo {
   '/portal-aluno': typeof PortalAlunoIndexRoute
   '/portal-responsavel': typeof PortalResponsavelIndexRoute
   '/professor': typeof ProfessorIndexRoute
+  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRoute
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
 }
 export interface FileRoutesById {
@@ -447,10 +480,13 @@ export interface FileRoutesById {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
+  '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/quadras': typeof AdminQuadrasRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
+  '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
   '/portal-aluno/configuracoes': typeof PortalAlunoConfiguracoesRoute
   '/portal-aluno/contrato': typeof PortalAlunoContratoRoute
   '/portal-aluno/dashboard': typeof PortalAlunoDashboardRoute
@@ -474,6 +510,7 @@ export interface FileRoutesById {
   '/portal-aluno/': typeof PortalAlunoIndexRoute
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
+  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRoute
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
 }
 export interface FileRouteTypes {
@@ -501,10 +538,13 @@ export interface FileRouteTypes {
     | '/trocar-senha'
     | '/turmas'
     | '/admin/agenda'
+    | '/admin/campeonatos'
     | '/admin/enrollments'
     | '/admin/financeiro'
+    | '/admin/quadras'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
+    | '/portal-aluno/carteirinha'
     | '/portal-aluno/configuracoes'
     | '/portal-aluno/contrato'
     | '/portal-aluno/dashboard'
@@ -528,6 +568,7 @@ export interface FileRouteTypes {
     | '/portal-aluno/'
     | '/portal-responsavel/'
     | '/professor/'
+    | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -553,10 +594,13 @@ export interface FileRouteTypes {
     | '/trocar-senha'
     | '/turmas'
     | '/admin/agenda'
+    | '/admin/campeonatos'
     | '/admin/enrollments'
     | '/admin/financeiro'
+    | '/admin/quadras'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
+    | '/portal-aluno/carteirinha'
     | '/portal-aluno/configuracoes'
     | '/portal-aluno/contrato'
     | '/portal-aluno/dashboard'
@@ -580,6 +624,7 @@ export interface FileRouteTypes {
     | '/portal-aluno'
     | '/portal-responsavel'
     | '/professor'
+    | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
   id:
     | '__root__'
@@ -605,10 +650,13 @@ export interface FileRouteTypes {
     | '/trocar-senha'
     | '/turmas'
     | '/admin/agenda'
+    | '/admin/campeonatos'
     | '/admin/enrollments'
     | '/admin/financeiro'
+    | '/admin/quadras'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
+    | '/portal-aluno/carteirinha'
     | '/portal-aluno/configuracoes'
     | '/portal-aluno/contrato'
     | '/portal-aluno/dashboard'
@@ -632,6 +680,7 @@ export interface FileRouteTypes {
     | '/portal-aluno/'
     | '/portal-responsavel/'
     | '/professor/'
+    | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
   fileRoutesById: FileRoutesById
 }
@@ -658,10 +707,13 @@ export interface RootRouteChildren {
   TrocarSenhaRoute: typeof TrocarSenhaRoute
   TurmasRoute: typeof TurmasRoute
   AdminAgendaRoute: typeof AdminAgendaRoute
+  AdminCampeonatosRoute: typeof AdminCampeonatosRouteWithChildren
   AdminEnrollmentsRoute: typeof AdminEnrollmentsRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  AdminQuadrasRoute: typeof AdminQuadrasRoute
   PortalAlunoAgendaRoute: typeof PortalAlunoAgendaRoute
   PortalAlunoAvaliacoesRoute: typeof PortalAlunoAvaliacoesRoute
+  PortalAlunoCarteirinhaRoute: typeof PortalAlunoCarteirinhaRoute
   PortalAlunoConfiguracoesRoute: typeof PortalAlunoConfiguracoesRoute
   PortalAlunoContratoRoute: typeof PortalAlunoContratoRoute
   PortalAlunoDashboardRoute: typeof PortalAlunoDashboardRoute
@@ -997,6 +1049,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAlunoConfiguracoesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal-aluno/carteirinha': {
+      id: '/portal-aluno/carteirinha'
+      path: '/portal-aluno/carteirinha'
+      fullPath: '/portal-aluno/carteirinha'
+      preLoaderRoute: typeof PortalAlunoCarteirinhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal-aluno/avaliacoes': {
       id: '/portal-aluno/avaliacoes'
       path: '/portal-aluno/avaliacoes'
@@ -1009,6 +1068,13 @@ declare module '@tanstack/react-router' {
       path: '/portal-aluno/agenda'
       fullPath: '/portal-aluno/agenda'
       preLoaderRoute: typeof PortalAlunoAgendaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/quadras': {
+      id: '/admin/quadras'
+      path: '/admin/quadras'
+      fullPath: '/admin/quadras'
+      preLoaderRoute: typeof AdminQuadrasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/financeiro': {
@@ -1025,6 +1091,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEnrollmentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/campeonatos': {
+      id: '/admin/campeonatos'
+      path: '/admin/campeonatos'
+      fullPath: '/admin/campeonatos'
+      preLoaderRoute: typeof AdminCampeonatosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/agenda': {
       id: '/admin/agenda'
       path: '/admin/agenda'
@@ -1038,6 +1111,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/aluno/$id'
       preLoaderRoute: typeof DashboardAlunoIdRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/admin/campeonatos/inscricoes': {
+      id: '/admin/campeonatos/inscricoes'
+      path: '/inscricoes'
+      fullPath: '/admin/campeonatos/inscricoes'
+      preLoaderRoute: typeof AdminCampeonatosInscricoesRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
     }
   }
 }
@@ -1053,6 +1133,17 @@ const DashboardRouteChildren: DashboardRouteChildren = {
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
   DashboardRouteChildren,
 )
+
+interface AdminCampeonatosRouteChildren {
+  AdminCampeonatosInscricoesRoute: typeof AdminCampeonatosInscricoesRoute
+}
+
+const AdminCampeonatosRouteChildren: AdminCampeonatosRouteChildren = {
+  AdminCampeonatosInscricoesRoute: AdminCampeonatosInscricoesRoute,
+}
+
+const AdminCampeonatosRouteWithChildren =
+  AdminCampeonatosRoute._addFileChildren(AdminCampeonatosRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -1077,10 +1168,13 @@ const rootRouteChildren: RootRouteChildren = {
   TrocarSenhaRoute: TrocarSenhaRoute,
   TurmasRoute: TurmasRoute,
   AdminAgendaRoute: AdminAgendaRoute,
+  AdminCampeonatosRoute: AdminCampeonatosRouteWithChildren,
   AdminEnrollmentsRoute: AdminEnrollmentsRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
+  AdminQuadrasRoute: AdminQuadrasRoute,
   PortalAlunoAgendaRoute: PortalAlunoAgendaRoute,
   PortalAlunoAvaliacoesRoute: PortalAlunoAvaliacoesRoute,
+  PortalAlunoCarteirinhaRoute: PortalAlunoCarteirinhaRoute,
   PortalAlunoConfiguracoesRoute: PortalAlunoConfiguracoesRoute,
   PortalAlunoContratoRoute: PortalAlunoContratoRoute,
   PortalAlunoDashboardRoute: PortalAlunoDashboardRoute,

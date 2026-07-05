@@ -4,6 +4,17 @@ const { query } = require("../db.js");
 const { requireAuth, requireRole, resolveScopedStudentId } = require("../auth.js");
 const { parseJson } = require("./helpers.js");
 const { listCharges } = require("../services/student-finance.js");
+const {
+  loadStudentAgenda,
+  loadStudentContract,
+  loadStudentDashboard,
+  loadStudentDigitalCard,
+  loadStudentNotifications,
+  loadStudentPresence,
+  loadStudentProfile,
+  markStudentNotificationRead,
+  updateStudentProfile,
+} = require("../services/student-portal.js");
 
 const router = express.Router();
 
@@ -157,47 +168,39 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+router.get("/perfil", async (req, res, next) => {
+  try {
+    const studentId = resolveScopedStudentId(req.auth);
+    const profile = await loadStudentProfile(studentId);
+
+    if (!profile) {
+      return res.status(404).json({ message: "Aluno vinculado nao encontrado." });
+    }
+
+    return res.json(profile);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/perfil", async (req, res, next) => {
+  try {
+    const studentId = resolveScopedStudentId(req.auth);
+    const profile = await updateStudentProfile(studentId, req.body || {});
+
+    return res.json({
+      data: profile,
+      success: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/dashboard", async (req, res, next) => {
   try {
     const studentId = resolveScopedStudentId(req.auth);
-    if (!studentId) {
-      return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
-    }
-
-    const [base, charges, rows] = await Promise.all([
-      loadStudentBase(studentId),
-      listCharges({ studentId }),
-      query(
-        `
-          SELECT id, aluno_id, turma, modalidade, data_aula, presente, observacao
-          FROM student_presencas
-          WHERE aluno_id = ?
-          ORDER BY data_aula DESC
-        `,
-        [String(studentId)],
-      ),
-    ]);
-
-    const presencas = (Array.isArray(rows) ? rows : []).map((row) => ({
-      id: row.id,
-      alunoId: row.aluno_id,
-      turma: row.turma,
-      modalidade: row.modalidade ?? "",
-      dataAula: row.data_aula,
-      presente: Boolean(row.presente),
-      observacao: row.observacao ?? "",
-    }));
-
-    res.json(
-      buildDashboardFromSources({
-        studentId,
-        portalAluno: base.legacyStudent ? mapLegacyAluno(base.legacyStudent) : null,
-        j12Student: base.j12Student,
-        legacyStudent: base.legacyStudent,
-        charges: Array.isArray(charges) ? charges : [],
-        presencas,
-      }),
-    );
+    res.json(await loadStudentDashboard(studentId));
   } catch (error) {
     next(error);
   }
@@ -219,31 +222,16 @@ router.get("/financeiro", async (req, res, next) => {
 router.get("/presencas", async (req, res, next) => {
   try {
     const studentId = resolveScopedStudentId(req.auth);
-    if (!studentId) {
-      return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
-    }
+    res.json(await loadStudentPresence(studentId));
+  } catch (error) {
+    next(error);
+  }
+});
 
-    const rows = await query(
-      `
-        SELECT id, aluno_id, turma, modalidade, data_aula, presente, observacao
-        FROM student_presencas
-        WHERE aluno_id = ?
-        ORDER BY data_aula DESC
-      `,
-      [String(studentId)],
-    );
-
-    res.json(
-      (Array.isArray(rows) ? rows : []).map((row) => ({
-        id: row.id,
-        alunoId: row.aluno_id,
-        turma: row.turma,
-        modalidade: row.modalidade ?? "",
-        dataAula: row.data_aula,
-        presente: Boolean(row.presente),
-        observacao: row.observacao ?? "",
-      })),
-    );
+router.get("/agenda", async (req, res, next) => {
+  try {
+    const studentId = resolveScopedStudentId(req.auth);
+    res.json(await loadStudentAgenda(studentId, { limit: req.query?.limit }));
   } catch (error) {
     next(error);
   }
@@ -252,38 +240,16 @@ router.get("/presencas", async (req, res, next) => {
 router.get("/contrato", async (req, res, next) => {
   try {
     const studentId = resolveScopedStudentId(req.auth);
-    if (!studentId) {
-      return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
-    }
+    res.json(await loadStudentContract(studentId));
+  } catch (error) {
+    next(error);
+  }
+});
 
-    const rows = await query(
-      `
-        SELECT *
-        FROM student_contracts
-        WHERE aluno_id = ?
-        ORDER BY data_emissao DESC, updated_at DESC
-        LIMIT 1
-      `,
-      [String(studentId)],
-    );
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.json(null);
-    }
-
-    const row = rows[0];
-    res.json({
-      id: row.id,
-      alunoId: row.aluno_id,
-      tipoDocumento: row.tipo_documento,
-      titulo: row.titulo,
-      status: row.status,
-      arquivoPdf: row.arquivo_pdf ?? null,
-      templateHtml: row.template_html ?? "",
-      dataEmissao: row.data_emissao ?? null,
-      dataAssinatura: row.data_assinatura ?? null,
-      observacoes: row.observacoes ?? "",
-    });
+router.get("/carteirinha", async (req, res, next) => {
+  try {
+    const studentId = resolveScopedStudentId(req.auth);
+    res.json(await loadStudentDigitalCard(studentId));
   } catch (error) {
     next(error);
   }
@@ -292,33 +258,7 @@ router.get("/contrato", async (req, res, next) => {
 router.get("/notificacoes", async (req, res, next) => {
   try {
     const studentId = resolveScopedStudentId(req.auth);
-    if (!studentId) {
-      return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
-    }
-
-    const rows = await query(
-      `
-        SELECT *
-        FROM student_notifications
-        WHERE aluno_id = ?
-        ORDER BY created_at DESC, updated_at DESC
-      `,
-      [String(studentId)],
-    );
-
-    res.json(
-      (Array.isArray(rows) ? rows : []).map((row) => ({
-        id: row.id,
-        alunoId: row.aluno_id,
-        titulo: row.titulo,
-        mensagem: row.mensagem,
-        canal: row.canal,
-        tipo: row.tipo,
-        lida: Boolean(row.lida),
-        created_at: row.created_at,
-        createdAt: row.created_at,
-      })),
-    );
+    res.json(await loadStudentNotifications(studentId));
   } catch (error) {
     next(error);
   }
@@ -331,20 +271,11 @@ router.put("/notificacoes/:id/lida", async (req, res, next) => {
       return res.status(403).json({ message: "Seu usuario nao possui vinculo com um aluno." });
     }
 
-    await query(
-      `
-        UPDATE student_notifications
-        SET lida = 1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND aluno_id = ?
-      `,
-      [String(req.params.id), String(studentId)],
-    );
+    const notification = await markStudentNotificationRead(studentId, req.params.id);
 
     res.json({
+      data: notification,
       success: true,
-      data: {
-        id: String(req.params.id),
-      },
     });
   } catch (error) {
     next(error);

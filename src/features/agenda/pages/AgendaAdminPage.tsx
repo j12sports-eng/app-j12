@@ -455,6 +455,7 @@ function AgendaAdminContent() {
                   <button
                     key={option.mode}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setMode(option.mode)}
                     className={cn(
                       "inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition",
@@ -876,13 +877,7 @@ function AgendaRescheduleDialog({
   );
 }
 
-function RescheduleField({
-  children,
-  label,
-}: {
-  children: React.ReactNode;
-  label: string;
-}) {
+function RescheduleField({ children, label }: { children: React.ReactNode; label: string }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-300">{label}</span>

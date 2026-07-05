@@ -81,10 +81,7 @@ export function validateAgendaEvent(input: AgendaConflictValidationPayload) {
 }
 
 export function previewAgendaRecurrence(input: AgendaRecurrenceMutationPayload) {
-  return api.post<AgendaRecurrenceResponse>(
-    `${ADMIN_AGENDA_ENDPOINT}/recurrences/preview`,
-    input,
-  );
+  return api.post<AgendaRecurrenceResponse>(`${ADMIN_AGENDA_ENDPOINT}/recurrences/preview`, input);
 }
 
 export function createAgendaRecurrenceSeries(input: AgendaRecurrenceMutationPayload) {

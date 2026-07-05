@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 
@@ -20,39 +20,50 @@ type DashboardAluno = {
   plano?: {
     nome: string;
   };
+  proximasAulas?: Array<{
+    className?: string;
+    dayOfWeek?: string;
+    id: string;
+    scheduleDate?: string | null;
+    startTime?: string | null;
+    turmaName?: string;
+    unitName?: string;
+  }>;
+  proximosEventos?: Array<{
+    className?: string;
+    id: string;
+    scheduleDate?: string | null;
+    startTime?: string | null;
+    title?: string;
+  }>;
+  avisos?: Array<{
+    id: string;
+    lida?: boolean;
+    mensagem?: string;
+    titulo?: string;
+  }>;
+  indicadores?: {
+    avisosNaoLidos?: number;
+    faltas?: number;
+    frequencia?: number;
+    presencas?: number;
+    situacaoFinanceira?: string;
+    statusMatricula?: string;
+  };
 };
 
 export function useDashboardAluno() {
-  const [data, setData] = useState<DashboardAluno | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const result = await api.get<DashboardAluno>("/aluno/me/dashboard");
-
-        setData(result);
-      } catch (err: any) {
-        console.error("ERRO DASHBOARD:", err);
-
-        setError(err?.message || "Erro ao carregar dashboard");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load();
-  }, []);
+  const query = useQuery({
+    enabled: typeof window !== "undefined",
+    queryFn: () => api.get<DashboardAluno>("/aluno/me/dashboard"),
+    queryKey: ["portal-aluno", "dashboard"],
+    retry: 1,
+    staleTime: 30_000,
+  });
 
   return {
-    data,
-    loading,
-    error,
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : "",
   };
 }

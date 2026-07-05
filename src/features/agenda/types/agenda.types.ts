@@ -6,10 +6,7 @@ export type AgendaRecurrenceFrequency = "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTH
 
 export type AgendaRecurrenceIntervalUnit = "DAY" | "WEEK" | "MONTH";
 
-export type AgendaRecurrenceOperationScope =
-  | "THIS_OCCURRENCE"
-  | "THIS_AND_FOLLOWING"
-  | "SERIES";
+export type AgendaRecurrenceOperationScope = "THIS_OCCURRENCE" | "THIS_AND_FOLLOWING" | "SERIES";
 
 export type AgendaRecurrenceExceptionType = "CANCELLED" | "MODIFIED";
 
@@ -90,6 +87,31 @@ export type AgendaSchedule = {
   studentProfileId?: string | null;
   turmaName?: string | null;
   unitName?: string | null;
+};
+
+export type AgendaNotificationRecipient = {
+  email?: string | null;
+  id?: string | number | null;
+  name?: string | null;
+  phoneWhatsapp?: string | null;
+  recipientId?: string | number | null;
+  recipientType?: "ADMIN" | "PROFESSOR" | "RESPONSIBLE" | "STUDENT" | string;
+  type?: "ADMIN" | "PROFESSOR" | "RESPONSIBLE" | "STUDENT" | string;
+  whatsapp?: string | null;
+};
+
+export type AgendaNotificationSummary = {
+  agendaNotificationQueued?: boolean;
+  emailPrepared?: boolean;
+  noExternalMessageSentSynchronously?: boolean;
+  pushPrepared?: boolean;
+  queuedCount?: number;
+  whatsappPrepared?: boolean;
+};
+
+export type AgendaNotificationWarning = {
+  code?: string | null;
+  message?: string | null;
 };
 
 export type AgendaAdminSummaryResponse = {
@@ -193,7 +215,14 @@ export type AgendaReschedulePayload = {
   fromEndTime?: string | null;
   fromStartTime?: string | null;
   noFinancialSideEffects: true;
-  noNotificationSideEffects: true;
+  noNotificationSideEffects: boolean;
+  notificationChannels?: Array<"EMAIL" | "IN_APP" | "PUSH" | "WHATSAPP" | string>;
+  notificationEventType?: string | null;
+  notificationIdempotencyKey?: string | null;
+  notificationMessage?: string | null;
+  notificationRecipients?: AgendaNotificationRecipient[];
+  notificationTitle?: string | null;
+  notificationType?: string | null;
   professorId?: string | number | null;
   professorName?: string | null;
   quadraId?: string | number | null;
@@ -208,6 +237,8 @@ export type AgendaReschedulePayload = {
 };
 
 export type AgendaRescheduleResponse = {
+  agendaNotification?: AgendaNotificationSummary;
+  agendaNotificationWarning?: AgendaNotificationWarning;
   agendaConflictValidation?: AgendaConflictValidationResponse;
   agendaDragDropRescheduleEnabled?: boolean;
   conflictDetected?: boolean;
@@ -216,6 +247,7 @@ export type AgendaRescheduleResponse = {
   noBackendSchemaChange?: boolean;
   noFinancialSideEffects?: boolean;
   noNotificationSideEffects?: boolean;
+  notificationSideEffects?: boolean;
   schedule?: AgendaSchedule | null;
   schedules?: AgendaSchedule[];
   updatedSchedule?: AgendaSchedule | null;
@@ -337,6 +369,8 @@ export type AgendaRecurrenceOccurrence = {
 };
 
 export type AgendaRecurrenceResponse = {
+  agendaNotification?: AgendaNotificationSummary;
+  agendaNotificationWarning?: AgendaNotificationWarning;
   agendaConflictValidation?: AgendaConflictValidationResponse | null;
   exception?: AgendaRecurrenceException | null;
   exceptions?: AgendaRecurrenceException[];
@@ -344,6 +378,7 @@ export type AgendaRecurrenceResponse = {
   noDuplicateOccurrences?: boolean;
   noFinancialSideEffects?: boolean;
   noNotificationSideEffects?: boolean;
+  notificationSideEffects?: boolean;
   occurrence?: AgendaRecurrenceOccurrence | null;
   occurrenceCount?: number;
   occurrences?: AgendaRecurrenceOccurrence[];
@@ -362,6 +397,13 @@ export type AgendaRecurrenceResponse = {
 
 export type AgendaRecurrenceMutationPayload = Partial<AgendaRecurrenceRule> & {
   limit?: number;
+  notificationChannels?: Array<"EMAIL" | "IN_APP" | "PUSH" | "WHATSAPP" | string>;
+  notificationEventType?: string | null;
+  notificationIdempotencyKey?: string | null;
+  notificationMessage?: string | null;
+  notificationRecipients?: AgendaNotificationRecipient[];
+  notificationTitle?: string | null;
+  notificationType?: string | null;
   occurrenceDate?: string | null;
   occurrenceKey?: string | null;
   occurrenceStartTime?: string | null;

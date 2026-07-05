@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { ensureSocketConnected, socket } from "@/lib/socket";
 
 type CobrancaApi = {
   id: string;
+  boleto_url?: string | null;
+  data_pagamento?: string | null;
+  forma_pagamento?: string | null;
+  pix_copia_cola?: string | null;
+  qr_code_pix?: string | null;
   valor?: number;
   valorFinal?: number;
   vencimento: string;
@@ -14,6 +20,11 @@ type CobrancaApi = {
 
 type MensalidadeView = {
   id: string;
+  boleto_url?: string | null;
+  data_pagamento?: string | null;
+  forma_pagamento?: string | null;
+  pix_copia_cola?: string | null;
+  qr_code_pix?: string | null;
   valor: number;
   vencimento: string;
   status: string;
@@ -59,6 +70,11 @@ function normalizeFinanceiro(payload: FinanceiroApiResponse): FinanceiroResponse
 
     return {
       id: String(item.id),
+      boleto_url: item.boleto_url ?? null,
+      data_pagamento: item.data_pagamento ?? null,
+      forma_pagamento: item.forma_pagamento ?? null,
+      pix_copia_cola: item.pix_copia_cola ?? null,
+      qr_code_pix: item.qr_code_pix ?? null,
       valor,
       vencimento: item.vencimento,
       status: item.status,
@@ -95,37 +111,21 @@ function normalizeFinanceiro(payload: FinanceiroApiResponse): FinanceiroResponse
 }
 
 export function useFinanceiroAluno() {
-  const [dados, setDados] = useState<FinanceiroResponse | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  const [erro, setErro] = useState("");
-  const [refreshToken, setRefreshToken] = useState(0);
-
-  useEffect(() => {
-    async function carregar() {
-      try {
-        setLoading(true);
-        setErro("");
-
-        const response = await api.get<FinanceiroApiResponse>("/aluno/me/financeiro");
-
-        setDados(normalizeFinanceiro(response));
-      } catch (err: any) {
-        console.error("ERRO FINANCEIRO:", err);
-
-        setErro(err?.message || "Erro ao carregar financeiro");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    carregar();
-  }, [refreshToken]);
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    enabled: typeof window !== "undefined",
+    queryFn: async () =>
+      normalizeFinanceiro(await api.get<FinanceiroApiResponse>("/aluno/me/financeiro")),
+    queryKey: ["portal-aluno", "financeiro"],
+    retry: 1,
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     ensureSocketConnected();
-    const refresh = () => setRefreshToken((value) => value + 1);
+    const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal-aluno", "financeiro"] });
+    };
 
     socket.on("financeiro:pagamento-atualizado", refresh);
     socket.on("dashboard:financeiro-atualizado", refresh);
@@ -134,11 +134,11 @@ export function useFinanceiroAluno() {
       socket.off("financeiro:pagamento-atualizado", refresh);
       socket.off("dashboard:financeiro-atualizado", refresh);
     };
-  }, []);
+  }, [queryClient]);
 
   return {
-    dados,
-    loading,
-    erro,
+    dados: query.data ?? null,
+    loading: query.isLoading,
+    erro: query.error instanceof Error ? query.error.message : "",
   };
 }

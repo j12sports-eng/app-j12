@@ -2,6 +2,13 @@ const { loadStudentRows } = require("./alunos.controller.js");
 const { query } = require("../config/db.js");
 const { gerarMensalidadeDoAluno } = require("../services/financeiro.service.js");
 const { criarNotificacao } = require("../services/notificacao.service.js");
+const {
+  loadStudentAgenda,
+  loadStudentDashboard,
+  loadStudentDigitalCard,
+  loadStudentProfile,
+  updateStudentProfile,
+} = require("../../services/student-portal.js");
 
 function parseJson(value, fallback) {
   if (!value) return fallback;
@@ -216,6 +223,35 @@ async function getMe(req, res, next) {
               }
             : null,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getMePerfil(req, res, next) {
+  try {
+    const alunoId = resolveAlunoIdFromRequest(req);
+    const perfil = await loadStudentProfile(alunoId);
+
+    if (!perfil) {
+      return res.status(404).json({ message: "Aluno nÃ£o vinculado ao usuÃ¡rio" });
+    }
+
+    return res.json(perfil);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateMePerfil(req, res, next) {
+  try {
+    const alunoId = resolveAlunoIdFromRequest(req);
+    const perfil = await updateStudentProfile(alunoId, req.body || {});
+
+    return res.json({
+      data: perfil,
+      success: true,
     });
   } catch (error) {
     next(error);
@@ -508,29 +544,30 @@ async function getMeContrato(req, res, next) {
   }
 }
 
-async function getMeDashboard(req, res) {
+async function getMeAgenda(req, res, next) {
   try {
-    res.json({
-      nome: "Orlando",
-
-      financeiro: {
-        mensalidade: 200,
-      },
-
-      presenca: {
-        percentual: 92,
-      },
-
-      plano: {
-        nome: "Futsal Kids",
-      },
-    });
+    const alunoId = resolveAlunoIdFromRequest(req);
+    return res.json(await loadStudentAgenda(alunoId, { limit: req.query?.limit }));
   } catch (error) {
-    console.error(error);
+    next(error);
+  }
+}
 
-    res.status(500).json({
-      message: "Erro ao carregar dashboard",
-    });
+async function getMeCarteirinha(req, res, next) {
+  try {
+    const alunoId = resolveAlunoIdFromRequest(req);
+    return res.json(await loadStudentDigitalCard(alunoId));
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getMeDashboard(req, res, next) {
+  try {
+    const alunoId = resolveAlunoIdFromRequest(req);
+    return res.json(await loadStudentDashboard(alunoId));
+  } catch (error) {
+    next(error);
   }
 }
 
@@ -560,11 +597,15 @@ async function marcarNotificacaoComoLida(req, res, next) {
 
 module.exports = {
   getMe,
+  getMeAgenda,
+  getMeCarteirinha,
   getMeFinanceiro,
+  getMePerfil,
   getMePresencas,
   getMeNotificacoes,
   getMeContrato,
   getMeDashboard,
   getMeDashboardResponsavel,
   marcarNotificacaoComoLida,
+  updateMePerfil,
 };

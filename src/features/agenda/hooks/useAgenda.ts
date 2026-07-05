@@ -1,10 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import {
-  getAgendaByClass,
-  getAgendaByEnrollment,
-  getAgendaByStudent,
-} from "../api/agenda.api";
+import { getAgendaByClass, getAgendaByEnrollment, getAgendaByStudent } from "../api/agenda.api";
 
 import type {
   AgendaAdminSummaryResponse,
@@ -22,6 +18,9 @@ export const agendaQueryKey = (input: AgendaLookupInput) => [
   input.classId || "",
   String(input.limit || ""),
 ];
+
+const AGENDA_QUERY_STALE_TIME_MS = 30_000;
+const AGENDA_QUERY_GC_TIME_MS = 5 * 60_000;
 
 function hasRequiredScope(input: AgendaLookupInput) {
   if (input.mode === "student") {
@@ -62,8 +61,12 @@ function fetchAgenda(
 export function useAgenda(input: AgendaLookupInput) {
   return useQuery({
     enabled: Boolean(input.enabled && hasRequiredScope(input)),
+    gcTime: AGENDA_QUERY_GC_TIME_MS,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchAgenda(input),
     queryKey: agendaQueryKey(input),
+    refetchOnWindowFocus: false,
     retry: 1,
+    staleTime: AGENDA_QUERY_STALE_TIME_MS,
   });
 }

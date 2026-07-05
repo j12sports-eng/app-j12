@@ -53,12 +53,14 @@ Evoluir a plataforma sem interromper operacao de alunos, financeiro, presencas, 
 
 - Eleger um bootstrap unico.
 - Separar `routes`, `controllers`, `services`, `repositories` e `middlewares`.
+- Sprint 16 concluida: Locacao de Quadras agora possui dominio administrativo em `backend/src/domains/quadras`, com rotas protegidas, services, controllers e testes.
 - Remover rotas legadas apos prova de nao uso.
 - Padronizar resposta JSON e tratamento de erro.
 
 ## Fase 4 - Frontend por Dominio
 
 - Consolidar stores por dominio.
+- Sprint 16 concluida: Locacao de Quadras agora possui feature dedicada em `src/features/quadras` e rota administrativa `/admin/quadras`.
 - Definir quando usar React Query e quando usar store customizada.
 - Reduzir `any`.
 - Corrigir textos com encoding quebrado.
@@ -77,4 +79,3 @@ Evoluir a plataforma sem interromper operacao de alunos, financeiro, presencas, 
 - [Backend Padroes](../BACKEND/PADROES.md)
 - [Frontend Padroes](../FRONTEND/PADROES.md)
 - [Banco Integridade](../BANCO/INTEGRIDADE.md)
-

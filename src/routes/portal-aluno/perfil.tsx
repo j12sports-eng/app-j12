@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Mail, Phone, ShieldCheck, Trophy, UserRound } from "lucide-react";
+import { Camera, Mail, Phone, ShieldCheck, Trophy, UserRound, Users } from "lucide-react";
 import { type ReactNode } from "react";
 
 import { PortalAlunoLayout } from "@/components/PortalAlunoLayout";
@@ -68,6 +68,26 @@ function PerfilAlunoPage() {
                 </div>
               </div>
 
+              <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center">
+                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                  {perfil.fotoUrl ? (
+                    <img
+                      src={perfil.fotoUrl}
+                      alt={`Foto de ${perfil.nome_completo}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Camera className="h-8 w-8 text-slate-500" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-400">Matricula</p>
+                  <p className="mt-1 text-xl font-bold text-white">
+                    {perfil.numero_matricula || "-"}
+                  </p>
+                </div>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <InfoCard
                   label="Nome"
@@ -88,6 +108,51 @@ function PerfilAlunoPage() {
                   label="Modalidade"
                   value={perfil.modalidade_principal || "-"}
                   icon={<Trophy className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Turma"
+                  value={perfil.turma_principal || "-"}
+                  icon={<ShieldCheck className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Plano"
+                  value={perfil.plano_principal || "-"}
+                  icon={<Trophy className="h-4 w-4" />}
+                />
+              </div>
+            </section>
+
+            <section className="j12-surface p-5 md:p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="j12-icon-chip h-11 w-11">
+                  <Users className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Dados do responsavel</h2>
+                  <p className="text-sm text-slate-400">Contato vinculado ao cadastro do aluno.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <InfoCard
+                  label="Nome"
+                  value={perfil.responsavel_detalhes?.nome || "-"}
+                  icon={<Users className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Parentesco"
+                  value={perfil.responsavel_detalhes?.parentesco || "-"}
+                  icon={<ShieldCheck className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Telefone"
+                  value={perfil.responsavel_detalhes?.telefone || "-"}
+                  icon={<Phone className="h-4 w-4" />}
+                />
+                <InfoCard
+                  label="Email"
+                  value={perfil.responsavel_detalhes?.email || "-"}
+                  icon={<Mail className="h-4 w-4" />}
                 />
               </div>
             </section>

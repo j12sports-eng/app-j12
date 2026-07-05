@@ -1,9 +1,18 @@
+const application = require("./application/index.js");
+const infrastructure = require("./infrastructure/index.js");
+const presentation = require("./presentation/index.js");
+
 /**
  * Domain boundary for Notificacoes.
  *
- * This entrypoint intentionally exposes no business logic. It exists only to
- * reserve the future domain boundary without changing current runtime imports.
+ * Sprint 13.13 adds the Agenda notification center while preserving legacy
+ * aluno/responsavel notification routes.
  */
 module.exports = Object.freeze({
   domain: "notificacoes",
+  ...application,
+  MySqlNotificationRepository: infrastructure.MySqlNotificationRepository,
+  application,
+  infrastructure,
+  presentation,
 });
