@@ -8,4 +8,7 @@ module.exports = Object.freeze({
   domain: "financeiro",
   ...require("./application/index.js"),
   ...require("./infrastructure/index.js"),
+  ...require("./payment/index.js"),
+  ...require("./inter/index.js"),
+  ...require("./automation/index.js"),
 });

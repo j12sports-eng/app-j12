@@ -150,8 +150,14 @@ function mapPaymentRow(row) {
 
 function mapChargeRow(row, source) {
   const finalAmount = Number(row.valor_final ?? row.valor ?? 0);
-  const chargeId = text(row.cobranca_id ?? row.charge_id ?? (source === "charge" ? row.id : ""), 64);
-  const mensalidadeId = text(source === "mensalidade" ? row.id : row.mensalidade_id ?? row.id, 64);
+  const chargeId = text(
+    row.cobranca_id ?? row.charge_id ?? (source === "charge" ? row.id : ""),
+    64,
+  );
+  const mensalidadeId = text(
+    source === "mensalidade" ? row.id : (row.mensalidade_id ?? row.id),
+    64,
+  );
 
   return {
     source,
@@ -167,7 +173,9 @@ function mapChargeRow(row, source) {
     phone: nullableText(row.telefone_whatsapp ?? row.telefone_contato, 50),
     description:
       text(row.descricao, 191) ||
-      (text(row.referencia ?? row.competencia, 50) ? `Mensalidade ${text(row.referencia ?? row.competencia, 50)}` : "Mensalidade J12"),
+      (text(row.referencia ?? row.competencia, 50)
+        ? `Mensalidade ${text(row.referencia ?? row.competencia, 50)}`
+        : "Mensalidade J12"),
     amount: Number.isFinite(finalAmount) ? Number(finalAmount.toFixed(2)) : 0,
     dueDate: dateOnly(row.vencimento ?? row.data_vencimento),
     status: text(row.status, 30).toLowerCase(),
@@ -249,11 +257,7 @@ async function userCanAccessStudent(user, studentId) {
   if (role !== "responsavel") return false;
   if (userStudentId === normalizedStudentId) return true;
 
-  const possibleResponsibleIds = [
-    user.responsavelId,
-    user.responsavel_id,
-    user.id,
-  ]
+  const possibleResponsibleIds = [user.responsavelId, user.responsavel_id, user.id]
     .map((value) => text(value, 64))
     .filter(Boolean);
 
@@ -407,7 +411,14 @@ async function savePixPayment({ charge, txid, pixPayload, pixCopyPaste, qrCode }
   return findPaymentByTxid(txid);
 }
 
-async function recordWebhookEvent({ eventHash, txid, e2eid, payload, processed = false, error = null }) {
+async function recordWebhookEvent({
+  eventHash,
+  txid,
+  e2eid,
+  payload,
+  processed = false,
+  error = null,
+}) {
   await ensureInterFinancialSchema();
   const id = `iwe-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
 
@@ -434,10 +445,9 @@ async function recordWebhookEvent({ eventHash, txid, e2eid, payload, processed =
     ],
   );
 
-  const rows = await query(
-    "SELECT * FROM inter_webhook_events WHERE event_hash = ? LIMIT 1",
-    [text(eventHash, 64)],
-  );
+  const rows = await query("SELECT * FROM inter_webhook_events WHERE event_hash = ? LIMIT 1", [
+    text(eventHash, 64),
+  ]);
 
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }

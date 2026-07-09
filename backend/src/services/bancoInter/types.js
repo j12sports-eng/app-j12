@@ -39,7 +39,11 @@ function normalizeFinancialStatus(value) {
     return FINANCIAL_STATUSES.EXPIRED;
   }
 
-  if (["CANCELADO", "CANCELADA", "CANCELED", "CANCELLED"].includes(normalized)) {
+  if (
+    ["CANCELADO", "CANCELADA", "CANCELED", "CANCELLED", "REMOVIDA_PELO_USUARIO_RECEBEDOR"].includes(
+      normalized,
+    )
+  ) {
     return FINANCIAL_STATUSES.CANCELED;
   }
 

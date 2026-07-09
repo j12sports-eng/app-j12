@@ -1,5 +1,7 @@
 const express = require("express");
-const { EnrollmentFacade } = require("../../../enrollments/application/facades/enrollment.facade.js");
+const {
+  EnrollmentFacade,
+} = require("../../../enrollments/application/facades/enrollment.facade.js");
 const {
   MySqlEnrollmentRepository,
 } = require("../../../enrollments/infrastructure/repositories/mysql-enrollment.repository.js");
@@ -7,9 +9,7 @@ const { FinancialFacade } = require("../../application/facades/financial.facade.
 const {
   MySqlEnrollmentFinancialObligationRepository,
 } = require("../../infrastructure/repositories/mysql-enrollment-financial-obligation.repository.js");
-const {
-  FinancialAdminController,
-} = require("../controllers/financial-admin.controller.js");
+const { FinancialAdminController } = require("../controllers/financial-admin.controller.js");
 
 const FINANCIAL_ADMIN_ROUTE_BASE_PATH = "/admin/financial";
 
@@ -21,10 +21,12 @@ const FINANCIAL_ADMIN_ROUTE_BASE_PATH = "/admin/financial";
  */
 function createFinancialAdminRouter(options = {}) {
   const router = express.Router();
-  const controller = options.controller || new FinancialAdminController({
-    ...options,
-    financialFacade: createFinancialAdminFacade(options),
-  });
+  const controller =
+    options.controller ||
+    new FinancialAdminController({
+      ...options,
+      financialFacade: createFinancialAdminFacade(options),
+    });
   const authMiddleware = options.authMiddleware || getRequireAuth();
   const accessMiddleware = options.accessMiddleware || ensureFinancialAdminAccess;
 

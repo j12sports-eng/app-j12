@@ -47,4 +47,3 @@ export function ChargeStepper({ currentStep }: { currentStep: number }) {
     </div>
   );
 }
-

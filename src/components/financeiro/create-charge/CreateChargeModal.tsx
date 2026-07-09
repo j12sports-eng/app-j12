@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Loader2, Send, Sparkles, X } from "lucide-react";
@@ -237,27 +237,30 @@ export function CreateChargeModal({
     setCreatedSummary(null);
   }
 
-  function applyDefaultSelection(nextAlunos = alunos, nextPlanos = planos) {
-    const firstAluno = nextAlunos[0] ?? null;
-    const firstPlan = findAlunoPlan(firstAluno, nextPlanos);
+  const applyDefaultSelection = useCallback(
+    (nextAlunos: AlunoOption[], nextPlanos: PlanoOption[]) => {
+      const firstAluno = nextAlunos[0] ?? null;
+      const firstPlan = findAlunoPlan(firstAluno, nextPlanos);
 
-    if (firstAluno) {
-      form.setValue("alunoId", String(firstAluno.id), { shouldValidate: true });
-    }
-    if (firstPlan) {
-      form.setValue("planoId", String(firstPlan.id), { shouldValidate: true });
-      form.setValue("planoNome", firstPlan.nome);
-      form.setValue("valorPlano", formatBRLFromNumber(getPlanoValue(firstPlan)), {
-        shouldValidate: true,
-      });
-    }
-  }
+      if (firstAluno) {
+        form.setValue("alunoId", String(firstAluno.id), { shouldValidate: true });
+      }
+      if (firstPlan) {
+        form.setValue("planoId", String(firstPlan.id), { shouldValidate: true });
+        form.setValue("planoNome", firstPlan.nome);
+        form.setValue("valorPlano", formatBRLFromNumber(getPlanoValue(firstPlan)), {
+          shouldValidate: true,
+        });
+      }
+    },
+    [form],
+  );
 
   function startNewCharge() {
     form.reset(getDefaultChargeValues());
     setCurrentStep(0);
     setCreatedSummary(null);
-    applyDefaultSelection();
+    applyDefaultSelection(alunos, planos);
   }
 
   function handleOpenChange(value: boolean) {
@@ -265,15 +268,18 @@ export function CreateChargeModal({
     onOpenChange(value);
   }
 
-  function handleSelectPlano(planoId: string) {
-    const plano = planos.find((item) => String(item.id) === planoId) ?? null;
-    form.setValue("planoId", planoId, { shouldDirty: true, shouldValidate: true });
-    form.setValue("planoNome", plano?.nome || "", { shouldDirty: true });
-    form.setValue("valorPlano", formatBRLFromNumber(getPlanoValue(plano)), {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }
+  const handleSelectPlano = useCallback(
+    (planoId: string) => {
+      const plano = planos.find((item) => String(item.id) === planoId) ?? null;
+      form.setValue("planoId", planoId, { shouldDirty: true, shouldValidate: true });
+      form.setValue("planoNome", plano?.nome || "", { shouldDirty: true });
+      form.setValue("valorPlano", formatBRLFromNumber(getPlanoValue(plano)), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [form, planos],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -300,7 +306,7 @@ export function CreateChargeModal({
     return () => {
       active = false;
     };
-  }, [form, open]);
+  }, [applyDefaultSelection, open]);
 
   useEffect(() => {
     if (!selectedAluno || planos.length === 0) return;
@@ -310,7 +316,7 @@ export function CreateChargeModal({
     if (!plan || String(plan.id) === form.getValues("planoId")) return;
 
     handleSelectPlano(String(plan.id));
-  }, [form, selectedAluno, planos, values.categoria]);
+  }, [form, handleSelectPlano, selectedAluno, planos, values.categoria]);
 
   useEffect(() => {
     if (values.categoria === "mensalidade") return;

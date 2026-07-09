@@ -1,5 +1,4 @@
-const FINANCIAL_BILLING_CONTRACT_INPUT_REQUIRED_CODE =
-  "FINANCIAL_BILLING_CONTRACT_INPUT_REQUIRED";
+const FINANCIAL_BILLING_CONTRACT_INPUT_REQUIRED_CODE = "FINANCIAL_BILLING_CONTRACT_INPUT_REQUIRED";
 const FINANCIAL_BILLING_CONTRACT_VERSION = "sprint-12.3";
 const REQUIRED_ENROLLMENT_STATUS_FOR_BILLING = "ACTIVE";
 
@@ -61,7 +60,10 @@ function prepareEnrollmentBillingContract(input = {}) {
   const dueDay = normalizeDueDay(input.dueDay ?? extractDayFromDate(firstDueDate));
   const enrollmentStatus = normalizeUpperText(input.enrollmentStatus);
   const planId = nullableText(
-    input.planId ?? input.planoId ?? readProperty(input.plan, "id") ?? readProperty(input.plan, "planId"),
+    input.planId ??
+      input.planoId ??
+      readProperty(input.plan, "id") ??
+      readProperty(input.plan, "planId"),
     64,
   );
   const amount = normalizePositiveAmount(
@@ -79,69 +81,90 @@ function prepareEnrollmentBillingContract(input = {}) {
   const currency = normalizeCurrency(input.currency ?? input.moeda);
   const studentPersonId = nullableText(input.studentPersonId ?? input.student_person_id, 64);
   const studentProfileId = nullableText(input.studentProfileId ?? input.student_profile_id, 64);
-  const classId = nullableText(input.classId ?? input.class_id ?? input.turmaId ?? input.turma_id, 64);
+  const classId = nullableText(
+    input.classId ?? input.class_id ?? input.turmaId ?? input.turma_id,
+    64,
+  );
 
   const blockers = [];
 
   if (!studentPersonId || !studentProfileId) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.STUDENT_SCOPE_MISSING,
-      "Student person/profile identifiers were not resolved.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.STUDENT_SCOPE_MISSING,
+        "Student person/profile identifiers were not resolved.",
+      ),
+    );
   }
 
   if (!enrollmentStatus) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.ENROLLMENT_STATUS_NOT_RESOLVED,
-      "Enrollment status was not resolved.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.ENROLLMENT_STATUS_NOT_RESOLVED,
+        "Enrollment status was not resolved.",
+      ),
+    );
   } else if (enrollmentStatus !== REQUIRED_ENROLLMENT_STATUS_FOR_BILLING) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.ENROLLMENT_NOT_ACTIVE,
-      "Only ACTIVE Enrollment can create billing.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.ENROLLMENT_NOT_ACTIVE,
+        "Only ACTIVE Enrollment can create billing.",
+      ),
+    );
   }
 
   if (!planId) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.BILLING_PLAN_NOT_RESOLVED,
-      "No reliable billing plan source was resolved for this Enrollment.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.BILLING_PLAN_NOT_RESOLVED,
+        "No reliable billing plan source was resolved for this Enrollment.",
+      ),
+    );
   }
 
   if (amount === null) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.BILLING_AMOUNT_NOT_RESOLVED,
-      "No reliable positive amount was resolved for this Enrollment.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.BILLING_AMOUNT_NOT_RESOLVED,
+        "No reliable positive amount was resolved for this Enrollment.",
+      ),
+    );
   }
 
   if (dueDay === null) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.BILLING_DUE_DAY_NOT_RESOLVED,
-      "No reliable due day was resolved for this Enrollment.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.BILLING_DUE_DAY_NOT_RESOLVED,
+        "No reliable due day was resolved for this Enrollment.",
+      ),
+    );
   }
 
   if (!firstDueDate) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.BILLING_FIRST_DUE_DATE_NOT_RESOLVED,
-      "No reliable first due date was resolved for this Enrollment.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.BILLING_FIRST_DUE_DATE_NOT_RESOLVED,
+        "No reliable first due date was resolved for this Enrollment.",
+      ),
+    );
   }
 
   if (!billingCycle) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.BILLING_CYCLE_NOT_RESOLVED,
-      "No reliable billing cycle was resolved for this Enrollment.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.BILLING_CYCLE_NOT_RESOLVED,
+        "No reliable billing cycle was resolved for this Enrollment.",
+      ),
+    );
   }
 
   if (!currency) {
-    blockers.push(createBlocker(
-      FinancialBillingContractBlocker.BILLING_CURRENCY_NOT_RESOLVED,
-      "No reliable billing currency was resolved for this Enrollment.",
-    ));
+    blockers.push(
+      createBlocker(
+        FinancialBillingContractBlocker.BILLING_CURRENCY_NOT_RESOLVED,
+        "No reliable billing currency was resolved for this Enrollment.",
+      ),
+    );
   }
 
   const canCreateBilling = blockers.length === 0;
@@ -336,7 +359,7 @@ function normalizeMetadata(value = {}) {
  * @returns {unknown|null}
  */
 function readProperty(value, property) {
-  return value && typeof value === "object" ? value[property] ?? null : null;
+  return value && typeof value === "object" ? (value[property] ?? null) : null;
 }
 
 /**

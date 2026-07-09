@@ -1,9 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const {
-  FinancialAdminController,
-} = require("../controllers/financial-admin.controller.js");
+const { FinancialAdminController } = require("../controllers/financial-admin.controller.js");
 const {
   FINANCIAL_ADMIN_ROUTE_BASE_PATH,
   createFinancialAdminRouter,

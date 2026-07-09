@@ -129,7 +129,10 @@ router.get(
       return;
     }
 
-    if (!canManageSystem(req.auth || req.user) && !(await userCanAccessStudent(req.auth || req.user, payment.studentId))) {
+    if (
+      !canManageSystem(req.auth || req.user) &&
+      !(await userCanAccessStudent(req.auth || req.user, payment.studentId))
+    ) {
       res.status(403).json({
         success: false,
         error: "Sem permissao para consultar este PIX.",

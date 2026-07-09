@@ -190,9 +190,15 @@ export function ChampionshipPublicMatchesTable({ isLoading, matches }: PublicMat
               <span className="text-lg font-black text-primary">
                 {formatScore(match.score.home, match.score.away)}
               </span>
-              <TeamNameBlock align="right" label={getMatchTeamName(match.away)} acronym={match.away.acronym} />
+              <TeamNameBlock
+                align="right"
+                label={getMatchTeamName(match.away)}
+                acronym={match.away.acronym}
+              />
             </div>
-            <p className="mt-3 text-xs text-slate-500">{match.groupName || match.roundName || "-"}</p>
+            <p className="mt-3 text-xs text-slate-500">
+              {match.groupName || match.roundName || "-"}
+            </p>
           </article>
         ))}
       </div>
@@ -249,7 +255,10 @@ export function ChampionshipPublicBracketView({ bracket, isLoading }: PublicBrac
             </h3>
             <div className="mt-4 space-y-3">
               {phase.matches.map((match) => (
-                <article key={match.id || `${match.home.registrationId}-${match.away.registrationId}`} className="rounded-lg border border-white/10 bg-black/30 p-3">
+                <article
+                  key={match.id || `${match.home.registrationId}-${match.away.registrationId}`}
+                  className="rounded-lg border border-white/10 bg-black/30 p-3"
+                >
                   <BracketTeamRow
                     isWinner={match.winnerRegistrationId === match.home.registrationId}
                     score={match.score.home}
@@ -291,8 +300,16 @@ export function ChampionshipPublicStatisticsView({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <PublicMetric icon={CalendarDays} label="Jogos" value={summary?.matchesPlayed || 0} />
         <PublicMetric icon={Goal} label="Gols" value={summary?.goalsScored || 0} />
-        <PublicMetric icon={BarChart3} label="Media de gols" value={formatDecimal(summary?.goalsAverage || 0)} />
-        <PublicMetric icon={Shield} label="Cartoes" value={(summary?.yellowCards || 0) + (summary?.redCards || 0)} />
+        <PublicMetric
+          icon={BarChart3}
+          label="Media de gols"
+          value={formatDecimal(summary?.goalsAverage || 0)}
+        />
+        <PublicMetric
+          icon={Shield}
+          label="Cartoes"
+          value={(summary?.yellowCards || 0) + (summary?.redCards || 0)}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -330,7 +347,10 @@ export function ChampionshipPublicTopScorersTable({
         </thead>
         <tbody className="divide-y divide-white/10">
           {items.map((player) => (
-            <TopScorerRow key={player.playerId || `${player.playerName}-${player.teamName}`} player={player} />
+            <TopScorerRow
+              key={player.playerId || `${player.playerName}-${player.teamName}`}
+              player={player}
+            />
           ))}
         </tbody>
       </table>
@@ -344,7 +364,12 @@ function PublicTeamCard({ team }: { team: PublicTeam }) {
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
           {team.logo?.publicUrl ? (
-            <img src={team.logo.publicUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+            <img
+              src={team.logo.publicUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
           ) : (
             <Shield className="h-5 w-5 text-primary" />
           )}
@@ -354,7 +379,9 @@ function PublicTeamCard({ team }: { team: PublicTeam }) {
           <p className="text-xs text-slate-500">{team.acronym || team.city || "J12"}</p>
         </div>
       </div>
-      {team.coach ? <p className="mt-3 text-xs font-semibold text-slate-400">Tecnico: {team.coach}</p> : null}
+      {team.coach ? (
+        <p className="mt-3 text-xs font-semibold text-slate-400">Tecnico: {team.coach}</p>
+      ) : null}
     </article>
   );
 }
@@ -378,9 +405,13 @@ function StandingTableRows({ items }: { items: PublicStanding[] }) {
         <tbody className="divide-y divide-white/10">
           {items.map((item) => (
             <tr key={item.team.registrationId || item.team.teamName}>
-              <td className="px-4 py-3 font-black text-primary">{item.position || item.overallPosition}</td>
+              <td className="px-4 py-3 font-black text-primary">
+                {item.position || item.overallPosition}
+              </td>
               <td className="px-4 py-3">
-                <span className="block font-black text-white">{item.team.teamName || "Equipe"}</span>
+                <span className="block font-black text-white">
+                  {item.team.teamName || "Equipe"}
+                </span>
                 <span className="block text-xs text-slate-500">{item.team.acronym || "-"}</span>
               </td>
               <td className="px-4 py-3 font-black text-white">{item.points}</td>
@@ -451,7 +482,9 @@ function PublicMetric({
   return (
     <div className="rounded-lg border border-white/10 bg-[#111114] p-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+          {label}
+        </span>
         <Icon className="h-4 w-4 text-primary" />
       </div>
       <p className="mt-3 text-2xl font-black text-white">{value}</p>
@@ -524,7 +557,10 @@ function PublicLoadingGrid() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="h-40 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]" />
+        <div
+          key={index}
+          className="h-40 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]"
+        />
       ))}
     </div>
   );
@@ -534,7 +570,10 @@ function PublicLoadingRows() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="h-14 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]" />
+        <div
+          key={index}
+          className="h-14 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]"
+        />
       ))}
     </div>
   );

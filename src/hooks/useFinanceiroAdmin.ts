@@ -420,7 +420,7 @@ export function useFinanceiroAdmin() {
       let pixPayload: unknown = null;
 
       if (payload.gerarPix && payload.formaPagamento === "pix") {
-        pixPayload = await api.post("/pix/create", {
+        pixPayload = await api.post("/admin/financeiro/inter/pix", {
           chargeId: created.id,
           mensalidadeId: created.id,
         });

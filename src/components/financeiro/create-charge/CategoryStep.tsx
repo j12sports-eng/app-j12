@@ -17,7 +17,9 @@ function getAlunoName(aluno: AlunoOption | null) {
 }
 
 function getPlanoValue(plano: PlanoOption | null) {
-  return Number(plano?.precoMensal ?? plano?.preco_mensal ?? plano?.mensalidade ?? plano?.valor ?? 0);
+  return Number(
+    plano?.precoMensal ?? plano?.preco_mensal ?? plano?.mensalidade ?? plano?.valor ?? 0,
+  );
 }
 
 export function CategoryStep({
@@ -205,4 +207,3 @@ export function CategoryStep({
     </section>
   );
 }
-

@@ -36,11 +36,7 @@ export const publicChampionshipQueryKeys = {
       filters || {},
     ] as const,
   statistics: (championshipId?: string, filters?: PublicPaginationFilters) =>
-    [
-      ...publicChampionshipQueryKeys.detail(championshipId),
-      "estatisticas",
-      filters || {},
-    ] as const,
+    [...publicChampionshipQueryKeys.detail(championshipId), "estatisticas", filters || {}] as const,
   teams: (championshipId?: string, filters?: PublicPaginationFilters) =>
     [...publicChampionshipQueryKeys.detail(championshipId), "equipes", filters || {}] as const,
   topScorers: (championshipId?: string, filters?: PublicPaginationFilters) =>

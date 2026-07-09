@@ -50,7 +50,13 @@ const {
 } = require("./domains/enrollments/presentation/routes/index.js");
 const {
   createFinancialAdminRouter,
+  createFinancialAutomationRouter,
+  createFinancialPaymentAdminRouter,
+  createFinancialInterAdminRouter,
   FINANCIAL_ADMIN_ROUTE_BASE_PATH,
+  FINANCIAL_AUTOMATION_ROUTE_BASE_PATH,
+  FINANCIAL_PAYMENT_ADMIN_ROUTE_BASE_PATH,
+  FINANCIAL_INTER_ADMIN_ROUTE_BASE_PATH,
 } = require("./domains/financeiro/presentation/routes/index.js");
 const {
   createAgendaAdminRouter,
@@ -82,6 +88,9 @@ const server = http.createServer(app);
 const enrollmentAdminRoutes = createEnrollmentAdminRouter();
 const enrollmentPublicRoutes = createEnrollmentPublicRouter();
 const financialAdminRoutes = createFinancialAdminRouter();
+const financialAutomationRoutes = createFinancialAutomationRouter();
+const financialPaymentAdminRoutes = createFinancialPaymentAdminRouter();
+const financialInterAdminRoutes = createFinancialInterAdminRouter();
 const agendaAdminRoutes = createAgendaAdminRouter();
 const courtRentalRoutes = createCourtRentalRouter();
 const championshipAdminRoutes = createChampionshipAdminRouter();
@@ -505,6 +514,18 @@ mount(
 mount(
   [FINANCIAL_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_ADMIN_ROUTE_BASE_PATH}`],
   financialAdminRoutes,
+);
+mount(
+  [FINANCIAL_PAYMENT_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_PAYMENT_ADMIN_ROUTE_BASE_PATH}`],
+  financialPaymentAdminRoutes,
+);
+mount(
+  [FINANCIAL_AUTOMATION_ROUTE_BASE_PATH, `/api${FINANCIAL_AUTOMATION_ROUTE_BASE_PATH}`],
+  financialAutomationRoutes,
+);
+mount(
+  [FINANCIAL_INTER_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_INTER_ADMIN_ROUTE_BASE_PATH}`],
+  financialInterAdminRoutes,
 );
 mount([AGENDA_ADMIN_ROUTE_BASE_PATH, `/api${AGENDA_ADMIN_ROUTE_BASE_PATH}`], agendaAdminRoutes);
 mount([COURT_RENTAL_ROUTE_BASE_PATH, `/api${COURT_RENTAL_ROUTE_BASE_PATH}`], courtRentalRoutes);

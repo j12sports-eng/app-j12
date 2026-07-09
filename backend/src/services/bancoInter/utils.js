@@ -145,7 +145,10 @@ function resolveInterBaseUrl() {
   const configured = text(process.env.INTER_BASE_URL, 500).replace(/\/+$/, "");
   if (configured) return configured;
 
-  const environment = text(process.env.INTER_ENVIRONMENT || process.env.INTER_ENV, 50).toLowerCase();
+  const environment = text(
+    process.env.INTER_ENVIRONMENT || process.env.INTER_ENV,
+    50,
+  ).toLowerCase();
   if (["homologacao", "homologation", "sandbox", "hml"].includes(environment)) {
     return "https://cdpj-sandbox.partners.uatinter.co";
   }
@@ -211,7 +214,7 @@ function parseJson(value, fallback = null) {
 
 function logInter(scope, message, meta = null) {
   const suffix = meta ? ` ${safeJsonStringify(meta)}` : "";
-  console.log(`[inter][${scope}] ${message}${suffix}`);
+  console.info(`[inter][${scope}] ${message}${suffix}`);
 }
 
 module.exports = {

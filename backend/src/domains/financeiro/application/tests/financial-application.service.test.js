@@ -50,15 +50,30 @@ test("FinancialApplicationService returns blockers when ACTIVE Enrollment has no
   assert.deepEqual(reader.calls, ["active-billing-1"]);
 
   const blockerCodes = result.blockers.map((blocker) => blocker.code);
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_PLAN_NOT_RESOLVED), true);
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_AMOUNT_NOT_RESOLVED), true);
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_DUE_DAY_NOT_RESOLVED), true);
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_PLAN_NOT_RESOLVED),
+    true,
+  );
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_AMOUNT_NOT_RESOLVED),
+    true,
+  );
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_DUE_DAY_NOT_RESOLVED),
+    true,
+  );
   assert.equal(
     blockerCodes.includes(FinancialBillingContractBlocker.BILLING_FIRST_DUE_DATE_NOT_RESOLVED),
     true,
   );
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_CYCLE_NOT_RESOLVED), true);
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_CURRENCY_NOT_RESOLVED), true);
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_CYCLE_NOT_RESOLVED),
+    true,
+  );
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_CURRENCY_NOT_RESOLVED),
+    true,
+  );
 });
 
 test("FinancialApplicationService blocks non-ACTIVE Enrollment through contract blockers", async () => {
@@ -81,7 +96,10 @@ test("FinancialApplicationService blocks non-ACTIVE Enrollment through contract 
       };
     },
   };
-  const service = new FinancialApplicationService({ billingSourceReader, enrollmentReader: reader });
+  const service = new FinancialApplicationService({
+    billingSourceReader,
+    enrollmentReader: reader,
+  });
 
   const result = await service.prepareEnrollmentBillingContract({
     enrollmentId: "draft-billing-1",
@@ -125,7 +143,10 @@ test("FinancialApplicationService returns READY when billing source resolves rel
       };
     },
   };
-  const service = new FinancialApplicationService({ billingSourceReader, enrollmentReader: reader });
+  const service = new FinancialApplicationService({
+    billingSourceReader,
+    enrollmentReader: reader,
+  });
 
   const result = await service.prepareEnrollmentBillingContract({
     enrollmentId: "active-billing-2",
@@ -239,8 +260,14 @@ test("FinancialApplicationService prepares and blocks initial obligation when bi
   assert.equal(repeated.idempotency.key, first.idempotency.key);
 
   const blockerCodes = first.blockers.map((blocker) => blocker.code);
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_PLAN_NOT_RESOLVED), true);
-  assert.equal(blockerCodes.includes(FinancialBillingContractBlocker.BILLING_AMOUNT_NOT_RESOLVED), true);
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_PLAN_NOT_RESOLVED),
+    true,
+  );
+  assert.equal(
+    blockerCodes.includes(FinancialBillingContractBlocker.BILLING_AMOUNT_NOT_RESOLVED),
+    true,
+  );
 });
 
 test("FinancialApplicationService blocks DRAFT initial obligation through billing contract", async () => {
@@ -651,10 +678,9 @@ test("FinancialApplicationService searches financial student scopes through inje
     },
   ]);
 
-  await assert.rejects(
-    () => service.searchFinancialStudentScopes({ query: "J" }),
-    { code: FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE },
-  );
+  await assert.rejects(() => service.searchFinancialStudentScopes({ query: "J" }), {
+    code: FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE,
+  });
 });
 
 test("FinancialApplicationService delegates financial obligation repository reads and creates", async () => {

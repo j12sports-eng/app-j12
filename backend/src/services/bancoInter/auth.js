@@ -110,7 +110,8 @@ async function interRequest(config, attempt = 1) {
     });
   } catch (error) {
     const shouldRetry =
-      attempt < 2 && [401, 403, 408, 429, 500, 502, 503, 504].includes(Number(error.response?.status));
+      attempt < 2 &&
+      [401, 403, 408, 429, 500, 502, 503, 504].includes(Number(error.response?.status));
 
     logInter("request", "Erro na requisicao ao Banco Inter.", {
       method: config.method,

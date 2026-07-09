@@ -7,14 +7,7 @@ const {
   loadChargeForPix,
   savePixPayment,
 } = require("./financial.js");
-const {
-  buildTxid,
-  logInter,
-  money,
-  nullableText,
-  resolvePixKey,
-  text,
-} = require("./utils.js");
+const { buildTxid, logInter, money, nullableText, resolvePixKey, text } = require("./utils.js");
 
 function normalizeDebtor(charge) {
   const digits = text(charge.responsibleCpf, 20).replace(/\D/g, "");
@@ -232,9 +225,11 @@ async function configurePixWebhook(webhookUrl = process.env.INTER_WEBHOOK_URL) {
     },
   });
 
-  return response.data || {
-    webhookUrl: normalizedWebhookUrl,
-  };
+  return (
+    response.data || {
+      webhookUrl: normalizedWebhookUrl,
+    }
+  );
 }
 
 module.exports = {

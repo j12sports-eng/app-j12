@@ -365,10 +365,7 @@ export function FinancialAdminEnrollmentPanel() {
 
             {scopeSearchQuery.error && (
               <div className="mt-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                {formatApiErrorMessage(
-                  scopeSearchQuery.error,
-                  "Nao foi possivel buscar alunos.",
-                )}
+                {formatApiErrorMessage(scopeSearchQuery.error, "Nao foi possivel buscar alunos.")}
               </div>
             )}
 

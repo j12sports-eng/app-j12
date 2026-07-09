@@ -84,7 +84,12 @@ test("MySqlEnrollmentFinancialObligationRepository creates and maps an obligatio
     status: "PREPARED",
     updatedAt: "2026-07-02 10:00:00",
   });
-  assert.equal(calls.some((call) => /j12_mensalidades|j12_financeiro_cobrancas|j12_pagamentos|financial_payments/i.test(call.sql)), false);
+  assert.equal(
+    calls.some((call) =>
+      /j12_mensalidades|j12_financeiro_cobrancas|j12_pagamentos|financial_payments/i.test(call.sql),
+    ),
+    false,
+  );
 });
 
 test("MySqlEnrollmentFinancialObligationRepository reuses existing record on duplicate unique key", async () => {
@@ -201,7 +206,10 @@ test("MySqlEnrollmentFinancialObligationRepository updates obligation status wit
   assert.equal(result.obligation.cancelledAt, "2026-07-21 09:00:00");
   assert.equal(result.obligation.cancelledBy, "admin@j12.local");
   assert.equal(result.obligation.metadata.statusAudit[0].action, "CANCEL");
-  assert.equal(calls.some((call) => call.sql.includes("UPDATE")), true);
+  assert.equal(
+    calls.some((call) => call.sql.includes("UPDATE")),
+    true,
+  );
 });
 
 test("MySqlEnrollmentFinancialObligationRepository lists admin obligations by enrollment and student scope", async () => {

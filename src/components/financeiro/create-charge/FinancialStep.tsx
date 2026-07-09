@@ -177,7 +177,9 @@ export function FinancialStep({ form }: { form: UseFormReturn<CreateChargeFormVa
           percentValue={form.watch("multaPercentual") || ""}
           fixedValue={form.watch("multaValor") || ""}
           onTypeChange={(value) => form.setValue("multaTipo", value, { shouldDirty: true })}
-          onPercentChange={(value) => form.setValue("multaPercentual", value, { shouldDirty: true })}
+          onPercentChange={(value) =>
+            form.setValue("multaPercentual", value, { shouldDirty: true })
+          }
           onFixedChange={(value) => form.setValue("multaValor", value, { shouldDirty: true })}
         />
         <AmountRule
@@ -186,7 +188,9 @@ export function FinancialStep({ form }: { form: UseFormReturn<CreateChargeFormVa
           percentValue={form.watch("jurosPercentual") || ""}
           fixedValue={form.watch("jurosValor") || ""}
           onTypeChange={(value) => form.setValue("jurosTipo", value, { shouldDirty: true })}
-          onPercentChange={(value) => form.setValue("jurosPercentual", value, { shouldDirty: true })}
+          onPercentChange={(value) =>
+            form.setValue("jurosPercentual", value, { shouldDirty: true })
+          }
           onFixedChange={(value) => form.setValue("jurosValor", value, { shouldDirty: true })}
         />
         <AmountRule
@@ -234,4 +238,3 @@ export function FinancialStep({ form }: { form: UseFormReturn<CreateChargeFormVa
     </section>
   );
 }
-

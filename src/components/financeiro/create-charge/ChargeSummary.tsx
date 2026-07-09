@@ -13,19 +13,13 @@ function getAlunoName(aluno: AlunoOption | null) {
   return aluno?.nome || aluno?.nome_completo || "Aluno nao selecionado";
 }
 
-function Row({
-  label,
-  value,
-  strong,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
+function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-white/8 py-2 last:border-b-0">
       <span className="text-sm text-slate-400">{label}</span>
-      <span className={cn("text-right text-sm font-semibold text-slate-200", strong && "text-white")}>
+      <span
+        className={cn("text-right text-sm font-semibold text-slate-200", strong && "text-white")}
+      >
         {value}
       </span>
     </div>
@@ -94,7 +88,9 @@ export function ChargeSummary({
       <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
         <Row label="Aluno" value={getAlunoName(selectedAluno)} strong />
         <Row label="Categoria" value={categoryLabel} />
-        {isMensalidade && <Row label="Plano" value={selectedPlano?.nome || values.planoNome || "-"} />}
+        {isMensalidade && (
+          <Row label="Plano" value={selectedPlano?.nome || values.planoNome || "-"} />
+        )}
         {isMensalidade && (
           <Row
             label="Recorrencia"
@@ -150,4 +146,3 @@ export function ChargeSummary({
     </aside>
   );
 }
-

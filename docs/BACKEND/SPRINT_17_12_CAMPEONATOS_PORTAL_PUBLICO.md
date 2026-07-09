@@ -1,19 +1,39 @@
-# Sprint 17.12 - Campeonatos Portal Publico
+# Sprint 17.12 - Backend - Portal Publico de Campeonatos
 
 ## Objetivo
 
-Implementar a Fase A do Portal Publico de Campeonatos no backend, sem iniciar frontend.
+Entregar a camada backend publica do Portal de Campeonatos da J12, somente leitura, para consumo
+do frontend publico da Sprint 17.12 Fase B.
 
-O escopo entrega uma API publica, somente leitura, para consumo do portal de campeonatos da J12.
+O backend publico expoe apenas campeonatos publicados e dados esportivos sanitizados. Nao ha
+endpoints publicos de escrita.
 
-## Endpoints publicos
+## Arquitetura Final
 
-Base:
+Base publica:
 
 - `/public/campeonatos`
 - `/api/public/campeonatos`
 
-Rotas implementadas:
+Camadas:
+
+- `application/services/championship-public.service.js`: orquestra validacao, permissao publica,
+  chamadas aos services esportivos e DTOs de saida.
+- `application/validators/championship-public.validators.js`: valida filtros, paginacao,
+  ordenacao e `championshipId`.
+- `application/dtos/championship-public.dto.js`: monta payloads por whitelist e remove campos
+  administrativos.
+- `application/repositories/championship-public.repository.js`: contrato do repository publico.
+- `infrastructure/repositories/mysql-championship-public.repository.js`: consulta apenas
+  campeonatos `PUBLISHED` e equipes confirmadas.
+- `presentation/controllers/championship-public.controller.js`: responde requests HTTP.
+- `presentation/routes/championship-public.routes.js`: registra as rotas publicas GET.
+
+Registro:
+
+- `backend/src/server.js` monta as rotas em `/public/campeonatos` e `/api/public/campeonatos`.
+
+## Endpoints Publicos
 
 - `GET /api/public/campeonatos`
 - `GET /api/public/campeonatos/:championshipId`
@@ -25,105 +45,159 @@ Rotas implementadas:
 - `GET /api/public/campeonatos/:championshipId/estatisticas`
 - `GET /api/public/campeonatos/:championshipId/artilharia`
 
-Nao foram criados endpoints `POST`, `PUT`, `PATCH` ou `DELETE` no namespace publico.
+Nao existem rotas publicas `POST`, `PUT`, `PATCH` ou `DELETE`.
 
-## Arquitetura
+## Filtros e Paginacao
 
-### Application
+`GET /api/public/campeonatos` aceita:
 
-Arquivos adicionados:
+- `page`
+- `limit`
+- `search`
+- `category`
+- `modality`
+- `sortBy`: `category`, `modality`, `name`, `publishedAt`, `startDate`
+- `sortDirection`: `ASC` ou `DESC`
 
-- `backend/src/domains/campeonatos/application/services/championship-public.service.js`
-- `backend/src/domains/campeonatos/application/validators/championship-public.validators.js`
-- `backend/src/domains/campeonatos/application/repositories/championship-public.repository.js`
+Endpoints de colecao do detalhe aceitam `page` e `limit`, com limite maximo normalizado em 100.
 
-O `ChampionshipPublicService` e a camada que:
+## Payloads
 
-- valida a entrada publica;
-- exige que o campeonato esteja publicado antes de buscar dados esportivos;
-- reutiliza services administrativos de grupos, jogos, classificacao, mata-mata e estatisticas;
-- aplica DTOs publicos para sanitizar a resposta.
+### Lista de campeonatos
 
-### Infrastructure
+```json
+{
+  "items": [
+    {
+      "id": "camp-public",
+      "name": "Copa J12",
+      "description": "Copa publica",
+      "category": "Sub-15",
+      "modality": "Futsal",
+      "status": "PUBLISHED",
+      "startDate": "2026-08-01",
+      "endDate": "2026-08-30",
+      "publishedAt": "2026-07-10T10:00:00.000Z",
+      "logo": {
+        "publicUrl": "https://cdn.j12.test/copa.png",
+        "mimeType": null,
+        "originalName": null,
+        "sizeBytes": null
+      }
+    }
+  ],
+  "limit": 20,
+  "page": 1,
+  "total": 1
+}
+```
 
-Arquivo adicionado:
+### Equipes
 
-- `backend/src/domains/campeonatos/infrastructure/repositories/mysql-championship-public.repository.js`
+```json
+{
+  "items": [
+    {
+      "registrationId": "insc-public",
+      "teamId": "team-public",
+      "teamName": "J12 Laranja",
+      "acronym": "J12",
+      "status": "CONFIRMED",
+      "groupId": "grupo-a",
+      "groupName": "Grupo A",
+      "coach": "Treinador",
+      "technicalCommission": [{ "name": "Treinador", "role": "Treinador" }]
+    }
+  ],
+  "limit": 100,
+  "page": 1,
+  "total": 1
+}
+```
 
-O repository publico:
+### Jogos
 
-- lista apenas campeonatos `PUBLISHED`;
-- detalha apenas campeonato `PUBLISHED`;
-- lista equipes apenas de inscricoes `CONFIRMED`;
-- filtra registros removidos com `deleted_at IS NULL`;
-- nao retorna observacoes internas, metadados administrativos, usuarios de auditoria ou documentos.
+```json
+{
+  "items": [
+    {
+      "id": "jogo-1",
+      "championshipId": "camp-public",
+      "roundName": "Rodada 1",
+      "matchDate": "2026-08-01",
+      "startTime": "09:00",
+      "status": "FINISHED",
+      "home": { "teamName": "J12 Laranja", "registrationId": "insc-home", "score": 3 },
+      "away": { "teamName": "Visitante", "registrationId": "insc-away", "score": 1 },
+      "score": { "home": 3, "away": 1 }
+    }
+  ],
+  "limit": 100,
+  "page": 1,
+  "total": 1
+}
+```
 
-### Presentation
+### Classificacao, mata-mata e estatisticas
 
-Arquivos adicionados:
+Esses endpoints retornam snapshots publicos com equipes, posicoes, jogos, placares, rankings e
+artilharia. Os DTOs removem campos internos e mantem apenas nomes, ids publicos, numeros de jogo,
+placares e estatisticas publicaveis.
 
-- `backend/src/domains/campeonatos/presentation/controllers/championship-public.controller.js`
-- `backend/src/domains/campeonatos/presentation/routes/championship-public.routes.js`
+## Regras de Negocio
 
-As rotas publicas sao registradas em:
+- Apenas campeonatos `PUBLISHED` e `deleted_at IS NULL` ficam acessiveis.
+- Campeonatos privados, rascunho, arquivados, removidos ou inexistentes retornam `404`.
+- Todo endpoint de detalhe chama `requirePublishedChampionship()` antes de consultar dados
+  esportivos.
+- `/equipes` lista apenas inscricoes `CONFIRMED`.
+- `/grupos` remove inscricoes nao confirmadas antes de responder.
+- Classificacao e estatisticas usam repositories somente leitura para evitar persistencia durante
+  chamadas publicas `GET`.
+- Payload publico e montado por whitelist; campos como `createdBy`, `updatedBy`, `createdAt`,
+  `updatedAt`, `deletedAt`, `metadata`, `observations`, `storageKey`, `uploadedBy`, `phone`,
+  `email` e documentos internos nao sao expostos.
 
-- `backend/src/server.js`
+## Fluxo de Navegacao
 
-## Seguranca
+O frontend publico consome:
 
-Regras implementadas:
+1. `GET /api/public/campeonatos` na rota `/campeonatos`.
+2. `GET /api/public/campeonatos/:championshipId` na rota `/campeonatos/$championshipId`.
+3. Endpoints de grupos, equipes, jogos, classificacao, mata-mata, estatisticas e artilharia para
+   compor as secoes da pagina de detalhes.
 
-- campeonato privado, rascunho, arquivado, removido ou inexistente retorna `404`;
-- todos os endpoints validam publicacao pelo repository publico antes de chamar services esportivos;
-- payload publico e montado por whitelist nos DTOs;
-- campos administrativos como `createdBy`, `updatedBy`, `createdAt`, `updatedAt`, `deletedAt`,
-  `metadata`, `observations`, `storageKey`, `uploadedBy` e equivalentes nao sao expostos;
-- equipes pendentes, recusadas ou canceladas nao aparecem em `/equipes`;
-- grupos publicos removem inscricoes nao confirmadas antes de montar a resposta;
-- endpoints publicos sao somente leitura no contrato HTTP.
-
-Para classificacao e estatisticas, a factory publica usa services administrativos com repositories
-de persistencia em modo somente leitura, evitando persistir recalculos durante chamadas `GET`.
+Nenhuma rota administrativa `/api/admin/...` e usada pelo portal publico.
 
 ## Testes
 
-Testes adicionados:
+Testes backend relevantes:
 
 - `backend/src/domains/campeonatos/application/tests/championship-public.service.test.js`
 - `backend/src/domains/campeonatos/presentation/tests/championship-public.routes.test.js`
 
-Coberturas:
+Cobertura:
 
 - campeonatos publicados;
 - campeonatos privados;
-- grupos;
-- equipes;
-- jogos;
-- classificacao;
-- mata-mata;
-- estatisticas;
-- artilharia;
-- paginacao;
-- sanitizacao do payload;
+- endpoints publicos somente leitura;
+- sanitizacao de payload;
+- grupos, equipes, jogos, classificacao, mata-mata, estatisticas e artilharia;
+- paginacao e filtros;
 - ausencia de rota publica de escrita.
 
-## Exports
+## Decisoes Tecnicas
 
-Foram revisados e atualizados:
+- Reuso dos services administrativos existentes para regras esportivas, evitando duplicar regra no
+  portal publico.
+- Repository publico dedicado para garantir filtro de publicacao e inscricoes confirmadas no acesso
+  externo.
+- DTOs publicos dedicados para impedir vazamento de campos administrativos.
+- Rotas publicas registradas tambem com prefixo `/api` para compatibilidade com o proxy do frontend.
 
-- `backend/src/domains/campeonatos/application/dtos/index.js`
-- `backend/src/domains/campeonatos/application/repositories/index.js`
-- `backend/src/domains/campeonatos/application/services/index.js`
-- `backend/src/domains/campeonatos/application/validators/index.js`
-- `backend/src/domains/campeonatos/infrastructure/repositories/index.js`
-- `backend/src/domains/campeonatos/presentation/controllers/index.js`
-- `backend/src/domains/campeonatos/presentation/routes/index.js`
-- `backend/src/domains/campeonatos/shared/constants/championship.constants.js`
+## Limitacoes
 
-## Fora do escopo
-
-- Frontend do portal publico.
-- Autenticacao de torcedores/alunos.
-- Endpoints de escrita publica.
-- Upload de assets.
-- Fase B do Portal Publico.
+- Sem escrita publica.
+- Sem autenticacao de torcedores/alunos.
+- Sem upload de assets no portal publico.
+- Sem recalculo persistente disparado por chamada publica.

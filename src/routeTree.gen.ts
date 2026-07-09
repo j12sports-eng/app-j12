@@ -26,6 +26,7 @@ import { Route as FinanceiroRouteImport } from './routes/financeiro'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ContratosRouteImport } from './routes/contratos'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as CampeonatosRouteImport } from './routes/campeonatos'
 import { Route as AulaExperimentalRouteImport } from './routes/aula-experimental'
 import { Route as AlunosRouteImport } from './routes/alunos'
 import { Route as AgendaRouteImport } from './routes/agenda'
@@ -56,6 +57,7 @@ import { Route as PortalAlunoConfiguracoesRouteImport } from './routes/portal-al
 import { Route as PortalAlunoCarteirinhaRouteImport } from './routes/portal-aluno/carteirinha'
 import { Route as PortalAlunoAvaliacoesRouteImport } from './routes/portal-aluno/avaliacoes'
 import { Route as PortalAlunoAgendaRouteImport } from './routes/portal-aluno/agenda'
+import { Route as CampeonatosChampionshipIdRouteImport } from './routes/campeonatos.$championshipId'
 import { Route as AdminQuadrasRouteImport } from './routes/admin/quadras'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
 import { Route as AdminEnrollmentsRouteImport } from './routes/admin/enrollments'
@@ -154,6 +156,11 @@ const ContratosRoute = ContratosRouteImport.update({
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampeonatosRoute = CampeonatosRouteImport.update({
+  id: '/campeonatos',
+  path: '/campeonatos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AulaExperimentalRoute = AulaExperimentalRouteImport.update({
@@ -314,6 +321,12 @@ const PortalAlunoAgendaRoute = PortalAlunoAgendaRouteImport.update({
   path: '/portal-aluno/agenda',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CampeonatosChampionshipIdRoute =
+  CampeonatosChampionshipIdRouteImport.update({
+    id: '/$championshipId',
+    path: '/$championshipId',
+    getParentRoute: () => CampeonatosRoute,
+  } as any)
 const AdminQuadrasRoute = AdminQuadrasRouteImport.update({
   id: '/admin/quadras',
   path: '/admin/quadras',
@@ -398,6 +411,7 @@ export interface FileRoutesByFullPath {
   '/agenda': typeof AgendaRoute
   '/alunos': typeof AlunosRoute
   '/aula-experimental': typeof AulaExperimentalRoute
+  '/campeonatos': typeof CampeonatosRouteWithChildren
   '/configuracoes': typeof ConfiguracoesRoute
   '/contratos': typeof ContratosRoute
   '/dashboard': typeof DashboardRouteWithChildren
@@ -420,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/admin/quadras': typeof AdminQuadrasRoute
+  '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
   '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
@@ -461,6 +476,7 @@ export interface FileRoutesByTo {
   '/agenda': typeof AgendaRoute
   '/alunos': typeof AlunosRoute
   '/aula-experimental': typeof AulaExperimentalRoute
+  '/campeonatos': typeof CampeonatosRouteWithChildren
   '/configuracoes': typeof ConfiguracoesRoute
   '/contratos': typeof ContratosRoute
   '/dashboard': typeof DashboardRouteWithChildren
@@ -483,6 +499,7 @@ export interface FileRoutesByTo {
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/admin/quadras': typeof AdminQuadrasRoute
+  '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
   '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
@@ -525,6 +542,7 @@ export interface FileRoutesById {
   '/agenda': typeof AgendaRoute
   '/alunos': typeof AlunosRoute
   '/aula-experimental': typeof AulaExperimentalRoute
+  '/campeonatos': typeof CampeonatosRouteWithChildren
   '/configuracoes': typeof ConfiguracoesRoute
   '/contratos': typeof ContratosRoute
   '/dashboard': typeof DashboardRouteWithChildren
@@ -547,6 +565,7 @@ export interface FileRoutesById {
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/admin/quadras': typeof AdminQuadrasRoute
+  '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
   '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
@@ -590,6 +609,7 @@ export interface FileRouteTypes {
     | '/agenda'
     | '/alunos'
     | '/aula-experimental'
+    | '/campeonatos'
     | '/configuracoes'
     | '/contratos'
     | '/dashboard'
@@ -612,6 +632,7 @@ export interface FileRouteTypes {
     | '/admin/enrollments'
     | '/admin/financeiro'
     | '/admin/quadras'
+    | '/campeonatos/$championshipId'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
     | '/portal-aluno/carteirinha'
@@ -653,6 +674,7 @@ export interface FileRouteTypes {
     | '/agenda'
     | '/alunos'
     | '/aula-experimental'
+    | '/campeonatos'
     | '/configuracoes'
     | '/contratos'
     | '/dashboard'
@@ -675,6 +697,7 @@ export interface FileRouteTypes {
     | '/admin/enrollments'
     | '/admin/financeiro'
     | '/admin/quadras'
+    | '/campeonatos/$championshipId'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
     | '/portal-aluno/carteirinha'
@@ -716,6 +739,7 @@ export interface FileRouteTypes {
     | '/agenda'
     | '/alunos'
     | '/aula-experimental'
+    | '/campeonatos'
     | '/configuracoes'
     | '/contratos'
     | '/dashboard'
@@ -738,6 +762,7 @@ export interface FileRouteTypes {
     | '/admin/enrollments'
     | '/admin/financeiro'
     | '/admin/quadras'
+    | '/campeonatos/$championshipId'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
     | '/portal-aluno/carteirinha'
@@ -780,6 +805,7 @@ export interface RootRouteChildren {
   AgendaRoute: typeof AgendaRoute
   AlunosRoute: typeof AlunosRoute
   AulaExperimentalRoute: typeof AulaExperimentalRoute
+  CampeonatosRoute: typeof CampeonatosRouteWithChildren
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   ContratosRoute: typeof ContratosRoute
   DashboardRoute: typeof DashboardRouteWithChildren
@@ -949,6 +975,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/configuracoes'
       preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campeonatos': {
+      id: '/campeonatos'
+      path: '/campeonatos'
+      fullPath: '/campeonatos'
+      preLoaderRoute: typeof CampeonatosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/aula-experimental': {
@@ -1161,6 +1194,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAlunoAgendaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/campeonatos/$championshipId': {
+      id: '/campeonatos/$championshipId'
+      path: '/$championshipId'
+      fullPath: '/campeonatos/$championshipId'
+      preLoaderRoute: typeof CampeonatosChampionshipIdRouteImport
+      parentRoute: typeof CampeonatosRoute
+    }
     '/admin/quadras': {
       id: '/admin/quadras'
       path: '/admin/quadras'
@@ -1262,6 +1302,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface CampeonatosRouteChildren {
+  CampeonatosChampionshipIdRoute: typeof CampeonatosChampionshipIdRoute
+}
+
+const CampeonatosRouteChildren: CampeonatosRouteChildren = {
+  CampeonatosChampionshipIdRoute: CampeonatosChampionshipIdRoute,
+}
+
+const CampeonatosRouteWithChildren = CampeonatosRoute._addFileChildren(
+  CampeonatosRouteChildren,
+)
+
 interface DashboardRouteChildren {
   DashboardAlunoIdRoute: typeof DashboardAlunoIdRoute
 }
@@ -1323,6 +1375,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgendaRoute: AgendaRoute,
   AlunosRoute: AlunosRoute,
   AulaExperimentalRoute: AulaExperimentalRoute,
+  CampeonatosRoute: CampeonatosRouteWithChildren,
   ConfiguracoesRoute: ConfiguracoesRoute,
   ContratosRoute: ContratosRoute,
   DashboardRoute: DashboardRouteWithChildren,

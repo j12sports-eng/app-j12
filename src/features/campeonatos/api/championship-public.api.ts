@@ -30,11 +30,7 @@ function withPublicQuery(
 
   appendQueryValue(search, "category", "category" in (params || {}) ? params?.category : undefined);
   appendQueryValue(search, "limit", params?.limit);
-  appendQueryValue(
-    search,
-    "modality",
-    "modality" in (params || {}) ? params?.modality : undefined,
-  );
+  appendQueryValue(search, "modality", "modality" in (params || {}) ? params?.modality : undefined);
   appendQueryValue(search, "page", params?.page);
   appendQueryValue(search, "search", "search" in (params || {}) ? params?.search : undefined);
   appendQueryValue(search, "sortBy", "sortBy" in (params || {}) ? params?.sortBy : undefined);

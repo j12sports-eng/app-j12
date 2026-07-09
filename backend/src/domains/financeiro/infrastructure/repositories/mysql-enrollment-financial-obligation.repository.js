@@ -4,8 +4,7 @@ const MYSQL_DUPLICATE_ENTRY_CODE = "ER_DUP_ENTRY";
 const MYSQL_DUPLICATE_ENTRY_ERRNO = 1062;
 
 const TABLE_NAME = "enrollment_financial_obligations";
-const ENROLLMENT_OBLIGATION_UNIQUE_INDEX =
-  "ux_enrollment_financial_obligations_enrollment_type";
+const ENROLLMENT_OBLIGATION_UNIQUE_INDEX = "ux_enrollment_financial_obligations_enrollment_type";
 
 const INSERT_ENROLLMENT_FINANCIAL_OBLIGATION_SQL = `
   INSERT INTO ${TABLE_NAME} (
@@ -92,10 +91,10 @@ class MySqlEnrollmentFinancialObligationRepository {
    */
   async findEnrollmentFinancialObligation(input = {}) {
     const values = normalizeLookupInput(input);
-    const rows = await this.query(SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ENROLLMENT_AND_TYPE_SQL, [
-      values.enrollmentId,
-      values.obligationType,
-    ]);
+    const rows = await this.query(
+      SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ENROLLMENT_AND_TYPE_SQL,
+      [values.enrollmentId, values.obligationType],
+    );
 
     return toEnrollmentFinancialObligationData(readFirstRow(rows));
   }
@@ -123,10 +122,11 @@ class MySqlEnrollmentFinancialObligationRepository {
     const studentPersonId = requiredText(input.studentPersonId, "studentPersonId", 64);
     const studentProfileId = requiredText(input.studentProfileId, "studentProfileId", 64);
     const limit = normalizeLimit(input.limit, 250);
-    const rows = await this.query(
-      SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_STUDENT_SCOPE_SQL,
-      [studentPersonId, studentProfileId, limit],
-    );
+    const rows = await this.query(SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_STUDENT_SCOPE_SQL, [
+      studentPersonId,
+      studentProfileId,
+      limit,
+    ]);
 
     return readRows(rows).map(toEnrollmentFinancialObligationData).filter(Boolean);
   }
@@ -215,9 +215,7 @@ class MySqlEnrollmentFinancialObligationRepository {
    */
   async findById(id) {
     const obligationId = requiredText(id, "id", 64);
-    const rows = await this.query(SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ID_SQL, [
-      obligationId,
-    ]);
+    const rows = await this.query(SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ID_SQL, [obligationId]);
 
     return toEnrollmentFinancialObligationData(readFirstRow(rows));
   }
@@ -273,9 +271,7 @@ function normalizeStatusUpdateInput(input = {}) {
     : [];
 
   if (currentStatuses.length === 0) {
-    throw new TypeError(
-      "MySqlEnrollmentFinancialObligationRepository requires currentStatuses.",
-    );
+    throw new TypeError("MySqlEnrollmentFinancialObligationRepository requires currentStatuses.");
   }
 
   return {

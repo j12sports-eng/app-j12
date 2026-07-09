@@ -7,16 +7,12 @@ const FINANCIAL_BILLING_CONTRACT_ENROLLMENT_NOT_FOUND_CODE =
   "FINANCIAL_BILLING_CONTRACT_ENROLLMENT_NOT_FOUND";
 const FINANCIAL_BILLING_CONTRACT_STUDENT_MISMATCH_CODE =
   "FINANCIAL_BILLING_CONTRACT_STUDENT_MISMATCH";
-const FINANCIAL_BILLING_SOURCE_READER_INVALID_CODE =
-  "FINANCIAL_BILLING_SOURCE_READER_INVALID";
-const INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE =
-  "INITIAL_ENROLLMENT_OBLIGATION";
+const FINANCIAL_BILLING_SOURCE_READER_INVALID_CODE = "FINANCIAL_BILLING_SOURCE_READER_INVALID";
+const INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE = "INITIAL_ENROLLMENT_OBLIGATION";
 const FINANCIAL_OBLIGATION_SCHEMA_OR_IDEMPOTENCY_GAP_CODE =
   "FINANCIAL_OBLIGATION_SCHEMA_OR_IDEMPOTENCY_GAP";
-const FINANCIAL_OBLIGATION_INPUT_REQUIRED_CODE =
-  "FINANCIAL_OBLIGATION_INPUT_REQUIRED";
-const FINANCIAL_OBLIGATION_NOT_FOUND_CODE =
-  "FINANCIAL_OBLIGATION_NOT_FOUND";
+const FINANCIAL_OBLIGATION_INPUT_REQUIRED_CODE = "FINANCIAL_OBLIGATION_INPUT_REQUIRED";
+const FINANCIAL_OBLIGATION_NOT_FOUND_CODE = "FINANCIAL_OBLIGATION_NOT_FOUND";
 const FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION_CODE =
   "FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION";
 const FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE =
@@ -47,10 +43,10 @@ const PAYABLE_FINANCIAL_OBLIGATION_STATUSES = Object.freeze([
 class FinancialApplicationService {
   /**
    * @param {Object} [options]
- * @param {{ findEnrollmentById?: (id: string) => Promise<unknown|null>, findById?: (id: string) => Promise<unknown|null> }} [options.enrollmentReader]
- * @param {Function|Record<string, Function>|null} [options.billingSourceReader]
- * @param {Record<string, Function>|null} [options.financialObligationRepository]
- * @param {{ searchStudentScopes?: (input: Record<string, unknown>) => Promise<unknown[]> }|null} [options.studentScopeReader]
+   * @param {{ findEnrollmentById?: (id: string) => Promise<unknown|null>, findById?: (id: string) => Promise<unknown|null> }} [options.enrollmentReader]
+   * @param {Function|Record<string, Function>|null} [options.billingSourceReader]
+   * @param {Record<string, Function>|null} [options.financialObligationRepository]
+   * @param {{ searchStudentScopes?: (input: Record<string, unknown>) => Promise<unknown[]> }|null} [options.studentScopeReader]
    */
   constructor({
     enrollmentReader = null,
@@ -196,9 +192,8 @@ class FinancialApplicationService {
     const blockedByBillingContract = billingContractBlockers.length > 0;
 
     if (!blockedByBillingContract && this.hasFinancialObligationRepository()) {
-      const repositoryResult = await this
-        .getFinancialObligationRepository()
-        .createEnrollmentFinancialObligationRecord({
+      const repositoryResult =
+        await this.getFinancialObligationRepository().createEnrollmentFinancialObligationRecord({
           amount: billingContract.amount,
           createdBy: billingContract.requestedBy,
           currency: billingContract.currency,
@@ -352,9 +347,11 @@ class FinancialApplicationService {
   async listEnrollmentFinancialObligations(input = {}) {
     const enrollmentId = requiredInputText(input.enrollmentId, "enrollmentId", 64);
     const limit = normalizeResultLimit(input.limit, 100);
-    const obligations = await this
-      .getFinancialObligationAdminRepository()
-      .listEnrollmentFinancialObligations({ enrollmentId, limit });
+    const obligations =
+      await this.getFinancialObligationAdminRepository().listEnrollmentFinancialObligations({
+        enrollmentId,
+        limit,
+      });
 
     return {
       count: obligations.length,
@@ -374,13 +371,14 @@ class FinancialApplicationService {
     const studentPersonId = requiredInputText(input.studentPersonId, "studentPersonId", 64);
     const studentProfileId = requiredInputText(input.studentProfileId, "studentProfileId", 64);
     const limit = normalizeResultLimit(input.limit, 250);
-    const obligations = await this
-      .getFinancialObligationAdminRepository()
-      .listEnrollmentFinancialObligationsByStudentScope({
-        limit,
-        studentPersonId,
-        studentProfileId,
-      });
+    const obligations =
+      await this.getFinancialObligationAdminRepository().listEnrollmentFinancialObligationsByStudentScope(
+        {
+          limit,
+          studentPersonId,
+          studentProfileId,
+        },
+      );
 
     return {
       count: obligations.length,
@@ -640,8 +638,8 @@ class FinancialApplicationService {
     if (
       typeof this.financialObligationRepository?.listEnrollmentFinancialObligations !==
         "function" ||
-      typeof this.financialObligationRepository?.listEnrollmentFinancialObligationsByStudentScope !==
-        "function"
+      typeof this.financialObligationRepository
+        ?.listEnrollmentFinancialObligationsByStudentScope !== "function"
     ) {
       throw new TypeError(
         "FinancialApplicationService requires a financialObligationRepository with admin read methods.",
@@ -699,10 +697,8 @@ class FinancialApplicationService {
   getEnrollmentReader() {
     if (
       !this.enrollmentReader ||
-      (
-        typeof this.enrollmentReader.findEnrollmentById !== "function" &&
-        typeof this.enrollmentReader.findById !== "function"
-      )
+      (typeof this.enrollmentReader.findEnrollmentById !== "function" &&
+        typeof this.enrollmentReader.findById !== "function")
     ) {
       throw new TypeError(
         "FinancialApplicationService requires an enrollmentReader.findEnrollmentById or findById function.",
@@ -782,7 +778,10 @@ function readEnrollmentStudentId(enrollment, input, fields) {
  */
 function assertInputStudentMatchesEnrollment(input, expected) {
   const inputStudentPersonId = nullableText(input.studentPersonId ?? input.student_person_id, 64);
-  const inputStudentProfileId = nullableText(input.studentProfileId ?? input.student_profile_id, 64);
+  const inputStudentProfileId = nullableText(
+    input.studentProfileId ?? input.student_profile_id,
+    64,
+  );
   const personMismatch =
     inputStudentPersonId &&
     expected.studentPersonId &&
@@ -815,7 +814,7 @@ function assertInputStudentMatchesEnrollment(input, expected) {
  * @returns {unknown|null}
  */
 function readProperty(value, property) {
-  return value && typeof value === "object" ? value[property] ?? null : null;
+  return value && typeof value === "object" ? (value[property] ?? null) : null;
 }
 
 /**
@@ -951,7 +950,13 @@ function buildFinancialObligationsSummary(obligations = []) {
     }
   }
 
-  for (const key of ["amountCancelled", "amountOpen", "amountOverdue", "amountPaid", "amountTotal"]) {
+  for (const key of [
+    "amountCancelled",
+    "amountOpen",
+    "amountOverdue",
+    "amountPaid",
+    "amountTotal",
+  ]) {
     summary[key] = Number(summary[key].toFixed(2));
   }
 

@@ -35,10 +35,7 @@ export const CHARGE_CATEGORY_VALUES = CHARGE_CATEGORIES.map((item) => item.value
   "personalizado",
 ];
 
-const RECURRENCE_VALUES = RECURRENCE_OPTIONS.map((item) => item.value) as [
-  "recorrente",
-  "avulsa",
-];
+const RECURRENCE_VALUES = RECURRENCE_OPTIONS.map((item) => item.value) as ["recorrente", "avulsa"];
 
 const PAYMENT_VALUES = PAYMENT_OPTIONS.map((item) => item.value) as [
   "pix",
@@ -47,10 +44,7 @@ const PAYMENT_VALUES = PAYMENT_OPTIONS.map((item) => item.value) as [
   "dinheiro",
 ];
 
-const AMOUNT_TYPE_VALUES = AMOUNT_TYPE_OPTIONS.map((item) => item.value) as [
-  "percentual",
-  "fixo",
-];
+const AMOUNT_TYPE_VALUES = AMOUNT_TYPE_OPTIONS.map((item) => item.value) as ["percentual", "fixo"];
 
 export const createChargeSchema = z
   .object({
@@ -227,4 +221,3 @@ export function calcChargeValues(values: CreateChargeFormValues) {
     encargosPreview,
   };
 }
-

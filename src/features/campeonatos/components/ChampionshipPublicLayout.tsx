@@ -53,7 +53,9 @@ export function ChampionshipPublicLayout({
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {subtitle ? <p className="mb-5 max-w-3xl text-sm leading-6 text-slate-400">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="mb-5 max-w-3xl text-sm leading-6 text-slate-400">{subtitle}</p>
+        ) : null}
         {children}
       </main>
     </div>

@@ -34,3 +34,6 @@ export * from "./ChampionshipTeamStatisticsTable";
 export * from "./ChampionshipPlayerStatisticsTable";
 export * from "./ChampionshipStatusBadge";
 export * from "./ChampionshipSubstitutionForm";
+export * from "./ChampionshipPublicCard";
+export * from "./ChampionshipPublicDataViews";
+export * from "./ChampionshipPublicLayout";

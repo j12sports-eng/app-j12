@@ -2,8 +2,7 @@ const { FinancialFacade } = require("../../application/facades/financial.facade.
 
 const FINANCIAL_ADMIN_INPUT_REQUIRED_CODE = "FINANCIAL_ADMIN_INPUT_REQUIRED";
 const FINANCIAL_ADMIN_ERROR_CODE = "FINANCIAL_ADMIN_ERROR";
-const FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED_CODE =
-  "FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED";
+const FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED_CODE = "FINANCIAL_ADMIN_SEARCH_QUERY_REQUIRED";
 
 const CONTROLLED_ERROR_STATUS_BY_CODE = Object.freeze({
   FINANCIAL_ADMIN_INPUT_REQUIRED: 400,
@@ -114,9 +113,7 @@ class FinancialAdminController {
    */
   async cancel(req, res, next) {
     try {
-      const data = await this.getFacade().cancelEnrollmentFinancialObligation(
-        readCancelInput(req),
-      );
+      const data = await this.getFacade().cancelEnrollmentFinancialObligation(readCancelInput(req));
       return sendSuccess(res, data);
     } catch (error) {
       return handleFinancialAdminError(error, res, next);
@@ -189,10 +186,7 @@ function readMarkPaidInput(req = {}) {
     obligationId: nullableText(params.obligationId ?? body.obligationId, 64),
     paidAt: nullableText(body.paidAt ?? body.paid_at, 19),
     paidBy: nullableText(body.paidBy ?? body.paid_by ?? readActor(req), 191),
-    paymentReference: nullableText(
-      body.paymentReference ?? body.payment_reference,
-      191,
-    ),
+    paymentReference: nullableText(body.paymentReference ?? body.payment_reference, 191),
   };
 }
 
