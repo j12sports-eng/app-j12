@@ -1,0 +1,12 @@
+{
+  "name": "Financeiro - Reprocessar Falhas",
+  "nodes": [],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Rotina de retry para cobranças, mensagens ou baixas que falharam."
+  },
+  "tags": []
+}

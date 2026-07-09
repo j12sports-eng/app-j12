@@ -1,0 +1,12 @@
+{
+  "name": "Financeiro - Baixa de Pagamento",
+  "nodes": [],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Webhook para receber confirmação de pagamento e atualizar cobrança na API J12."
+  },
+  "tags": []
+}

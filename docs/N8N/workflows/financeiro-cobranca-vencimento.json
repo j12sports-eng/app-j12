@@ -1,0 +1,12 @@
+{
+  "name": "Financeiro - Cobrança no Vencimento",
+  "nodes": [],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Execução no dia do vencimento para disparar cobrança e marcar envio."
+  },
+  "tags": []
+}

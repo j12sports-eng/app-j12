@@ -1,0 +1,12 @@
+{
+  "name": "Financeiro - Cobrança Diária",
+  "nodes": [],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Execução diária para consultar inadimplentes, enviar mensagens e atualizar processamento."
+  },
+  "tags": []
+}
