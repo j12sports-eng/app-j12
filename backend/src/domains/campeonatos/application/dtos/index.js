@@ -1,6 +1,7 @@
 module.exports = Object.freeze({
   ...require("./bracket-admin.dto.js"),
   ...require("./championship-admin.dto.js"),
+  ...require("./championship-public.dto.js"),
   ...require("./group-admin.dto.js"),
   ...require("./match-report-admin.dto.js"),
   ...require("./registration-player-admin.dto.js"),

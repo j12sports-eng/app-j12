@@ -3,6 +3,7 @@ module.exports = Object.freeze({
   ...require("./championship-application.service.js"),
   ...require("./championship-group.service.js"),
   ...require("./championship-match-report.service.js"),
+  ...require("./championship-public.service.js"),
   ...require("./championship-registration-player.service.js"),
   ...require("./championship-registration.service.js"),
   ...require("./championship-round.service.js"),

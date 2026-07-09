@@ -1,5 +1,6 @@
 module.exports = Object.freeze({
   ...require("./bracket.validators.js"),
+  ...require("./championship-public.validators.js"),
   ...require("./championship.validators.js"),
   ...require("./group.validators.js"),
   ...require("./match-report.validators.js"),

@@ -63,6 +63,8 @@ const {
 const {
   createChampionshipAdminRouter,
   CHAMPIONSHIP_ADMIN_ROUTE_BASE_PATH,
+  createChampionshipPublicRouter,
+  CHAMPIONSHIP_PUBLIC_ROUTE_BASE_PATH,
 } = require("./domains/campeonatos/presentation/routes/index.js");
 const {
   createNotificationRouter,
@@ -83,6 +85,7 @@ const financialAdminRoutes = createFinancialAdminRouter();
 const agendaAdminRoutes = createAgendaAdminRouter();
 const courtRentalRoutes = createCourtRentalRouter();
 const championshipAdminRoutes = createChampionshipAdminRouter();
+const championshipPublicRoutes = createChampionshipPublicRouter();
 const notificationRoutes = createNotificationRouter();
 
 global.io = null;
@@ -508,6 +511,10 @@ mount([COURT_RENTAL_ROUTE_BASE_PATH, `/api${COURT_RENTAL_ROUTE_BASE_PATH}`], cou
 mount(
   [CHAMPIONSHIP_ADMIN_ROUTE_BASE_PATH, `/api${CHAMPIONSHIP_ADMIN_ROUTE_BASE_PATH}`],
   championshipAdminRoutes,
+);
+mount(
+  [CHAMPIONSHIP_PUBLIC_ROUTE_BASE_PATH, `/api${CHAMPIONSHIP_PUBLIC_ROUTE_BASE_PATH}`],
+  championshipPublicRoutes,
 );
 mount(
   [

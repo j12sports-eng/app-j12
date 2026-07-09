@@ -70,6 +70,17 @@ function toChampionshipPublicGroupTeamsResponseDto(input = {}) {
   };
 }
 
+function toChampionshipPublicTeamsResponseDto(input = {}) {
+  const items = (input.items || []).map(toChampionshipPublicTeamDetailDto).filter(Boolean);
+
+  return {
+    items,
+    limit: Number(input.limit || items.length || 100),
+    page: Number(input.page || 1),
+    total: Number(input.total || items.length),
+  };
+}
+
 function toChampionshipPublicTeamSummaryDto(value) {
   const item = toPlainObject(value);
   if (!item) return null;
@@ -463,9 +474,7 @@ function toChampionshipRankingsPublicDto(rankings = {}) {
     bestDefense: (rankings.bestDefense || [])
       .map(toChampionshipTeamStatisticsPublicDto)
       .filter(Boolean),
-    fairPlay: (rankings.fairPlay || [])
-      .map(toChampionshipTeamStatisticsPublicDto)
-      .filter(Boolean),
+    fairPlay: (rankings.fairPlay || []).map(toChampionshipTeamStatisticsPublicDto).filter(Boolean),
     topScorers: (rankings.topScorers || [])
       .map(toChampionshipPlayerStatisticsPublicDto)
       .filter(Boolean),
@@ -551,6 +560,7 @@ module.exports = {
   toChampionshipPublicRosterDto,
   toChampionshipPublicTeamDetailDto,
   toChampionshipPublicTeamSummaryDto,
+  toChampionshipPublicTeamsResponseDto,
   toChampionshipStandingPublicResponseDto,
   toChampionshipStatisticsPublicResponseDto,
   toChampionshipTopScorersPublicResponseDto,
