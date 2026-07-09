@@ -254,6 +254,11 @@ function ChampionshipsAdminContent() {
                   <ChampionshipCard
                     key={championship.id}
                     championship={championship}
+                    getGroupsHref={(item) => `/admin/campeonatos/${item.id}/grupos`}
+                    getRoundsHref={(item) => `/admin/campeonatos/${item.id}/rodadas`}
+                    getStandingsHref={(item) => `/admin/campeonatos/${item.id}/classificacao`}
+                    getStatisticsHref={(item) => `/admin/campeonatos/${item.id}/estatisticas`}
+                    getBracketHref={(item) => `/admin/campeonatos/${item.id}/mata-mata`}
                     isBusy={busyChampionshipId === championship.id}
                     onArchive={handleArchive}
                     onDelete={handleDelete}

@@ -147,11 +147,17 @@ class MySqlChampionshipRegistrationRepository {
     if (Object.prototype.hasOwnProperty.call(input, "status")) {
       assignments.push("status = ?");
       params.push(requiredText(input.status, "status", 32));
-      assignments.push("confirmed_at = CASE WHEN ? = 'CONFIRMED' THEN COALESCE(confirmed_at, CURRENT_TIMESTAMP) ELSE confirmed_at END");
+      assignments.push(
+        "confirmed_at = CASE WHEN ? = 'CONFIRMED' THEN COALESCE(confirmed_at, CURRENT_TIMESTAMP) ELSE confirmed_at END",
+      );
       params.push(input.status);
-      assignments.push("refused_at = CASE WHEN ? = 'REFUSED' THEN COALESCE(refused_at, CURRENT_TIMESTAMP) ELSE refused_at END");
+      assignments.push(
+        "refused_at = CASE WHEN ? = 'REFUSED' THEN COALESCE(refused_at, CURRENT_TIMESTAMP) ELSE refused_at END",
+      );
       params.push(input.status);
-      assignments.push("cancelled_at = CASE WHEN ? = 'CANCELLED' THEN COALESCE(cancelled_at, CURRENT_TIMESTAMP) ELSE cancelled_at END");
+      assignments.push(
+        "cancelled_at = CASE WHEN ? = 'CANCELLED' THEN COALESCE(cancelled_at, CURRENT_TIMESTAMP) ELSE cancelled_at END",
+      );
       params.push(input.status);
     }
 
@@ -213,10 +219,7 @@ class MySqlChampionshipRegistrationRepository {
           AND registration.deleted_at IS NULL
         LIMIT 1
       `,
-      [
-        requiredText(championshipId, "championshipId", 64),
-        requiredText(teamId, "teamId", 64),
-      ],
+      [requiredText(championshipId, "championshipId", 64), requiredText(teamId, "teamId", 64)],
     );
 
     return mapRegistrationRow(readFirstRow(rows));
@@ -263,7 +266,8 @@ class MySqlChampionshipRegistrationRepository {
     const total = Number(readFirstRow(totalRows)?.total || 0);
     const limit = normalizeLimitValue(filters.limit);
     const page = normalizePageValue(filters.page);
-    const orderColumn = REGISTRATION_SORT_COLUMNS[filters.sortBy] || REGISTRATION_SORT_COLUMNS.createdAt;
+    const orderColumn =
+      REGISTRATION_SORT_COLUMNS[filters.sortBy] || REGISTRATION_SORT_COLUMNS.createdAt;
     const orderDirection = filters.sortDirection === "ASC" ? "ASC" : "DESC";
 
     const rows = await this.query(
@@ -354,7 +358,8 @@ class MySqlChampionshipRegistrationRepository {
     const total = Number(readFirstRow(totalRows)?.total || 0);
     const limit = normalizeLimitValue(filters.limit);
     const page = normalizePageValue(filters.page);
-    const orderColumn = AVAILABLE_TEAM_SORT_COLUMNS[filters.sortBy] || AVAILABLE_TEAM_SORT_COLUMNS.name;
+    const orderColumn =
+      AVAILABLE_TEAM_SORT_COLUMNS[filters.sortBy] || AVAILABLE_TEAM_SORT_COLUMNS.name;
     const orderDirection = filters.sortDirection === "DESC" ? "DESC" : "ASC";
 
     const rows = await this.query(

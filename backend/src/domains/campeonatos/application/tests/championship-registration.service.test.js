@@ -166,8 +166,7 @@ function createMemoryRegistrationRepository({
     async countActiveByChampionship(championshipId) {
       return Array.from(records.values()).filter(
         (item) =>
-          item.championshipId === championshipId &&
-          ["PENDING", "CONFIRMED"].includes(item.status),
+          item.championshipId === championshipId && ["PENDING", "CONFIRMED"].includes(item.status),
       ).length;
     },
     async create(values) {

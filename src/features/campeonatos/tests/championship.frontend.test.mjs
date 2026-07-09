@@ -51,6 +51,59 @@ test("championship logo structure does not expose real upload controls", async (
   assert.doesNotMatch(formSource, /multipart/i);
 });
 
+test("championship registration hooks expose React Query contracts", async () => {
+  const source = await readFile(
+    path.join(featureRoot, "hooks", "useChampionshipRegistrations.ts"),
+    "utf8",
+  );
+
+  assert.match(source, /export function useChampionshipRegistrations/);
+  assert.match(source, /export function useRegisterTeam/);
+  assert.match(source, /export function useCancelRegistration/);
+  assert.match(source, /export function useUpdateRegistration/);
+  assert.match(source, /invalidateRegistrationQueries/);
+  assert.match(source, /useQuery/);
+  assert.match(source, /useMutation/);
+});
+
+test("championship registration page references required sprint 17.4 structure", async () => {
+  const pageSource = await readFile(
+    path.join(featureRoot, "pages", "ChampionshipRegistrationsPage.tsx"),
+    "utf8",
+  );
+  const routeSource = await readFile(
+    path.resolve(featureRoot, "..", "..", "routes", "admin", "campeonatos.inscricoes.tsx"),
+    "utf8",
+  );
+
+  assert.match(pageSource, /<AppShell title="Inscricoes de Campeonatos"/);
+  assert.match(pageSource, /<ChampionshipRegistrationFilters/);
+  assert.match(pageSource, /<ChampionshipRegistrationForm/);
+  assert.match(pageSource, /<ChampionshipRegistrationList/);
+  assert.match(pageSource, /useAvailableChampionshipTeams/);
+  assert.match(pageSource, /useChampionshipRegistrations/);
+  assert.match(pageSource, /useRegisterTeam/);
+  assert.match(pageSource, /useCancelRegistration/);
+  assert.match(pageSource, /useUpdateRegistration/);
+  assert.match(routeSource, /createFileRoute\("\/admin\/campeonatos\/inscricoes"\)/);
+});
+
+test("championship registration form has required controls without file upload", async () => {
+  const formSource = await readFile(
+    path.join(featureRoot, "components", "ChampionshipRegistrationForm.tsx"),
+    "utf8",
+  );
+
+  assert.match(formSource, /Campeonato/);
+  assert.match(formSource, /Equipe/);
+  assert.match(formSource, /Observacoes/);
+  assert.match(formSource, /type="checkbox"/);
+  assert.match(formSource, /Registrar equipe/);
+  assert.match(formSource, /Cancelar inscricao/);
+  assert.doesNotMatch(formSource, /type="file"/);
+  assert.doesNotMatch(formSource, /multipart/i);
+});
+
 test("championship team and technical commission are prepared as types only", async () => {
   const typesSource = await readFile(
     path.join(featureRoot, "types", "championship.types.ts"),

@@ -1,4 +1,12 @@
-import { Ban, CheckCircle2, Clock3, Loader2, XCircle, type LucideIcon } from "lucide-react";
+import {
+  Ban,
+  CheckCircle2,
+  Clock3,
+  Loader2,
+  UsersRound,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   getRegistrationStatusLabel,
@@ -12,6 +20,7 @@ import type {
 
 type ChampionshipRegistrationListProps = {
   busyRegistrationId?: string | null;
+  getPlayersHref?: (registration: ChampionshipRegistration) => string;
   items: ChampionshipRegistration[];
   onCancel?: (registrationId: string) => void;
   onSelect?: (registration: ChampionshipRegistration) => void;
@@ -21,6 +30,7 @@ type ChampionshipRegistrationListProps = {
 
 export function ChampionshipRegistrationList({
   busyRegistrationId,
+  getPlayersHref,
   items,
   onCancel,
   onSelect,
@@ -73,7 +83,7 @@ export function ChampionshipRegistrationList({
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-slate-400">
-                  {registration.category || "-"} · {registration.modality || "-"}
+                  {registration.category || "-"} - {registration.modality || "-"}
                 </p>
                 {registration.observations ? (
                   <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
@@ -82,7 +92,16 @@ export function ChampionshipRegistrationList({
                 ) : null}
               </button>
 
-              <div className="grid gap-2 sm:grid-cols-4 lg:min-w-[440px]">
+              <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[540px] lg:grid-cols-5">
+                {getPlayersHref ? (
+                  <a
+                    href={getPlayersHref(registration)}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 text-xs font-black text-primary transition hover:bg-primary/20"
+                  >
+                    <UsersRound className="h-4 w-4" />
+                    Elenco
+                  </a>
+                ) : null}
                 <StatusButton
                   disabled={isBusy}
                   icon={Clock3}

@@ -1,5 +1,15 @@
 import { type ReactNode } from "react";
-import { Archive, CalendarDays, Edit3, Loader2, Send, Trash2 } from "lucide-react";
+import {
+  Archive,
+  BarChart3,
+  CalendarDays,
+  Edit3,
+  Loader2,
+  Network,
+  Send,
+  Swords,
+  Trash2,
+} from "lucide-react";
 
 import { formatChampionshipDate } from "../utils/championship-formatters";
 import { ChampionshipStatusBadge } from "./ChampionshipStatusBadge";
@@ -8,6 +18,11 @@ import type { Championship } from "../types/championship.types";
 
 type ChampionshipCardProps = {
   championship: Championship;
+  getBracketHref?: (championship: Championship) => string;
+  getGroupsHref?: (championship: Championship) => string;
+  getRoundsHref?: (championship: Championship) => string;
+  getStandingsHref?: (championship: Championship) => string;
+  getStatisticsHref?: (championship: Championship) => string;
   isBusy?: boolean;
   onArchive?: (championshipId: string) => void;
   onDelete?: (championshipId: string) => void;
@@ -17,6 +32,11 @@ type ChampionshipCardProps = {
 
 export function ChampionshipCard({
   championship,
+  getBracketHref,
+  getGroupsHref,
+  getRoundsHref,
+  getStandingsHref,
+  getStatisticsHref,
   isBusy = false,
   onArchive,
   onDelete,
@@ -55,6 +75,41 @@ export function ChampionshipCard({
       )}
 
       <div className="mt-4 grid grid-cols-2 gap-2">
+        {getGroupsHref ? (
+          <ActionLink href={getGroupsHref(championship)} tone="primary">
+            <Network className="h-4 w-4" />
+            Grupos
+          </ActionLink>
+        ) : null}
+
+        {getRoundsHref ? (
+          <ActionLink href={getRoundsHref(championship)} tone="primary">
+            <CalendarDays className="h-4 w-4" />
+            Rodadas
+          </ActionLink>
+        ) : null}
+
+        {getStandingsHref ? (
+          <ActionLink href={getStandingsHref(championship)} tone="primary">
+            <BarChart3 className="h-4 w-4" />
+            Classificacao
+          </ActionLink>
+        ) : null}
+
+        {getStatisticsHref ? (
+          <ActionLink href={getStatisticsHref(championship)} tone="primary">
+            <BarChart3 className="h-4 w-4" />
+            Estatisticas
+          </ActionLink>
+        ) : null}
+
+        {getBracketHref ? (
+          <ActionLink href={getBracketHref(championship)} tone="primary">
+            <Swords className="h-4 w-4" />
+            Mata-mata
+          </ActionLink>
+        ) : null}
+
         {onEdit ? (
           <ActionButton disabled={isBusy} onClick={() => onEdit(championship)} tone="neutral">
             <Edit3 className="h-4 w-4" />
@@ -84,6 +139,30 @@ export function ChampionshipCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ActionLink({
+  children,
+  href,
+  tone,
+}: {
+  children: ReactNode;
+  href: string;
+  tone: "neutral" | "primary";
+}) {
+  const toneClassName =
+    tone === "primary"
+      ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+      : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10";
+
+  return (
+    <a
+      href={href}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold transition ${toneClassName}`}
+    >
+      {children}
+    </a>
   );
 }
 

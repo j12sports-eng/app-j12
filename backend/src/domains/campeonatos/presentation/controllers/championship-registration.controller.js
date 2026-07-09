@@ -4,7 +4,9 @@ const { handleChampionshipRequest } = require("./championship-admin.controller.j
 class ChampionshipRegistrationController {
   constructor(options = {}) {
     this.registrationService =
-      options.registrationService || options.service || new ChampionshipRegistrationService(options);
+      options.registrationService ||
+      options.service ||
+      new ChampionshipRegistrationService(options);
 
     this.cancel = this.cancel.bind(this);
     this.findAll = this.findAll.bind(this);

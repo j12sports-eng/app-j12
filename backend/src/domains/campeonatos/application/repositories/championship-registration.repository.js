@@ -22,7 +22,9 @@ class ChampionshipRegistrationRepository {
   }
 
   async countActiveByChampionship() {
-    throw new Error("ChampionshipRegistrationRepository.countActiveByChampionship must be implemented.");
+    throw new Error(
+      "ChampionshipRegistrationRepository.countActiveByChampionship must be implemented.",
+    );
   }
 
   async findAvailableTeams() {

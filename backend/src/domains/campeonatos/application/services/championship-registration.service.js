@@ -42,7 +42,10 @@ class ChampionshipRegistrationService {
   constructor(options = {}) {
     this.championshipRepository = options.championshipRepository || null;
     this.registrationRepository =
-      options.registrationRepository || options.repository || options.championshipRegistrationRepository || null;
+      options.registrationRepository ||
+      options.repository ||
+      options.championshipRegistrationRepository ||
+      null;
   }
 
   async register(input = {}, context = {}) {
@@ -183,9 +186,14 @@ class ChampionshipRegistrationService {
     const team = await this.getRegistrationRepository().findTeamById(teamId);
 
     if (!team) {
-      throw controlledError("Equipe nao encontrada para inscricao.", REGISTRATION_TEAM_NOT_FOUND_CODE, 404, {
-        teamId,
-      });
+      throw controlledError(
+        "Equipe nao encontrada para inscricao.",
+        REGISTRATION_TEAM_NOT_FOUND_CODE,
+        404,
+        {
+          teamId,
+        },
+      );
     }
 
     return team;
@@ -214,7 +222,10 @@ class ChampionshipRegistrationService {
         readMetadataValue(championship, "situacao"),
     );
 
-    if (CLOSED_CHAMPIONSHIP_STATUSES.has(status) || CLOSED_CHAMPIONSHIP_STATUSES.has(metadataStatus)) {
+    if (
+      CLOSED_CHAMPIONSHIP_STATUSES.has(status) ||
+      CLOSED_CHAMPIONSHIP_STATUSES.has(metadataStatus)
+    ) {
       throw controlledError(
         "Inscricoes nao sao permitidas para campeonatos encerrados ou cancelados.",
         "CHAMPIONSHIP_REGISTRATION_CHAMPIONSHIP_CLOSED",
@@ -230,7 +241,11 @@ class ChampionshipRegistrationService {
     const championshipModality = readChampionshipField(championship, "modality");
     const teamModality = readTeamField(team, "modality");
 
-    if (!championshipCategory || !teamCategory || normalizeComparison(championshipCategory) !== normalizeComparison(teamCategory)) {
+    if (
+      !championshipCategory ||
+      !teamCategory ||
+      normalizeComparison(championshipCategory) !== normalizeComparison(teamCategory)
+    ) {
       throw controlledError(
         "Categoria da equipe nao compativel com o campeonato.",
         "CHAMPIONSHIP_REGISTRATION_CATEGORY_MISMATCH",
@@ -239,7 +254,11 @@ class ChampionshipRegistrationService {
       );
     }
 
-    if (!championshipModality || !teamModality || normalizeComparison(championshipModality) !== normalizeComparison(teamModality)) {
+    if (
+      !championshipModality ||
+      !teamModality ||
+      normalizeComparison(championshipModality) !== normalizeComparison(teamModality)
+    ) {
       throw controlledError(
         "Modalidade da equipe nao compativel com o campeonato.",
         "CHAMPIONSHIP_REGISTRATION_MODALITY_MISMATCH",
@@ -250,9 +269,10 @@ class ChampionshipRegistrationService {
   }
 
   async ensureNoDuplicate(championshipId, teamId) {
-    const duplicate = await this
-      .getRegistrationRepository()
-      .findByChampionshipAndTeam(championshipId, teamId);
+    const duplicate = await this.getRegistrationRepository().findByChampionshipAndTeam(
+      championshipId,
+      teamId,
+    );
 
     if (duplicate) {
       throw controlledError(
@@ -269,9 +289,9 @@ class ChampionshipRegistrationService {
 
     if (!maxTeams) return;
 
-    const currentTotal = await this
-      .getRegistrationRepository()
-      .countActiveByChampionship(readChampionshipField(championship, "id"));
+    const currentTotal = await this.getRegistrationRepository().countActiveByChampionship(
+      readChampionshipField(championship, "id"),
+    );
 
     if (currentTotal >= maxTeams) {
       throw controlledError(

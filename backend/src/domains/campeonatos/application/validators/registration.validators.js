@@ -7,12 +7,7 @@ const {
   text,
 } = require("../../shared/utils/index.js");
 
-const REGISTRATION_SORT_FIELDS = Object.freeze([
-  "createdAt",
-  "status",
-  "teamName",
-  "updatedAt",
-]);
+const REGISTRATION_SORT_FIELDS = Object.freeze(["createdAt", "status", "teamName", "updatedAt"]);
 const AVAILABLE_TEAM_SORT_FIELDS = Object.freeze(["name", "category", "modality", "status"]);
 
 function validateCreateRegistrationInput(input = {}) {
@@ -37,7 +32,11 @@ function validateRegistrationListInput(input = {}) {
     limit: normalizeLimit(input.limit, 20),
     page: normalizePage(input.page),
     search: text(input.search || input.q, 100),
-    sortBy: normalizeSortField(input.sortBy || input.sort_by, REGISTRATION_SORT_FIELDS, "createdAt"),
+    sortBy: normalizeSortField(
+      input.sortBy || input.sort_by,
+      REGISTRATION_SORT_FIELDS,
+      "createdAt",
+    ),
     sortDirection: normalizeSortDirection(input.sortDirection || input.sort_direction),
     status: input.status ? normalizeRegistrationStatus(input.status) : null,
     teamId: nullableText(input.teamId || input.team_id || input.equipeId, 64),

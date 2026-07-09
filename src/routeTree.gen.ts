@@ -63,6 +63,13 @@ import { Route as AdminCampeonatosRouteImport } from './routes/admin/campeonatos
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
+import { Route as AdminCampeonatosChampionshipIdRodadasRouteImport } from './routes/admin/campeonatos.$championshipId.rodadas'
+import { Route as AdminCampeonatosChampionshipIdMataMataRouteImport } from './routes/admin/campeonatos.$championshipId.mata-mata'
+import { Route as AdminCampeonatosChampionshipIdGruposRouteImport } from './routes/admin/campeonatos.$championshipId.grupos'
+import { Route as AdminCampeonatosChampionshipIdEstatisticasRouteImport } from './routes/admin/campeonatos.$championshipId.estatisticas'
+import { Route as AdminCampeonatosChampionshipIdClassificacaoRouteImport } from './routes/admin/campeonatos.$championshipId.classificacao'
+import { Route as AdminCampeonatosInscricoesRegistrationIdAtletasRouteImport } from './routes/admin/campeonatos.inscricoes.$registrationId.atletas'
+import { Route as AdminCampeonatosChampionshipIdJogosMatchIdSumulaRouteImport } from './routes/admin/campeonatos.$championshipId.jogos.$matchId.sumula'
 
 const TurmasRoute = TurmasRouteImport.update({
   id: '/turmas',
@@ -343,6 +350,48 @@ const AdminCampeonatosInscricoesRoute =
     path: '/inscricoes',
     getParentRoute: () => AdminCampeonatosRoute,
   } as any)
+const AdminCampeonatosChampionshipIdRodadasRoute =
+  AdminCampeonatosChampionshipIdRodadasRouteImport.update({
+    id: '/$championshipId/rodadas',
+    path: '/$championshipId/rodadas',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
+const AdminCampeonatosChampionshipIdMataMataRoute =
+  AdminCampeonatosChampionshipIdMataMataRouteImport.update({
+    id: '/$championshipId/mata-mata',
+    path: '/$championshipId/mata-mata',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
+const AdminCampeonatosChampionshipIdGruposRoute =
+  AdminCampeonatosChampionshipIdGruposRouteImport.update({
+    id: '/$championshipId/grupos',
+    path: '/$championshipId/grupos',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
+const AdminCampeonatosChampionshipIdEstatisticasRoute =
+  AdminCampeonatosChampionshipIdEstatisticasRouteImport.update({
+    id: '/$championshipId/estatisticas',
+    path: '/$championshipId/estatisticas',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
+const AdminCampeonatosChampionshipIdClassificacaoRoute =
+  AdminCampeonatosChampionshipIdClassificacaoRouteImport.update({
+    id: '/$championshipId/classificacao',
+    path: '/$championshipId/classificacao',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
+const AdminCampeonatosInscricoesRegistrationIdAtletasRoute =
+  AdminCampeonatosInscricoesRegistrationIdAtletasRouteImport.update({
+    id: '/$registrationId/atletas',
+    path: '/$registrationId/atletas',
+    getParentRoute: () => AdminCampeonatosInscricoesRoute,
+  } as any)
+const AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute =
+  AdminCampeonatosChampionshipIdJogosMatchIdSumulaRouteImport.update({
+    id: '/$championshipId/jogos/$matchId/sumula',
+    path: '/$championshipId/jogos/$matchId/sumula',
+    getParentRoute: () => AdminCampeonatosRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -397,8 +446,15 @@ export interface FileRoutesByFullPath {
   '/portal-aluno/': typeof PortalAlunoIndexRoute
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
-  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRoute
+  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
+  '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
+  '/admin/campeonatos/$championshipId/estatisticas': typeof AdminCampeonatosChampionshipIdEstatisticasRoute
+  '/admin/campeonatos/$championshipId/grupos': typeof AdminCampeonatosChampionshipIdGruposRoute
+  '/admin/campeonatos/$championshipId/mata-mata': typeof AdminCampeonatosChampionshipIdMataMataRoute
+  '/admin/campeonatos/$championshipId/rodadas': typeof AdminCampeonatosChampionshipIdRodadasRoute
+  '/admin/campeonatos/inscricoes/$registrationId/atletas': typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
+  '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -453,8 +509,15 @@ export interface FileRoutesByTo {
   '/portal-aluno': typeof PortalAlunoIndexRoute
   '/portal-responsavel': typeof PortalResponsavelIndexRoute
   '/professor': typeof ProfessorIndexRoute
-  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRoute
+  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
+  '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
+  '/admin/campeonatos/$championshipId/estatisticas': typeof AdminCampeonatosChampionshipIdEstatisticasRoute
+  '/admin/campeonatos/$championshipId/grupos': typeof AdminCampeonatosChampionshipIdGruposRoute
+  '/admin/campeonatos/$championshipId/mata-mata': typeof AdminCampeonatosChampionshipIdMataMataRoute
+  '/admin/campeonatos/$championshipId/rodadas': typeof AdminCampeonatosChampionshipIdRodadasRoute
+  '/admin/campeonatos/inscricoes/$registrationId/atletas': typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
+  '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -510,8 +573,15 @@ export interface FileRoutesById {
   '/portal-aluno/': typeof PortalAlunoIndexRoute
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
-  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRoute
+  '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
+  '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
+  '/admin/campeonatos/$championshipId/estatisticas': typeof AdminCampeonatosChampionshipIdEstatisticasRoute
+  '/admin/campeonatos/$championshipId/grupos': typeof AdminCampeonatosChampionshipIdGruposRoute
+  '/admin/campeonatos/$championshipId/mata-mata': typeof AdminCampeonatosChampionshipIdMataMataRoute
+  '/admin/campeonatos/$championshipId/rodadas': typeof AdminCampeonatosChampionshipIdRodadasRoute
+  '/admin/campeonatos/inscricoes/$registrationId/atletas': typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
+  '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -570,6 +640,13 @@ export interface FileRouteTypes {
     | '/professor/'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
+    | '/admin/campeonatos/$championshipId/classificacao'
+    | '/admin/campeonatos/$championshipId/estatisticas'
+    | '/admin/campeonatos/$championshipId/grupos'
+    | '/admin/campeonatos/$championshipId/mata-mata'
+    | '/admin/campeonatos/$championshipId/rodadas'
+    | '/admin/campeonatos/inscricoes/$registrationId/atletas'
+    | '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -626,6 +703,13 @@ export interface FileRouteTypes {
     | '/professor'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
+    | '/admin/campeonatos/$championshipId/classificacao'
+    | '/admin/campeonatos/$championshipId/estatisticas'
+    | '/admin/campeonatos/$championshipId/grupos'
+    | '/admin/campeonatos/$championshipId/mata-mata'
+    | '/admin/campeonatos/$championshipId/rodadas'
+    | '/admin/campeonatos/inscricoes/$registrationId/atletas'
+    | '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
   id:
     | '__root__'
     | '/'
@@ -682,6 +766,13 @@ export interface FileRouteTypes {
     | '/professor/'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
+    | '/admin/campeonatos/$championshipId/classificacao'
+    | '/admin/campeonatos/$championshipId/estatisticas'
+    | '/admin/campeonatos/$championshipId/grupos'
+    | '/admin/campeonatos/$championshipId/mata-mata'
+    | '/admin/campeonatos/$championshipId/rodadas'
+    | '/admin/campeonatos/inscricoes/$registrationId/atletas'
+    | '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1119,6 +1210,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCampeonatosInscricoesRouteImport
       parentRoute: typeof AdminCampeonatosRoute
     }
+    '/admin/campeonatos/$championshipId/rodadas': {
+      id: '/admin/campeonatos/$championshipId/rodadas'
+      path: '/$championshipId/rodadas'
+      fullPath: '/admin/campeonatos/$championshipId/rodadas'
+      preLoaderRoute: typeof AdminCampeonatosChampionshipIdRodadasRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
+    }
+    '/admin/campeonatos/$championshipId/mata-mata': {
+      id: '/admin/campeonatos/$championshipId/mata-mata'
+      path: '/$championshipId/mata-mata'
+      fullPath: '/admin/campeonatos/$championshipId/mata-mata'
+      preLoaderRoute: typeof AdminCampeonatosChampionshipIdMataMataRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
+    }
+    '/admin/campeonatos/$championshipId/grupos': {
+      id: '/admin/campeonatos/$championshipId/grupos'
+      path: '/$championshipId/grupos'
+      fullPath: '/admin/campeonatos/$championshipId/grupos'
+      preLoaderRoute: typeof AdminCampeonatosChampionshipIdGruposRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
+    }
+    '/admin/campeonatos/$championshipId/estatisticas': {
+      id: '/admin/campeonatos/$championshipId/estatisticas'
+      path: '/$championshipId/estatisticas'
+      fullPath: '/admin/campeonatos/$championshipId/estatisticas'
+      preLoaderRoute: typeof AdminCampeonatosChampionshipIdEstatisticasRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
+    }
+    '/admin/campeonatos/$championshipId/classificacao': {
+      id: '/admin/campeonatos/$championshipId/classificacao'
+      path: '/$championshipId/classificacao'
+      fullPath: '/admin/campeonatos/$championshipId/classificacao'
+      preLoaderRoute: typeof AdminCampeonatosChampionshipIdClassificacaoRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
+    }
+    '/admin/campeonatos/inscricoes/$registrationId/atletas': {
+      id: '/admin/campeonatos/inscricoes/$registrationId/atletas'
+      path: '/$registrationId/atletas'
+      fullPath: '/admin/campeonatos/inscricoes/$registrationId/atletas'
+      preLoaderRoute: typeof AdminCampeonatosInscricoesRegistrationIdAtletasRouteImport
+      parentRoute: typeof AdminCampeonatosInscricoesRoute
+    }
+    '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': {
+      id: '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
+      path: '/$championshipId/jogos/$matchId/sumula'
+      fullPath: '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
+      preLoaderRoute: typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRouteImport
+      parentRoute: typeof AdminCampeonatosRoute
+    }
   }
 }
 
@@ -1134,12 +1274,45 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
   DashboardRouteChildren,
 )
 
+interface AdminCampeonatosInscricoesRouteChildren {
+  AdminCampeonatosInscricoesRegistrationIdAtletasRoute: typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
+}
+
+const AdminCampeonatosInscricoesRouteChildren: AdminCampeonatosInscricoesRouteChildren =
+  {
+    AdminCampeonatosInscricoesRegistrationIdAtletasRoute:
+      AdminCampeonatosInscricoesRegistrationIdAtletasRoute,
+  }
+
+const AdminCampeonatosInscricoesRouteWithChildren =
+  AdminCampeonatosInscricoesRoute._addFileChildren(
+    AdminCampeonatosInscricoesRouteChildren,
+  )
+
 interface AdminCampeonatosRouteChildren {
-  AdminCampeonatosInscricoesRoute: typeof AdminCampeonatosInscricoesRoute
+  AdminCampeonatosInscricoesRoute: typeof AdminCampeonatosInscricoesRouteWithChildren
+  AdminCampeonatosChampionshipIdClassificacaoRoute: typeof AdminCampeonatosChampionshipIdClassificacaoRoute
+  AdminCampeonatosChampionshipIdEstatisticasRoute: typeof AdminCampeonatosChampionshipIdEstatisticasRoute
+  AdminCampeonatosChampionshipIdGruposRoute: typeof AdminCampeonatosChampionshipIdGruposRoute
+  AdminCampeonatosChampionshipIdMataMataRoute: typeof AdminCampeonatosChampionshipIdMataMataRoute
+  AdminCampeonatosChampionshipIdRodadasRoute: typeof AdminCampeonatosChampionshipIdRodadasRoute
+  AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute: typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
 
 const AdminCampeonatosRouteChildren: AdminCampeonatosRouteChildren = {
-  AdminCampeonatosInscricoesRoute: AdminCampeonatosInscricoesRoute,
+  AdminCampeonatosInscricoesRoute: AdminCampeonatosInscricoesRouteWithChildren,
+  AdminCampeonatosChampionshipIdClassificacaoRoute:
+    AdminCampeonatosChampionshipIdClassificacaoRoute,
+  AdminCampeonatosChampionshipIdEstatisticasRoute:
+    AdminCampeonatosChampionshipIdEstatisticasRoute,
+  AdminCampeonatosChampionshipIdGruposRoute:
+    AdminCampeonatosChampionshipIdGruposRoute,
+  AdminCampeonatosChampionshipIdMataMataRoute:
+    AdminCampeonatosChampionshipIdMataMataRoute,
+  AdminCampeonatosChampionshipIdRodadasRoute:
+    AdminCampeonatosChampionshipIdRodadasRoute,
+  AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute:
+    AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute,
 }
 
 const AdminCampeonatosRouteWithChildren =

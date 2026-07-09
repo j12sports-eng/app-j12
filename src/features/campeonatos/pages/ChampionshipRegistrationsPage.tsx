@@ -32,11 +32,11 @@ import {
 } from "../hooks/useChampionshipRegistrations";
 
 import type {
-  Championship,
   ChampionshipAvailableTeamFilters,
   ChampionshipRegistration,
   ChampionshipRegistrationFilters as RegistrationFiltersValue,
   ChampionshipRegistrationStatus,
+  ChampionshipTeam,
 } from "../types/championship.types";
 
 const REGISTRATION_PAGE_SIZE = 10;
@@ -44,7 +44,8 @@ const AVAILABLE_TEAM_PAGE_SIZE = 8;
 
 function ChampionshipRegistrationsContent() {
   const championshipsQuery = useChampionships({ limit: 100, search: "", status: "" });
-  const championships = championshipsQuery.data?.items || [];
+  const championshipItems = championshipsQuery.data?.items;
+  const championships = useMemo(() => championshipItems || [], [championshipItems]);
   const [selectedChampionshipId, setSelectedChampionshipId] = useState("");
   const [selectedRegistration, setSelectedRegistration] = useState<ChampionshipRegistration | null>(
     null,
@@ -75,7 +76,8 @@ function ChampionshipRegistrationsContent() {
 
   useEffect(() => {
     if (!selectedChampionshipId && championships.length > 0) {
-      const firstOpen = championships.find((item) => item.status !== "ARCHIVED") || championships[0];
+      const firstOpen =
+        championships.find((item) => item.status !== "ARCHIVED") || championships[0];
       setSelectedChampionshipId(firstOpen.id);
       setFormValues((current) => ({ ...current, championshipId: firstOpen.id }));
     }
@@ -304,6 +306,9 @@ function ChampionshipRegistrationsContent() {
 
             <ChampionshipRegistrationList
               busyRegistrationId={busyRegistrationId}
+              getPlayersHref={(registration) =>
+                `/admin/campeonatos/inscricoes/${registration.id}/atletas`
+              }
               items={registrations}
               onCancel={handleCancelRegistration}
               onSelect={handleSelectRegistration}
@@ -382,7 +387,7 @@ function AvailableTeamsPanel({
   canNext: boolean;
   filters: ChampionshipAvailableTeamFilters;
   isLoading: boolean;
-  items: Array<{ acronym: string | null; category: string; id: string; modality: string | null; name: string }>;
+  items: ChampionshipTeam[];
   onChange: (filters: ChampionshipAvailableTeamFilters) => void;
   onSelect: (teamId: string) => void;
   page: number;
@@ -415,7 +420,8 @@ function AvailableTeamsPanel({
             onChange({
               ...filters,
               page: 1,
-              sortDirection: event.target.value as ChampionshipAvailableTeamFilters["sortDirection"],
+              sortDirection: event.target
+                .value as ChampionshipAvailableTeamFilters["sortDirection"],
             })
           }
           className="min-h-11 rounded-xl border border-white/10 bg-black/30 px-3 text-sm font-semibold text-white outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
@@ -436,7 +442,7 @@ function AvailableTeamsPanel({
             >
               <p className="truncate text-sm font-black text-white">{team.name}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">
-                {team.category} · {team.modality || "-"}
+                {team.category} - {team.modality || "-"}
               </p>
             </button>
           ))

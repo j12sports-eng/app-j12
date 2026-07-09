@@ -1,5 +1,10 @@
 const { TEAM_STATUSES, TeamStatus } = require("../enums/index.js");
-const { controlledError, nullableText, readObject, text } = require("./championship-normalizers.js");
+const {
+  controlledError,
+  nullableText,
+  readObject,
+  text,
+} = require("./championship-normalizers.js");
 
 function normalizeTeamStatus(value, fallback = TeamStatus.ACTIVE) {
   const normalized = text(value, 32)

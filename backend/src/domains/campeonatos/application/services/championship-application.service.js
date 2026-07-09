@@ -6,7 +6,11 @@ const {
   validateUpdateChampionshipInput,
 } = require("../validators/index.js");
 const { ChampionshipStatus } = require("../../shared/enums/index.js");
-const { controlledError, normalizeDateRange, nullableText } = require("../../shared/utils/index.js");
+const {
+  controlledError,
+  normalizeDateRange,
+  nullableText,
+} = require("../../shared/utils/index.js");
 
 const CHAMPIONSHIP_REPOSITORY_REQUIRED_CODE = "CHAMPIONSHIP_REPOSITORY_REQUIRED";
 const CHAMPIONSHIP_NOT_FOUND_CODE = "CHAMPIONSHIP_NOT_FOUND";

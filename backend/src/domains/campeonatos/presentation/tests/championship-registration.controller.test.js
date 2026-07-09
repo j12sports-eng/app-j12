@@ -72,7 +72,7 @@ test("ChampionshipRegistrationController delegates status update and cancellatio
     registrationService: {
       async cancel(id, payload, context) {
         calls.push(["cancel", id, context.auth.email]);
-        return { id, status: "CANCELLED", ...payload };
+        return { ...payload, id, status: "CANCELLED" };
       },
       async updateStatus(id, payload, context) {
         calls.push(["updateStatus", id, payload.status, context.auth.email]);
