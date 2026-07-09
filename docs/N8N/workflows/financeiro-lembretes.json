@@ -393,5 +393,9 @@
     "saveDataSuccessExecution": "all"
   },
   "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Execução diária para consultar vencimentos, enviar lembretes e registrar o resultado na API J12."
+  },
   "versionId": "sprint-20-3-fase-b-lembretes"
 }
