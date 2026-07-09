@@ -1,8 +1,8 @@
-# N8N - Automação Financeira J12
+# N8N - Automaï¿½ï¿½o Financeira J12
 
 ## Objetivo
 
-Esta pasta contém os workflows da Sprint 20.3 (Fase B) responsáveis pelas automações financeiras da J12 Sports.
+Esta pasta contï¿½m os workflows da Sprint 20.3 (Fase B) responsï¿½veis pelas automaï¿½ï¿½es financeiras da J12 Sports.
 
 ## Workflows
 
@@ -16,18 +16,18 @@ Esta pasta contém os workflows da Sprint 20.3 (Fase B) responsáveis pelas automa
 
 Os workflows utilizam apenas credenciais configuradas no n8n.
 
-Nenhum token, senha, certificado ou segredo está armazenado nos arquivos JSON.
+Nenhum token, senha, certificado ou segredo estï¿½ armazenado nos arquivos JSON.
 
-## Variáveis
+## Variï¿½veis
 
 Consulte WORKFLOW_VARIABLES.md.
 
-## Importação
+## Importaï¿½ï¿½o
 
 Consulte WORKFLOW_IMPORT.md.
 
 ## Escopo
 
-Esta Sprint altera apenas a documentação e os workflows do n8n.
+Esta Sprint altera apenas a documentaï¿½ï¿½o e os workflows do n8n.
 
-Não altera backend, frontend, banco de dados, migrations ou API.
+Nï¿½o altera backend, frontend, banco de dados, migrations ou API.
