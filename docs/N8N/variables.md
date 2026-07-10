@@ -1,77 +1,14 @@
-# Variáveis de Ambiente - Sprint 20.2
+# Referência de Variáveis n8n
 
-Estas variáveis devem ser configuradas nas credenciais do n8n ou no ambiente onde o serviço estiver executando.
+Configurar valores exclusivamente no ambiente HML. Este documento não contém exemplos de endpoints nem credenciais.
 
----
+| Variável | Finalidade |
+| --- | --- |
+| `J12_API_URL` | base da API J12 de homologação |
+| `BOTCONVERSA_URL` | endpoint BotConversa sandbox/HML |
+| `WHATSAPP_PROVIDER` | identificador do provedor aprovado |
+| `LOG_LEVEL` | nível de diagnóstico permitido |
+| `RETRY_LIMIT` | limite finito de tentativas |
+| `BANCO_INTER_ENVIRONMENT` | marcador de ambiente não produtivo |
 
-# API J12 Sports
-
-API_URL=http://127.0.0.1:3001
-
-API_TOKEN=
-
----
-
-# Banco Inter
-
-INTER_ENVIRONMENT=homolog
-
-INTER_CLIENT_ID=
-
-INTER_CLIENT_SECRET=
-
-INTER_CONTA_CORRENTE=
-
-INTER_CERT_PATH=
-
-INTER_KEY_PATH=
-
----
-
-# BotConversa
-
-BOTCONVERSA_URL=
-
-BOTCONVERSA_TOKEN=
-
----
-
-# WhatsApp
-
-WHATSAPP_PROVIDER=BotConversa
-
----
-
-# Cron
-
-COBRANCA_ANTES_VENCIMENTO=08:00
-
-COBRANCA_VENCIDA=09:00
-
-INTER_SYNC=*/10 * * * *
-
----
-
-# Timezone
-
-TZ=America/Sao_Paulo
-
----
-
-# Endpoints utilizados
-
-GET  /financeiro/cobrancas
-
-GET  /inter/sync
-
-POST /inter/webhook
-
-POST /botconversa/send
-
----
-
-# Observações
-
-- Todas as credenciais devem ser armazenadas no n8n.
-- Nunca salvar tokens diretamente nos workflows.
-- Os certificados do Banco Inter devem permanecer apenas no servidor.
+Valores secretos e material de certificado pertencem ao cofre de credenciais do n8n. Consulte `CREDENTIALS_TEMPLATE.md` e `HML_DEPLOYMENT.md`.

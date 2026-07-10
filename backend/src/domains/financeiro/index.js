@@ -11,4 +11,5 @@ module.exports = Object.freeze({
   ...require("./payment/index.js"),
   ...require("./inter/index.js"),
   ...require("./automation/index.js"),
+  ...require("./reports/index.js"),
 });
