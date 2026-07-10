@@ -35,4 +35,15 @@ export const biQueryKeys = {
         unitId: filters.unitId || "",
       },
     ] as const,
+  students: (filters: BiFoundationFilters = {}) =>
+    [
+      ...biQueryKeys.all,
+      "students",
+      {
+        endDate: filters.endDate || "",
+        period: filters.period || "CURRENT_MONTH",
+        startDate: filters.startDate || "",
+        unitId: filters.unitId || "",
+      },
+    ] as const,
 };

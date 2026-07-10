@@ -68,6 +68,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "revenue",
   },
   {
+    to: "/admin/bi/alunos",
+    label: "BI de Alunos",
+    icon: GraduationCap,
+    roles: ["admin", "coordenador"],
+    section: "overview",
+  },
+  {
     to: "/alunos",
     label: "Alunos",
     icon: Users,
