@@ -5,6 +5,12 @@ const BiReadRepositoryCapability = Object.freeze({
 });
 
 class BiReadRepositoryContract {
+  async getChampionshipAnalytics() {
+    throw Object.assign(
+      new TypeError("BiReadRepositoryContract must implement getChampionshipAnalytics."),
+      { code: "BI_REPOSITORY_NOT_IMPLEMENTED" },
+    );
+  }
   async getCourtAnalytics() {
     throw Object.assign(
       new TypeError("BiReadRepositoryContract must implement getCourtAnalytics."),

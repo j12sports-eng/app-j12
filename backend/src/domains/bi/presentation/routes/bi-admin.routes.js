@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   BiClassesService,
+  BiChampionshipsService,
   BiCourtsService,
   BiDelinquencyService,
   BiExecutiveService,
@@ -16,6 +17,7 @@ const {
 } = require("../../infrastructure/repositories/mysql-bi-financial.repository.js");
 const { BiExecutiveController } = require("../controllers/bi-executive.controller.js");
 const { BiClassesController } = require("../controllers/bi-classes.controller.js");
+const { BiChampionshipsController } = require("../controllers/bi-championships.controller.js");
 const { BiCourtsController } = require("../controllers/bi-courts.controller.js");
 const { BiDelinquencyController } = require("../controllers/bi-delinquency.controller.js");
 const { BiFinancialController } = require("../controllers/bi-financial.controller.js");
@@ -24,6 +26,9 @@ const { BiStudentsController } = require("../controllers/bi-students.controller.
 const {
   MySqlBiStudentsRepository,
 } = require("../../infrastructure/repositories/mysql-bi-students.repository.js");
+const {
+  MySqlBiChampionshipsRepository,
+} = require("../../infrastructure/repositories/mysql-bi-championships.repository.js");
 const {
   MySqlBiClassesRepository,
 } = require("../../infrastructure/repositories/mysql-bi-classes.repository.js");
@@ -52,6 +57,9 @@ function createBiAdminRouter(options = {}) {
   const classesController =
     options.classesController ||
     new BiClassesController({ service: createBiClassesService(options) });
+  const championshipsController =
+    options.championshipsController ||
+    new BiChampionshipsController({ service: createBiChampionshipsService(options) });
   const courtsController =
     options.courtsController || new BiCourtsController({ service: createBiCourtsService(options) });
   const delinquencyController =
@@ -64,9 +72,17 @@ function createBiAdminRouter(options = {}) {
   router.get("/financial", financialController.getAnalytics);
   router.get("/students", studentsController.getAnalytics);
   router.get("/classes", classesController.getAnalytics);
+  router.get("/championships", championshipsController.getAnalytics);
   router.get("/courts", courtsController.getAnalytics);
   router.get("/delinquency", delinquencyController.getAnalytics);
   return router;
+}
+function createBiChampionshipsService(options = {}) {
+  if (options.championshipsService) return options.championshipsService;
+  const repository =
+    options.biChampionshipsRepository ||
+    new MySqlBiChampionshipsRepository({ queryRunner: options.queryRunner });
+  return new BiChampionshipsService({ now: options.now, repository });
 }
 function createBiCourtsService(options = {}) {
   if (options.courtsService) return options.courtsService;
@@ -129,6 +145,7 @@ module.exports = {
   BI_ADMIN_ROUTE_BASE_PATH,
   createBiAdminRouter,
   createBiClassesService,
+  createBiChampionshipsService,
   createBiCourtsService,
   createBiDelinquencyService,
   createBiExecutiveService,

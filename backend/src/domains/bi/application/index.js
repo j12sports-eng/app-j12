@@ -1,6 +1,7 @@
 module.exports = Object.freeze({
   ...require("./contracts/bi-read.repository.contract.js"),
   ...require("./dtos/bi-foundation.dto.js"),
+  ...require("./dtos/bi-championships.dto.js"),
   ...require("./dtos/bi-courts.dto.js"),
   ...require("./dtos/bi-delinquency.dto.js"),
   ...require("./dtos/bi-classes.dto.js"),
@@ -10,6 +11,7 @@ module.exports = Object.freeze({
   ...require("./filters/bi-query.js"),
   ...require("./periods/bi-period.js"),
   ...require("./services/bi-foundation.service.js"),
+  ...require("./services/bi-championships.service.js"),
   ...require("./services/bi-courts.service.js"),
   ...require("./services/bi-delinquency.service.js"),
   ...require("./services/bi-classes.service.js"),

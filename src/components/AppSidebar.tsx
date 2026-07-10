@@ -140,6 +140,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "operation",
   },
   {
+    to: "/admin/bi/campeonatos",
+    label: "BI de Campeonatos",
+    icon: Trophy,
+    roles: ["admin", "coordenador"],
+    section: "operation",
+  },
+  {
     to: "/admin/campeonatos",
     label: "Campeonatos",
     icon: Trophy,

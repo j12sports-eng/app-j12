@@ -70,6 +70,7 @@ import { Route as AdminBiTurmasRouteImport } from './routes/admin/bi.turmas'
 import { Route as AdminBiQuadrasRouteImport } from './routes/admin/bi.quadras'
 import { Route as AdminBiInadimplenciaRouteImport } from './routes/admin/bi.inadimplencia'
 import { Route as AdminBiFinanceiroRouteImport } from './routes/admin/bi.financeiro'
+import { Route as AdminBiCampeonatosRouteImport } from './routes/admin/bi.campeonatos'
 import { Route as AdminBiAlunosRouteImport } from './routes/admin/bi.alunos'
 import { Route as AdminFinanceiroAutomacoesHistoricoRouteImport } from './routes/admin/financeiro.automacoes.historico'
 import { Route as AdminCampeonatosChampionshipIdRodadasRouteImport } from './routes/admin/campeonatos.$championshipId.rodadas'
@@ -395,6 +396,11 @@ const AdminBiFinanceiroRoute = AdminBiFinanceiroRouteImport.update({
   path: '/financeiro',
   getParentRoute: () => AdminBiRoute,
 } as any)
+const AdminBiCampeonatosRoute = AdminBiCampeonatosRouteImport.update({
+  id: '/campeonatos',
+  path: '/campeonatos',
+  getParentRoute: () => AdminBiRoute,
+} as any)
 const AdminBiAlunosRoute = AdminBiAlunosRouteImport.update({
   id: '/alunos',
   path: '/alunos',
@@ -506,6 +512,7 @@ export interface FileRoutesByFullPath {
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
   '/admin/bi/alunos': typeof AdminBiAlunosRoute
+  '/admin/bi/campeonatos': typeof AdminBiCampeonatosRoute
   '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/bi/inadimplencia': typeof AdminBiInadimplenciaRoute
   '/admin/bi/quadras': typeof AdminBiQuadrasRoute
@@ -578,6 +585,7 @@ export interface FileRoutesByTo {
   '/portal-responsavel': typeof PortalResponsavelIndexRoute
   '/professor': typeof ProfessorIndexRoute
   '/admin/bi/alunos': typeof AdminBiAlunosRoute
+  '/admin/bi/campeonatos': typeof AdminBiCampeonatosRoute
   '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/bi/inadimplencia': typeof AdminBiInadimplenciaRoute
   '/admin/bi/quadras': typeof AdminBiQuadrasRoute
@@ -651,6 +659,7 @@ export interface FileRoutesById {
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
   '/admin/bi/alunos': typeof AdminBiAlunosRoute
+  '/admin/bi/campeonatos': typeof AdminBiCampeonatosRoute
   '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/bi/inadimplencia': typeof AdminBiInadimplenciaRoute
   '/admin/bi/quadras': typeof AdminBiQuadrasRoute
@@ -725,6 +734,7 @@ export interface FileRouteTypes {
     | '/portal-responsavel/'
     | '/professor/'
     | '/admin/bi/alunos'
+    | '/admin/bi/campeonatos'
     | '/admin/bi/financeiro'
     | '/admin/bi/inadimplencia'
     | '/admin/bi/quadras'
@@ -797,6 +807,7 @@ export interface FileRouteTypes {
     | '/portal-responsavel'
     | '/professor'
     | '/admin/bi/alunos'
+    | '/admin/bi/campeonatos'
     | '/admin/bi/financeiro'
     | '/admin/bi/inadimplencia'
     | '/admin/bi/quadras'
@@ -869,6 +880,7 @@ export interface FileRouteTypes {
     | '/portal-responsavel/'
     | '/professor/'
     | '/admin/bi/alunos'
+    | '/admin/bi/campeonatos'
     | '/admin/bi/financeiro'
     | '/admin/bi/inadimplencia'
     | '/admin/bi/quadras'
@@ -1371,6 +1383,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBiFinanceiroRouteImport
       parentRoute: typeof AdminBiRoute
     }
+    '/admin/bi/campeonatos': {
+      id: '/admin/bi/campeonatos'
+      path: '/campeonatos'
+      fullPath: '/admin/bi/campeonatos'
+      preLoaderRoute: typeof AdminBiCampeonatosRouteImport
+      parentRoute: typeof AdminBiRoute
+    }
     '/admin/bi/alunos': {
       id: '/admin/bi/alunos'
       path: '/alunos'
@@ -1463,6 +1482,7 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 interface AdminBiRouteChildren {
   AdminBiAlunosRoute: typeof AdminBiAlunosRoute
+  AdminBiCampeonatosRoute: typeof AdminBiCampeonatosRoute
   AdminBiFinanceiroRoute: typeof AdminBiFinanceiroRoute
   AdminBiInadimplenciaRoute: typeof AdminBiInadimplenciaRoute
   AdminBiQuadrasRoute: typeof AdminBiQuadrasRoute
@@ -1471,6 +1491,7 @@ interface AdminBiRouteChildren {
 
 const AdminBiRouteChildren: AdminBiRouteChildren = {
   AdminBiAlunosRoute: AdminBiAlunosRoute,
+  AdminBiCampeonatosRoute: AdminBiCampeonatosRoute,
   AdminBiFinanceiroRoute: AdminBiFinanceiroRoute,
   AdminBiInadimplenciaRoute: AdminBiInadimplenciaRoute,
   AdminBiQuadrasRoute: AdminBiQuadrasRoute,
