@@ -81,6 +81,10 @@ const {
   NOTIFICATION_LEGACY_ROUTE_BASE_PATH,
   NOTIFICATION_ROUTE_BASE_PATH,
 } = require("./domains/notificacoes/presentation/routes/index.js");
+const {
+  BI_ADMIN_ROUTE_BASE_PATH,
+  createBiAdminRouter,
+} = require("./domains/bi/presentation/routes/index.js");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
@@ -102,6 +106,7 @@ const courtRentalRoutes = createCourtRentalRouter();
 const championshipAdminRoutes = createChampionshipAdminRouter();
 const championshipPublicRoutes = createChampionshipPublicRouter();
 const notificationRoutes = createNotificationRouter();
+const biAdminRoutes = createBiAdminRouter();
 
 global.io = null;
 
@@ -554,6 +559,7 @@ mount(
   [CHAMPIONSHIP_PUBLIC_ROUTE_BASE_PATH, `/api${CHAMPIONSHIP_PUBLIC_ROUTE_BASE_PATH}`],
   championshipPublicRoutes,
 );
+mount([BI_ADMIN_ROUTE_BASE_PATH, `/api${BI_ADMIN_ROUTE_BASE_PATH}`], biAdminRoutes);
 mount(
   [
     NOTIFICATION_ROUTE_BASE_PATH,
