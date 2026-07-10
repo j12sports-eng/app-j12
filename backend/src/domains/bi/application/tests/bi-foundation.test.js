@@ -57,10 +57,10 @@ test("BI query accepts only foundation filters and validates unitId", () => {
   });
 });
 
-test("BI foundation DTO and service expose real metadata without fake metrics", () => {
+test("BI foundation DTO and service expose the audited executive capability", () => {
   const service = new BiFoundationService({ now: NOW });
   const result = service.describe({ period: BiPeriod.CURRENT_MONTH });
-  assert.deepEqual(result.capabilities, { foundation: true, metrics: false, reports: false });
+  assert.deepEqual(result.capabilities, { foundation: true, metrics: true, reports: false });
   assert.equal(result.contractVersion, "21.1");
   assert.equal(result.timezone, "America/Sao_Paulo");
   assert.deepEqual(result.repository, BiReadRepositoryCapability);

@@ -57,7 +57,7 @@ test("BI controller handles filters and forwards unexpected errors", async () =>
   assert.equal(forwarded, unexpected);
 });
 
-test("BI router exposes only the protected foundation endpoint", () => {
+test("BI router preserves foundation and exposes the protected executive endpoint", () => {
   const router = createBiAdminRouter({ authMiddleware: pass, accessMiddleware: pass });
   const routes = router.stack
     .filter((layer) => layer.route)
@@ -66,7 +66,10 @@ test("BI router exposes only the protected foundation endpoint", () => {
       path: layer.route.path,
     }));
   assert.equal(BI_ADMIN_ROUTE_BASE_PATH, "/admin/bi");
-  assert.deepEqual(routes, [{ methods: ["get"], path: "/foundation" }]);
+  assert.deepEqual(routes, [
+    { methods: ["get"], path: "/foundation" },
+    { methods: ["get"], path: "/executive" },
+  ]);
   assert.equal(router.stack.filter((layer) => !layer.route).length, 2);
 });
 

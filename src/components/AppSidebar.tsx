@@ -10,6 +10,7 @@ import {
   FileText,
   GraduationCap,
   LayoutDashboard,
+  ChartNoAxesCombined,
   LogOut,
   MapPinned,
   Settings,
@@ -50,6 +51,13 @@ const ITEMS: AppSidebarNavItem[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     roles: ["admin", "coordenador", "professor", "aluno"],
+    section: "overview",
+  },
+  {
+    to: "/admin/bi",
+    label: "BI Executivo",
+    icon: ChartNoAxesCombined,
+    roles: ["admin", "coordenador"],
     section: "overview",
   },
   {

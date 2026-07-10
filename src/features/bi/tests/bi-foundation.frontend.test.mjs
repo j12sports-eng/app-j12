@@ -27,25 +27,25 @@ test("BI hook and query keys expose a minimal TanStack Query contract", async ()
   assert.match(keys, /"foundation"/);
 });
 
-test("BI types mirror the 21.1 backend contract without invented values", async () => {
+test("BI foundation types expose the audited executive capability", async () => {
   const source = await readFile(path.join(featureRoot, "types", "bi-foundation.types.ts"), "utf8");
   assert.match(source, /contractVersion: "21\.1"/);
   assert.match(source, /timezone: "America\/Sao_Paulo"/);
-  assert.match(source, /metrics: false/);
+  assert.match(source, /metrics: true/);
   assert.match(source, /reports: false/);
-  assert.match(source, /NO_CANONICAL_AGGREGATE_REPOSITORY/);
+  assert.match(source, /EXECUTIVE_SNAPSHOT/);
 });
 
-test("Sprint 21.1 does not add a BI product route or navigation item", async () => {
+test("Sprint 21.2 adds an isolated administrative BI route and navigation item", async () => {
   const sidebar = await readFile(path.join(sourceRoot, "components", "AppSidebar.tsx"), "utf8");
   const shell = await readFile(path.join(sourceRoot, "components", "AppShell.tsx"), "utf8");
-  assert.doesNotMatch(sidebar + shell, /\/admin\/bi|Business Intelligence|Painel BI/);
+  assert.match(sidebar, /\/admin\/bi/);
 
   const routeFiles = await import("node:fs/promises").then(({ readdir }) =>
     readdir(path.join(sourceRoot, "routes"), { recursive: true }),
   );
   assert.equal(
     routeFiles.some((file) => /(^|[\\/])bi\.(tsx|ts)$/.test(String(file))),
-    false,
+    true,
   );
 });

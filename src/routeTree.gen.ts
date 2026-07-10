@@ -62,6 +62,7 @@ import { Route as AdminQuadrasRouteImport } from './routes/admin/quadras'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
 import { Route as AdminEnrollmentsRouteImport } from './routes/admin/enrollments'
 import { Route as AdminCampeonatosRouteImport } from './routes/admin/campeonatos'
+import { Route as AdminBiRouteImport } from './routes/admin/bi'
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
@@ -348,6 +349,11 @@ const AdminCampeonatosRoute = AdminCampeonatosRouteImport.update({
   path: '/admin/campeonatos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminBiRoute = AdminBiRouteImport.update({
+  id: '/admin/bi',
+  path: '/admin/bi',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminAgendaRoute = AdminAgendaRouteImport.update({
   id: '/admin/agenda',
   path: '/admin/agenda',
@@ -437,6 +443,7 @@ export interface FileRoutesByFullPath {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
+  '/admin/bi': typeof AdminBiRoute
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
@@ -503,6 +510,7 @@ export interface FileRoutesByTo {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
+  '/admin/bi': typeof AdminBiRoute
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
@@ -570,6 +578,7 @@ export interface FileRoutesById {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
+  '/admin/bi': typeof AdminBiRoute
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
@@ -638,6 +647,7 @@ export interface FileRouteTypes {
     | '/trocar-senha'
     | '/turmas'
     | '/admin/agenda'
+    | '/admin/bi'
     | '/admin/campeonatos'
     | '/admin/enrollments'
     | '/admin/financeiro'
@@ -704,6 +714,7 @@ export interface FileRouteTypes {
     | '/trocar-senha'
     | '/turmas'
     | '/admin/agenda'
+    | '/admin/bi'
     | '/admin/campeonatos'
     | '/admin/enrollments'
     | '/admin/financeiro'
@@ -770,6 +781,7 @@ export interface FileRouteTypes {
     | '/trocar-senha'
     | '/turmas'
     | '/admin/agenda'
+    | '/admin/bi'
     | '/admin/campeonatos'
     | '/admin/enrollments'
     | '/admin/financeiro'
@@ -837,6 +849,7 @@ export interface RootRouteChildren {
   TrocarSenhaRoute: typeof TrocarSenhaRoute
   TurmasRoute: typeof TurmasRoute
   AdminAgendaRoute: typeof AdminAgendaRoute
+  AdminBiRoute: typeof AdminBiRoute
   AdminCampeonatosRoute: typeof AdminCampeonatosRouteWithChildren
   AdminEnrollmentsRoute: typeof AdminEnrollmentsRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRouteWithChildren
@@ -1242,6 +1255,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCampeonatosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/bi': {
+      id: '/admin/bi'
+      path: '/admin/bi'
+      fullPath: '/admin/bi'
+      preLoaderRoute: typeof AdminBiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/agenda': {
       id: '/admin/agenda'
       path: '/admin/agenda'
@@ -1427,6 +1447,7 @@ const rootRouteChildren: RootRouteChildren = {
   TrocarSenhaRoute: TrocarSenhaRoute,
   TurmasRoute: TurmasRoute,
   AdminAgendaRoute: AdminAgendaRoute,
+  AdminBiRoute: AdminBiRoute,
   AdminCampeonatosRoute: AdminCampeonatosRouteWithChildren,
   AdminEnrollmentsRoute: AdminEnrollmentsRoute,
   AdminFinanceiroRoute: AdminFinanceiroRouteWithChildren,

@@ -1,6 +1,16 @@
 const BiReadRepositoryCapability = Object.freeze({
-  available: false,
-  reason: "NO_CANONICAL_AGGREGATE_REPOSITORY",
+  available: true,
+  capabilities: Object.freeze(["EXECUTIVE_SNAPSHOT"]),
+  reason: null,
 });
 
-module.exports = { BiReadRepositoryCapability };
+class BiReadRepositoryContract {
+  async getExecutiveSnapshot() {
+    throw Object.assign(
+      new TypeError("BiReadRepositoryContract must implement getExecutiveSnapshot."),
+      { code: "BI_REPOSITORY_NOT_IMPLEMENTED" },
+    );
+  }
+}
+
+module.exports = { BiReadRepositoryCapability, BiReadRepositoryContract };

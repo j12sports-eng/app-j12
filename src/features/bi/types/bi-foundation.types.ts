@@ -30,7 +30,7 @@ export type BiResolvedFilters = {
 export type BiFoundationContract = {
   capabilities: {
     foundation: true;
-    metrics: false;
+    metrics: true;
     reports: false;
   };
   contractVersion: "21.1";
@@ -40,9 +40,47 @@ export type BiFoundationContract = {
   };
   readOnly: true;
   repository: {
-    available: false;
-    reason: "NO_CANONICAL_AGGREGATE_REPOSITORY";
+    available: true;
+    capabilities: ["EXECUTIVE_SNAPSHOT"];
+    reason: null;
   };
   supportedPeriods: BiPeriod[];
   timezone: "America/Sao_Paulo";
+};
+
+export type BiComparison = {
+  available: boolean;
+  percent: number | null;
+  previousValue: number | null;
+  reason: string | null;
+  trend: "positive" | "negative" | "neutral" | "unavailable";
+};
+
+export type BiKpi = {
+  available: boolean;
+  comparison: BiComparison;
+  reason: string | null;
+  unit: "count" | "currency" | "percentage";
+  value: number | null;
+};
+
+export type BiExecutiveContract = {
+  contractVersion: "21.2";
+  filters: {
+    current: BiResolvedFilters;
+    previous: Pick<BiResolvedFilters, "startDate" | "endDate" | "timezone" | "unitId">;
+  };
+  generatedAt: string;
+  kpis: Record<
+    | "activeStudents"
+    | "averageTicket"
+    | "cancellations"
+    | "delinquencyRate"
+    | "expectedRevenue"
+    | "newStudents"
+    | "overdueRevenue"
+    | "receivedRevenue",
+    BiKpi
+  >;
+  readOnly: true;
 };
