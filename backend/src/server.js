@@ -59,6 +59,8 @@ const {
   FINANCIAL_INTER_ADMIN_ROUTE_BASE_PATH,
   createFinancialReportRouter,
   FINANCIAL_REPORT_ROUTE_BASE_PATH,
+  createFinancialAutomationHistoryRouter,
+  FINANCIAL_AUTOMATION_HISTORY_ROUTE_BASE_PATH,
 } = require("./domains/financeiro/presentation/routes/index.js");
 const {
   createAgendaAdminRouter,
@@ -94,6 +96,7 @@ const financialAutomationRoutes = createFinancialAutomationRouter();
 const financialPaymentAdminRoutes = createFinancialPaymentAdminRouter();
 const financialInterAdminRoutes = createFinancialInterAdminRouter();
 const financialReportRoutes = createFinancialReportRouter();
+const financialAutomationHistoryRoutes = createFinancialAutomationHistoryRouter();
 const agendaAdminRoutes = createAgendaAdminRouter();
 const courtRentalRoutes = createCourtRentalRouter();
 const championshipAdminRoutes = createChampionshipAdminRouter();
@@ -533,6 +536,13 @@ mount(
 mount(
   [FINANCIAL_REPORT_ROUTE_BASE_PATH, `/api${FINANCIAL_REPORT_ROUTE_BASE_PATH}`],
   financialReportRoutes,
+);
+mount(
+  [
+    FINANCIAL_AUTOMATION_HISTORY_ROUTE_BASE_PATH,
+    `/api${FINANCIAL_AUTOMATION_HISTORY_ROUTE_BASE_PATH}`,
+  ],
+  financialAutomationHistoryRoutes,
 );
 mount([AGENDA_ADMIN_ROUTE_BASE_PATH, `/api${AGENDA_ADMIN_ROUTE_BASE_PATH}`], agendaAdminRoutes);
 mount([COURT_RENTAL_ROUTE_BASE_PATH, `/api${COURT_RENTAL_ROUTE_BASE_PATH}`], courtRentalRoutes);

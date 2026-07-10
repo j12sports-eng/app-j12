@@ -29,7 +29,9 @@ test("history record accepts nullable JSON and removes sensitive nested keys", (
     input: {
       amount: 20,
       authorization: "Bearer secret",
+      senha: "oculta",
       nested: { password: "hidden", safe: true },
+      certificates: { private: "hidden" },
       payload: { financial: "hidden" },
     },
     output: null,
@@ -65,6 +67,9 @@ test("in-memory history repository saves, clones, filters and paginates determin
   assert.equal((await repository.list({ automationName: "billing" })).length, 3);
   assert.equal((await repository.list({ workflowName: "workflow-b" })).length, 1);
   assert.equal((await repository.list({ correlationId: "corr-c" })).length, 1);
+  assert.equal((await repository.list({ executionId: "exec-1" })).length, 3);
+  assert.equal((await repository.list({ triggerType: "manual" })).length, 0);
+  assert.equal(await repository.count({ automationName: "billing" }), 3);
   assert.equal(
     (
       await repository.list({
@@ -79,6 +84,21 @@ test("in-memory history repository saves, clones, filters and paginates determin
   );
   assert.notEqual(saved, await repository.findById("clone"));
   await assert.rejects(repository.list({ limit: 1001 }), {
+    code: "AUTOMATION_HISTORY_FILTER_INVALID",
+  });
+  assert.deepEqual(
+    (await repository.list({ sortBy: "startedAt", sortDirection: "asc" })).map(
+      (record) => record.id,
+    ),
+    ["a", "b", "clone", "c"],
+  );
+  await assert.rejects(repository.list({ sortBy: "unsafe" }), {
+    code: "AUTOMATION_HISTORY_FILTER_INVALID",
+  });
+  await assert.rejects(repository.list({ sortDirection: "unsafe" }), {
+    code: "AUTOMATION_HISTORY_FILTER_INVALID",
+  });
+  await assert.rejects(repository.list({ startedFrom: "invalid" }), {
     code: "AUTOMATION_HISTORY_FILTER_INVALID",
   });
 });
@@ -117,6 +137,8 @@ test("history service records every append-only status and sanitizes failures", 
     (await service.findByExecutionId("exec-service")) instanceof AutomationExecutionHistoryRecord,
     true,
   );
+  assert.equal((await service.listByExecutionId("exec-service")).length, 5);
+  assert.equal(await service.countHistory({ executionId: "exec-service" }), 5);
 });
 
 test("history service rejects incomplete data and contract remains abstract", async () => {

@@ -34,9 +34,14 @@ class InMemoryAutomationExecutionHistoryRepository extends AutomationExecutionHi
     const filters = normalizeHistoryFilters(input);
     return [...this.records.values()]
       .filter((record) => matches(record, filters))
-      .sort(compareRecords)
+      .sort((left, right) => compareRecords(left, right, filters))
       .slice(filters.offset, filters.offset + filters.limit)
       .map(cloneRecord);
+  }
+
+  async count(input = {}) {
+    const filters = normalizeHistoryFilters({ ...input, limit: 1, offset: 0 });
+    return [...this.records.values()].filter((record) => matches(record, filters)).length;
   }
 
   clear() {
@@ -63,6 +68,9 @@ function normalizeHistoryFilters(input = {}) {
     startedFrom: optionalTimestamp(input.startedFrom, "startedFrom"),
     startedTo: optionalTimestamp(input.startedTo, "startedTo"),
     status: normalizeStatusFilter(input.status),
+    sortBy: normalizeSortBy(input.sortBy),
+    sortDirection: normalizeSortDirection(input.sortDirection),
+    triggerType: optionalText(input.triggerType),
     workflowName: optionalText(input.workflowName),
   };
 }
@@ -73,13 +81,24 @@ function matches(record, filters) {
   if (filters.status && record.status !== filters.status) return false;
   if (filters.correlationId && record.correlationId !== filters.correlationId) return false;
   if (filters.executionId && record.executionId !== filters.executionId) return false;
+  if (filters.triggerType && record.triggerType !== filters.triggerType) return false;
   if (filters.startedFrom && record.startedAt < filters.startedFrom) return false;
   if (filters.startedTo && record.startedAt > filters.startedTo) return false;
   return true;
 }
 
-function compareRecords(left, right) {
-  return right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id);
+function compareRecords(left, right, filters) {
+  const comparison = compareNullable(left[filters.sortBy], right[filters.sortBy]);
+  return (
+    (filters.sortDirection === "asc" ? comparison : -comparison) || right.id.localeCompare(left.id)
+  );
+}
+
+function compareNullable(left, right) {
+  if (left === right) return 0;
+  if (left === null || left === undefined) return 1;
+  if (right === null || right === undefined) return -1;
+  return typeof left === "number" ? left - right : String(left).localeCompare(String(right));
 }
 
 function cloneRecord(record) {
@@ -122,6 +141,16 @@ function normalizeStatusFilter(value) {
   if (status && !Object.values(AutomationExecutionHistoryStatus).includes(status))
     throw invalidFilter("status");
   return status;
+}
+function normalizeSortBy(value) {
+  const field = optionalText(value) || "startedAt";
+  if (!["startedAt", "finishedAt", "durationMs"].includes(field)) throw invalidFilter("sortBy");
+  return field;
+}
+function normalizeSortDirection(value) {
+  const direction = (optionalText(value) || "desc").toLowerCase();
+  if (!["asc", "desc"].includes(direction)) throw invalidFilter("sortDirection");
+  return direction;
 }
 function invalidFilter(field) {
   return Object.assign(new TypeError(`Automation history filter ${field} is invalid.`), {

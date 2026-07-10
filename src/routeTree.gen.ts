@@ -65,6 +65,7 @@ import { Route as AdminCampeonatosRouteImport } from './routes/admin/campeonatos
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
+import { Route as AdminFinanceiroAutomacoesHistoricoRouteImport } from './routes/admin/financeiro.automacoes.historico'
 import { Route as AdminCampeonatosChampionshipIdRodadasRouteImport } from './routes/admin/campeonatos.$championshipId.rodadas'
 import { Route as AdminCampeonatosChampionshipIdMataMataRouteImport } from './routes/admin/campeonatos.$championshipId.mata-mata'
 import { Route as AdminCampeonatosChampionshipIdGruposRouteImport } from './routes/admin/campeonatos.$championshipId.grupos'
@@ -363,6 +364,12 @@ const AdminCampeonatosInscricoesRoute =
     path: '/inscricoes',
     getParentRoute: () => AdminCampeonatosRoute,
   } as any)
+const AdminFinanceiroAutomacoesHistoricoRoute =
+  AdminFinanceiroAutomacoesHistoricoRouteImport.update({
+    id: '/automacoes/historico',
+    path: '/automacoes/historico',
+    getParentRoute: () => AdminFinanceiroRoute,
+  } as any)
 const AdminCampeonatosChampionshipIdRodadasRoute =
   AdminCampeonatosChampionshipIdRodadasRouteImport.update({
     id: '/$championshipId/rodadas',
@@ -432,7 +439,7 @@ export interface FileRoutesByFullPath {
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
-  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
   '/admin/quadras': typeof AdminQuadrasRoute
   '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
@@ -468,6 +475,7 @@ export interface FileRoutesByFullPath {
   '/admin/campeonatos/$championshipId/grupos': typeof AdminCampeonatosChampionshipIdGruposRoute
   '/admin/campeonatos/$championshipId/mata-mata': typeof AdminCampeonatosChampionshipIdMataMataRoute
   '/admin/campeonatos/$championshipId/rodadas': typeof AdminCampeonatosChampionshipIdRodadasRoute
+  '/admin/financeiro/automacoes/historico': typeof AdminFinanceiroAutomacoesHistoricoRoute
   '/admin/campeonatos/inscricoes/$registrationId/atletas': typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
   '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
@@ -497,7 +505,7 @@ export interface FileRoutesByTo {
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
-  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
   '/admin/quadras': typeof AdminQuadrasRoute
   '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
@@ -533,6 +541,7 @@ export interface FileRoutesByTo {
   '/admin/campeonatos/$championshipId/grupos': typeof AdminCampeonatosChampionshipIdGruposRoute
   '/admin/campeonatos/$championshipId/mata-mata': typeof AdminCampeonatosChampionshipIdMataMataRoute
   '/admin/campeonatos/$championshipId/rodadas': typeof AdminCampeonatosChampionshipIdRodadasRoute
+  '/admin/financeiro/automacoes/historico': typeof AdminFinanceiroAutomacoesHistoricoRoute
   '/admin/campeonatos/inscricoes/$registrationId/atletas': typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
   '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
@@ -563,7 +572,7 @@ export interface FileRoutesById {
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
-  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
   '/admin/quadras': typeof AdminQuadrasRoute
   '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
@@ -599,6 +608,7 @@ export interface FileRoutesById {
   '/admin/campeonatos/$championshipId/grupos': typeof AdminCampeonatosChampionshipIdGruposRoute
   '/admin/campeonatos/$championshipId/mata-mata': typeof AdminCampeonatosChampionshipIdMataMataRoute
   '/admin/campeonatos/$championshipId/rodadas': typeof AdminCampeonatosChampionshipIdRodadasRoute
+  '/admin/financeiro/automacoes/historico': typeof AdminFinanceiroAutomacoesHistoricoRoute
   '/admin/campeonatos/inscricoes/$registrationId/atletas': typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
   '/admin/campeonatos/$championshipId/jogos/$matchId/sumula': typeof AdminCampeonatosChampionshipIdJogosMatchIdSumulaRoute
 }
@@ -666,6 +676,7 @@ export interface FileRouteTypes {
     | '/admin/campeonatos/$championshipId/grupos'
     | '/admin/campeonatos/$championshipId/mata-mata'
     | '/admin/campeonatos/$championshipId/rodadas'
+    | '/admin/financeiro/automacoes/historico'
     | '/admin/campeonatos/inscricoes/$registrationId/atletas'
     | '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
   fileRoutesByTo: FileRoutesByTo
@@ -731,6 +742,7 @@ export interface FileRouteTypes {
     | '/admin/campeonatos/$championshipId/grupos'
     | '/admin/campeonatos/$championshipId/mata-mata'
     | '/admin/campeonatos/$championshipId/rodadas'
+    | '/admin/financeiro/automacoes/historico'
     | '/admin/campeonatos/inscricoes/$registrationId/atletas'
     | '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
   id:
@@ -796,6 +808,7 @@ export interface FileRouteTypes {
     | '/admin/campeonatos/$championshipId/grupos'
     | '/admin/campeonatos/$championshipId/mata-mata'
     | '/admin/campeonatos/$championshipId/rodadas'
+    | '/admin/financeiro/automacoes/historico'
     | '/admin/campeonatos/inscricoes/$registrationId/atletas'
     | '/admin/campeonatos/$championshipId/jogos/$matchId/sumula'
   fileRoutesById: FileRoutesById
@@ -826,7 +839,7 @@ export interface RootRouteChildren {
   AdminAgendaRoute: typeof AdminAgendaRoute
   AdminCampeonatosRoute: typeof AdminCampeonatosRouteWithChildren
   AdminEnrollmentsRoute: typeof AdminEnrollmentsRoute
-  AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  AdminFinanceiroRoute: typeof AdminFinanceiroRouteWithChildren
   AdminQuadrasRoute: typeof AdminQuadrasRoute
   PortalAlunoAgendaRoute: typeof PortalAlunoAgendaRoute
   PortalAlunoAvaliacoesRoute: typeof PortalAlunoAvaliacoesRoute
@@ -1250,6 +1263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCampeonatosInscricoesRouteImport
       parentRoute: typeof AdminCampeonatosRoute
     }
+    '/admin/financeiro/automacoes/historico': {
+      id: '/admin/financeiro/automacoes/historico'
+      path: '/automacoes/historico'
+      fullPath: '/admin/financeiro/automacoes/historico'
+      preLoaderRoute: typeof AdminFinanceiroAutomacoesHistoricoRouteImport
+      parentRoute: typeof AdminFinanceiroRoute
+    }
     '/admin/campeonatos/$championshipId/rodadas': {
       id: '/admin/campeonatos/$championshipId/rodadas'
       path: '/$championshipId/rodadas'
@@ -1370,6 +1390,19 @@ const AdminCampeonatosRouteChildren: AdminCampeonatosRouteChildren = {
 const AdminCampeonatosRouteWithChildren =
   AdminCampeonatosRoute._addFileChildren(AdminCampeonatosRouteChildren)
 
+interface AdminFinanceiroRouteChildren {
+  AdminFinanceiroAutomacoesHistoricoRoute: typeof AdminFinanceiroAutomacoesHistoricoRoute
+}
+
+const AdminFinanceiroRouteChildren: AdminFinanceiroRouteChildren = {
+  AdminFinanceiroAutomacoesHistoricoRoute:
+    AdminFinanceiroAutomacoesHistoricoRoute,
+}
+
+const AdminFinanceiroRouteWithChildren = AdminFinanceiroRoute._addFileChildren(
+  AdminFinanceiroRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgendaRoute: AgendaRoute,
@@ -1396,7 +1429,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAgendaRoute: AdminAgendaRoute,
   AdminCampeonatosRoute: AdminCampeonatosRouteWithChildren,
   AdminEnrollmentsRoute: AdminEnrollmentsRoute,
-  AdminFinanceiroRoute: AdminFinanceiroRoute,
+  AdminFinanceiroRoute: AdminFinanceiroRouteWithChildren,
   AdminQuadrasRoute: AdminQuadrasRoute,
   PortalAlunoAgendaRoute: PortalAlunoAgendaRoute,
   PortalAlunoAvaliacoesRoute: PortalAlunoAvaliacoesRoute,

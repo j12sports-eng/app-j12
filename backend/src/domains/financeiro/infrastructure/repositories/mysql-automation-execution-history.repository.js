@@ -5,6 +5,11 @@ const {
 } = require("../../application/history/index.js");
 
 const TABLE_NAME = "financial_automation_execution_history";
+const SORT_COLUMNS = Object.freeze({
+  durationMs: "duration_ms",
+  finishedAt: "finished_at",
+  startedAt: "started_at",
+});
 
 const INSERT_HISTORY_SQL = `
   INSERT INTO ${TABLE_NAME} (
@@ -74,25 +79,47 @@ class MySqlAutomationExecutionHistoryRepository extends AutomationExecutionHisto
 
   async list(input = {}) {
     const filters = normalizeHistoryFilters(input);
-    const where = [];
-    const params = [];
-    addFilter(where, params, "automation_name", filters.automationName);
-    addFilter(where, params, "workflow_name", filters.workflowName);
-    addFilter(where, params, "status", filters.status);
-    addFilter(where, params, "correlation_id", filters.correlationId);
-    addFilter(where, params, "execution_id", filters.executionId);
-    addFilter(where, params, "started_at", filters.startedFrom, ">=");
-    addFilter(where, params, "started_at", filters.startedTo, "<=");
+    const { params, where } = buildWhere(filters);
+    const sortColumn = SORT_COLUMNS[filters.sortBy];
     const sql = `
       SELECT * FROM ${TABLE_NAME}
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-      ORDER BY started_at DESC, id DESC
+      ORDER BY ${sortColumn} ${filters.sortDirection.toUpperCase()}, id DESC
       LIMIT ? OFFSET ?
     `;
     params.push(filters.limit, filters.offset);
     const rows = await this.query(sql, params);
     return readRows(rows).map(toDomain);
   }
+
+  async count(input = {}) {
+    const filters = normalizeHistoryFilters({ ...input, limit: 1, offset: 0 });
+    const { params, where } = buildWhere(filters);
+    const rows = readRows(
+      await this.query(
+        `
+      SELECT COUNT(*) AS total FROM ${TABLE_NAME}
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    `,
+        params,
+      ),
+    );
+    return Number(rows[0]?.total || 0);
+  }
+}
+
+function buildWhere(filters) {
+  const where = [];
+  const params = [];
+  addFilter(where, params, "automation_name", filters.automationName);
+  addFilter(where, params, "workflow_name", filters.workflowName);
+  addFilter(where, params, "status", filters.status);
+  addFilter(where, params, "correlation_id", filters.correlationId);
+  addFilter(where, params, "execution_id", filters.executionId);
+  addFilter(where, params, "trigger_type", filters.triggerType);
+  addFilter(where, params, "started_at", filters.startedFrom, ">=");
+  addFilter(where, params, "started_at", filters.startedTo, "<=");
+  return { params, where };
 }
 
 function toPersistence(record) {

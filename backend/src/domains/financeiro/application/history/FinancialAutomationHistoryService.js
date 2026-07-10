@@ -53,8 +53,20 @@ class FinancialAutomationHistoryService {
     return this.repositoryMethod("findByExecutionId")(executionId);
   }
 
+  async findById(id) {
+    return this.repositoryMethod("findById")(id);
+  }
+
   async listHistory(filters = {}) {
     return this.repositoryMethod("list")(filters);
+  }
+
+  async countHistory(filters = {}) {
+    return this.repositoryMethod("count")(filters);
+  }
+
+  async listByExecutionId(executionId, filters = {}) {
+    return this.repositoryMethod("list")({ ...filters, executionId });
   }
 
   repositoryMethod(method) {

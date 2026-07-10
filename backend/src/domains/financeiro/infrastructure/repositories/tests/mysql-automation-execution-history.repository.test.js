@@ -76,16 +76,20 @@ test("MySQL history list builds dynamic parameterized filters and pagination", a
     offset: 10,
     startedFrom: "2026-07-01T00:00:00Z",
     status: "FAILED",
+    triggerType: "manual",
     workflowName: "workflow-a",
+    sortBy: "durationMs",
+    sortDirection: "asc",
   });
   assert.deepEqual(result, []);
-  assert.match(calls[0].sql, /ORDER BY started_at DESC, id DESC/);
+  assert.match(calls[0].sql, /ORDER BY duration_ms ASC, id DESC/);
   assert.match(calls[0].sql, /automation_name = \?/);
   assert.deepEqual(calls[0].params, [
     "billing",
     "workflow-a",
     "FAILED",
     "corr-db",
+    "manual",
     "2026-07-01T00:00:00.000Z",
     25,
     10,
@@ -93,6 +97,20 @@ test("MySQL history list builds dynamic parameterized filters and pagination", a
   await assert.rejects(repository.list({ limit: 0 }), {
     code: "AUTOMATION_HISTORY_FILTER_INVALID",
   });
+});
+
+test("MySQL history count reuses filters without LIMIT or loading records", async () => {
+  const calls = [];
+  const repository = new MySqlAutomationExecutionHistoryRepository({
+    queryRunner: async (sql, params) => {
+      calls.push({ sql, params });
+      return [[{ total: 7 }]];
+    },
+  });
+  assert.equal(await repository.count({ executionId: "exec-db-1", triggerType: "manual" }), 7);
+  assert.match(calls[0].sql, /COUNT\(\*\) AS total/);
+  assert.doesNotMatch(calls[0].sql, /LIMIT|OFFSET/);
+  assert.deepEqual(calls[0].params, ["exec-db-1", "manual"]);
 });
 
 test("MySQL history reports corrupt JSON explicitly", () => {

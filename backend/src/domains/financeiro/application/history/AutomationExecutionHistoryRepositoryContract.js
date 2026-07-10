@@ -11,6 +11,9 @@ class AutomationExecutionHistoryRepositoryContract {
   async list() {
     throw notImplemented("list");
   }
+  async count() {
+    throw notImplemented("count");
+  }
 }
 
 function notImplemented(method) {

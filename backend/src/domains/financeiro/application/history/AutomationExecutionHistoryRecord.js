@@ -10,7 +10,7 @@ const AutomationExecutionHistoryStatus = Object.freeze({
 });
 
 const SENSITIVE_KEY =
-  /^(api[_-]?key|authorization|client[_-]?secret|cookie|credential|credentials|headers?|password|payload|private[_-]?key|secret|token|access[_-]?token|refresh[_-]?token)$/i;
+  /^(api[_-]?key|authorization|certificates?|certificados?|client[_-]?secret|cookie|credential|credentials|headers?|password|payload|private[_-]?key|secret|senha|token|access[_-]?token|refresh[_-]?token)$/i;
 
 class AutomationExecutionHistoryRecord {
   constructor(input = {}) {
