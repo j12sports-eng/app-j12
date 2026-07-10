@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   BiClassesService,
+  BiCourtsService,
   BiDelinquencyService,
   BiExecutiveService,
   BiFinancialService,
@@ -15,6 +16,7 @@ const {
 } = require("../../infrastructure/repositories/mysql-bi-financial.repository.js");
 const { BiExecutiveController } = require("../controllers/bi-executive.controller.js");
 const { BiClassesController } = require("../controllers/bi-classes.controller.js");
+const { BiCourtsController } = require("../controllers/bi-courts.controller.js");
 const { BiDelinquencyController } = require("../controllers/bi-delinquency.controller.js");
 const { BiFinancialController } = require("../controllers/bi-financial.controller.js");
 const { BiFoundationController } = require("../controllers/bi-foundation.controller.js");
@@ -25,6 +27,9 @@ const {
 const {
   MySqlBiClassesRepository,
 } = require("../../infrastructure/repositories/mysql-bi-classes.repository.js");
+const {
+  MySqlBiCourtsRepository,
+} = require("../../infrastructure/repositories/mysql-bi-courts.repository.js");
 const {
   MySqlBiDelinquencyRepository,
 } = require("../../infrastructure/repositories/mysql-bi-delinquency.repository.js");
@@ -47,6 +52,8 @@ function createBiAdminRouter(options = {}) {
   const classesController =
     options.classesController ||
     new BiClassesController({ service: createBiClassesService(options) });
+  const courtsController =
+    options.courtsController || new BiCourtsController({ service: createBiCourtsService(options) });
   const delinquencyController =
     options.delinquencyController ||
     new BiDelinquencyController({ service: createBiDelinquencyService(options) });
@@ -57,8 +64,15 @@ function createBiAdminRouter(options = {}) {
   router.get("/financial", financialController.getAnalytics);
   router.get("/students", studentsController.getAnalytics);
   router.get("/classes", classesController.getAnalytics);
+  router.get("/courts", courtsController.getAnalytics);
   router.get("/delinquency", delinquencyController.getAnalytics);
   return router;
+}
+function createBiCourtsService(options = {}) {
+  if (options.courtsService) return options.courtsService;
+  const repository =
+    options.biCourtsRepository || new MySqlBiCourtsRepository({ queryRunner: options.queryRunner });
+  return new BiCourtsService({ now: options.now, repository });
 }
 
 function createBiDelinquencyService(options = {}) {
@@ -115,6 +129,7 @@ module.exports = {
   BI_ADMIN_ROUTE_BASE_PATH,
   createBiAdminRouter,
   createBiClassesService,
+  createBiCourtsService,
   createBiDelinquencyService,
   createBiExecutiveService,
   createBiFinancialService,

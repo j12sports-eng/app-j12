@@ -1,4 +1,5 @@
 module.exports = Object.freeze({
+  ...require("./mysql-bi-courts.repository.js"),
   ...require("./mysql-bi-delinquency.repository.js"),
   ...require("./mysql-bi-classes.repository.js"),
   ...require("./mysql-bi-executive.repository.js"),

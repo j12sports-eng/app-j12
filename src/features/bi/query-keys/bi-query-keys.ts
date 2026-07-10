@@ -2,6 +2,17 @@ import type { BiFoundationFilters } from "../types/bi-foundation.types";
 
 export const biQueryKeys = {
   all: ["bi"] as const,
+  courts: (filters: BiFoundationFilters = {}) =>
+    [
+      ...biQueryKeys.all,
+      "courts",
+      {
+        period: filters.period || "CURRENT_MONTH",
+        startDate: filters.startDate || "",
+        endDate: filters.endDate || "",
+        unitId: filters.unitId || "",
+      },
+    ] as const,
   delinquency: (filters: BiFoundationFilters = {}) =>
     [
       ...biQueryKeys.all,

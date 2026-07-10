@@ -133,6 +133,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "operation",
   },
   {
+    to: "/admin/bi/quadras",
+    label: "BI de Quadras",
+    icon: MapPinned,
+    roles: ["admin", "coordenador"],
+    section: "operation",
+  },
+  {
     to: "/admin/campeonatos",
     label: "Campeonatos",
     icon: Trophy,
