@@ -147,6 +147,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "operation",
   },
   {
+    to: "/admin/bi/relatorios",
+    label: "Relatorios do BI",
+    icon: FileText,
+    roles: ["admin", "coordenador"],
+    section: "revenue",
+  },
+  {
     to: "/admin/campeonatos",
     label: "Campeonatos",
     icon: Trophy,

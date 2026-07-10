@@ -11,6 +11,7 @@ module.exports = Object.freeze({
   ...require("./filters/bi-query.js"),
   ...require("./periods/bi-period.js"),
   ...require("./services/bi-foundation.service.js"),
+  ...require("./services/bi-export.service.js"),
   ...require("./services/bi-championships.service.js"),
   ...require("./services/bi-courts.service.js"),
   ...require("./services/bi-delinquency.service.js"),

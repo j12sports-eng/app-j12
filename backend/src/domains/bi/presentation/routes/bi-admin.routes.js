@@ -5,6 +5,7 @@ const {
   BiCourtsService,
   BiDelinquencyService,
   BiExecutiveService,
+  BiExportService,
   BiFinancialService,
   BiFoundationService,
   BiStudentsService,
@@ -16,6 +17,7 @@ const {
   MySqlBiFinancialRepository,
 } = require("../../infrastructure/repositories/mysql-bi-financial.repository.js");
 const { BiExecutiveController } = require("../controllers/bi-executive.controller.js");
+const { BiExportController } = require("../controllers/bi-export.controller.js");
 const { BiClassesController } = require("../controllers/bi-classes.controller.js");
 const { BiChampionshipsController } = require("../controllers/bi-championships.controller.js");
 const { BiCourtsController } = require("../controllers/bi-courts.controller.js");
@@ -48,6 +50,8 @@ function createBiAdminRouter(options = {}) {
   const executiveController =
     options.executiveController ||
     new BiExecutiveController({ service: createBiExecutiveService(options) });
+  const exportController =
+    options.exportController || new BiExportController({ service: createBiExportService(options) });
   const financialController =
     options.financialController ||
     new BiFinancialController({ service: createBiFinancialService(options) });
@@ -69,6 +73,7 @@ function createBiAdminRouter(options = {}) {
   router.use(options.accessMiddleware || ensureBiAdminAccess);
   router.get("/foundation", controller.describe);
   router.get("/executive", executiveController.getDashboard);
+  router.get("/exports/:report/:format", exportController.export);
   router.get("/financial", financialController.getAnalytics);
   router.get("/students", studentsController.getAnalytics);
   router.get("/classes", classesController.getAnalytics);
@@ -76,6 +81,23 @@ function createBiAdminRouter(options = {}) {
   router.get("/courts", courtsController.getAnalytics);
   router.get("/delinquency", delinquencyController.getAnalytics);
   return router;
+}
+function createBiExportService(options = {}) {
+  if (options.exportService) return options.exportService;
+  return new BiExportService({
+    maxRows: options.exportMaxRows,
+    now: options.now,
+    services: {
+      championships: createBiChampionshipsService(options),
+      classes: createBiClassesService(options),
+      courts: createBiCourtsService(options),
+      delinquency: createBiDelinquencyService(options),
+      executive: createBiExecutiveService(options),
+      financial: createBiFinancialService(options),
+      students: createBiStudentsService(options),
+    },
+    timeoutMs: options.exportTimeoutMs,
+  });
 }
 function createBiChampionshipsService(options = {}) {
   if (options.championshipsService) return options.championshipsService;
@@ -149,6 +171,7 @@ module.exports = {
   createBiCourtsService,
   createBiDelinquencyService,
   createBiExecutiveService,
+  createBiExportService,
   createBiFinancialService,
   createBiStudentsService,
   ensureBiAdminAccess,

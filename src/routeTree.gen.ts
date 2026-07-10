@@ -67,6 +67,7 @@ import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
 import { Route as AdminBiTurmasRouteImport } from './routes/admin/bi.turmas'
+import { Route as AdminBiRelatoriosRouteImport } from './routes/admin/bi.relatorios'
 import { Route as AdminBiQuadrasRouteImport } from './routes/admin/bi.quadras'
 import { Route as AdminBiInadimplenciaRouteImport } from './routes/admin/bi.inadimplencia'
 import { Route as AdminBiFinanceiroRouteImport } from './routes/admin/bi.financeiro'
@@ -381,6 +382,11 @@ const AdminBiTurmasRoute = AdminBiTurmasRouteImport.update({
   path: '/turmas',
   getParentRoute: () => AdminBiRoute,
 } as any)
+const AdminBiRelatoriosRoute = AdminBiRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AdminBiRoute,
+} as any)
 const AdminBiQuadrasRoute = AdminBiQuadrasRouteImport.update({
   id: '/quadras',
   path: '/quadras',
@@ -516,6 +522,7 @@ export interface FileRoutesByFullPath {
   '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/bi/inadimplencia': typeof AdminBiInadimplenciaRoute
   '/admin/bi/quadras': typeof AdminBiQuadrasRoute
+  '/admin/bi/relatorios': typeof AdminBiRelatoriosRoute
   '/admin/bi/turmas': typeof AdminBiTurmasRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
@@ -589,6 +596,7 @@ export interface FileRoutesByTo {
   '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/bi/inadimplencia': typeof AdminBiInadimplenciaRoute
   '/admin/bi/quadras': typeof AdminBiQuadrasRoute
+  '/admin/bi/relatorios': typeof AdminBiRelatoriosRoute
   '/admin/bi/turmas': typeof AdminBiTurmasRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
@@ -663,6 +671,7 @@ export interface FileRoutesById {
   '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/bi/inadimplencia': typeof AdminBiInadimplenciaRoute
   '/admin/bi/quadras': typeof AdminBiQuadrasRoute
+  '/admin/bi/relatorios': typeof AdminBiRelatoriosRoute
   '/admin/bi/turmas': typeof AdminBiTurmasRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
@@ -738,6 +747,7 @@ export interface FileRouteTypes {
     | '/admin/bi/financeiro'
     | '/admin/bi/inadimplencia'
     | '/admin/bi/quadras'
+    | '/admin/bi/relatorios'
     | '/admin/bi/turmas'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
@@ -811,6 +821,7 @@ export interface FileRouteTypes {
     | '/admin/bi/financeiro'
     | '/admin/bi/inadimplencia'
     | '/admin/bi/quadras'
+    | '/admin/bi/relatorios'
     | '/admin/bi/turmas'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
@@ -884,6 +895,7 @@ export interface FileRouteTypes {
     | '/admin/bi/financeiro'
     | '/admin/bi/inadimplencia'
     | '/admin/bi/quadras'
+    | '/admin/bi/relatorios'
     | '/admin/bi/turmas'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
@@ -1362,6 +1374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBiTurmasRouteImport
       parentRoute: typeof AdminBiRoute
     }
+    '/admin/bi/relatorios': {
+      id: '/admin/bi/relatorios'
+      path: '/relatorios'
+      fullPath: '/admin/bi/relatorios'
+      preLoaderRoute: typeof AdminBiRelatoriosRouteImport
+      parentRoute: typeof AdminBiRoute
+    }
     '/admin/bi/quadras': {
       id: '/admin/bi/quadras'
       path: '/quadras'
@@ -1486,6 +1505,7 @@ interface AdminBiRouteChildren {
   AdminBiFinanceiroRoute: typeof AdminBiFinanceiroRoute
   AdminBiInadimplenciaRoute: typeof AdminBiInadimplenciaRoute
   AdminBiQuadrasRoute: typeof AdminBiQuadrasRoute
+  AdminBiRelatoriosRoute: typeof AdminBiRelatoriosRoute
   AdminBiTurmasRoute: typeof AdminBiTurmasRoute
 }
 
@@ -1495,6 +1515,7 @@ const AdminBiRouteChildren: AdminBiRouteChildren = {
   AdminBiFinanceiroRoute: AdminBiFinanceiroRoute,
   AdminBiInadimplenciaRoute: AdminBiInadimplenciaRoute,
   AdminBiQuadrasRoute: AdminBiQuadrasRoute,
+  AdminBiRelatoriosRoute: AdminBiRelatoriosRoute,
   AdminBiTurmasRoute: AdminBiTurmasRoute,
 }
 

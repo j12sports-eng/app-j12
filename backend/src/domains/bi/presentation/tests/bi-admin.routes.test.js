@@ -69,6 +69,7 @@ test("BI router preserves foundation and exposes the protected executive endpoin
   assert.deepEqual(routes, [
     { methods: ["get"], path: "/foundation" },
     { methods: ["get"], path: "/executive" },
+    { methods: ["get"], path: "/exports/:report/:format" },
     { methods: ["get"], path: "/financial" },
     { methods: ["get"], path: "/students" },
     { methods: ["get"], path: "/classes" },
@@ -89,6 +90,29 @@ test("BI endpoint rejects unauthenticated and unauthorized access", () => {
   const forbidden = response();
   ensureBiAdminAccess({ auth: { role: "aluno" } }, forbidden, noNext);
   assert.equal(forbidden.statusCode, 403);
+});
+
+test("BI authorized export route reaches the injected controller", async () => {
+  let called = false;
+  const router = createBiAdminRouter({
+    accessMiddleware: pass,
+    authMiddleware: pass,
+    exportController: {
+      export(_req, res) {
+        called = true;
+        return res.status(200).json({ success: true });
+      },
+    },
+  });
+  const layer = router.stack.find((item) => item.route?.path === "/exports/:report/:format");
+  const res = response();
+  await layer.route.stack[0].handle(
+    { params: { format: "csv", report: "executive" } },
+    res,
+    noNext,
+  );
+  assert.equal(called, true);
+  assert.equal(res.statusCode, 200);
 });
 
 test("BI authorized endpoint returns foundation metadata and server mounts it once", async () => {
