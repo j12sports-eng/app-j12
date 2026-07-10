@@ -11,6 +11,13 @@ class BiReadRepositoryContract {
       { code: "BI_REPOSITORY_NOT_IMPLEMENTED" },
     );
   }
+
+  async getFinancialAnalytics() {
+    throw Object.assign(
+      new TypeError("BiReadRepositoryContract must implement getFinancialAnalytics."),
+      { code: "BI_REPOSITORY_NOT_IMPLEMENTED" },
+    );
+  }
 }
 
 module.exports = { BiReadRepositoryCapability, BiReadRepositoryContract };

@@ -1,1 +1,4 @@
-module.exports = Object.freeze({ ...require("./mysql-bi-executive.repository.js") });
+module.exports = Object.freeze({
+  ...require("./mysql-bi-executive.repository.js"),
+  ...require("./mysql-bi-financial.repository.js"),
+});

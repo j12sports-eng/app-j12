@@ -61,6 +61,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "overview",
   },
   {
+    to: "/admin/bi/financeiro",
+    label: "BI Financeiro",
+    icon: DollarSign,
+    roles: ["admin", "coordenador"],
+    section: "revenue",
+  },
+  {
     to: "/alunos",
     label: "Alunos",
     icon: Users,

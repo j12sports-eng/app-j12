@@ -66,6 +66,7 @@ import { Route as AdminBiRouteImport } from './routes/admin/bi'
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
+import { Route as AdminBiFinanceiroRouteImport } from './routes/admin/bi.financeiro'
 import { Route as AdminFinanceiroAutomacoesHistoricoRouteImport } from './routes/admin/financeiro.automacoes.historico'
 import { Route as AdminCampeonatosChampionshipIdRodadasRouteImport } from './routes/admin/campeonatos.$championshipId.rodadas'
 import { Route as AdminCampeonatosChampionshipIdMataMataRouteImport } from './routes/admin/campeonatos.$championshipId.mata-mata'
@@ -370,6 +371,11 @@ const AdminCampeonatosInscricoesRoute =
     path: '/inscricoes',
     getParentRoute: () => AdminCampeonatosRoute,
   } as any)
+const AdminBiFinanceiroRoute = AdminBiFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
+  getParentRoute: () => AdminBiRoute,
+} as any)
 const AdminFinanceiroAutomacoesHistoricoRoute =
   AdminFinanceiroAutomacoesHistoricoRouteImport.update({
     id: '/automacoes/historico',
@@ -443,7 +449,7 @@ export interface FileRoutesByFullPath {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
-  '/admin/bi': typeof AdminBiRoute
+  '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
@@ -475,6 +481,7 @@ export interface FileRoutesByFullPath {
   '/portal-aluno/': typeof PortalAlunoIndexRoute
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
+  '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
   '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
@@ -510,7 +517,7 @@ export interface FileRoutesByTo {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
-  '/admin/bi': typeof AdminBiRoute
+  '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
@@ -542,6 +549,7 @@ export interface FileRoutesByTo {
   '/portal-aluno': typeof PortalAlunoIndexRoute
   '/portal-responsavel': typeof PortalResponsavelIndexRoute
   '/professor': typeof ProfessorIndexRoute
+  '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
   '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
@@ -578,7 +586,7 @@ export interface FileRoutesById {
   '/trocar-senha': typeof TrocarSenhaRoute
   '/turmas': typeof TurmasRoute
   '/admin/agenda': typeof AdminAgendaRoute
-  '/admin/bi': typeof AdminBiRoute
+  '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/enrollments': typeof AdminEnrollmentsRoute
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
@@ -610,6 +618,7 @@ export interface FileRoutesById {
   '/portal-aluno/': typeof PortalAlunoIndexRoute
   '/portal-responsavel/': typeof PortalResponsavelIndexRoute
   '/professor/': typeof ProfessorIndexRoute
+  '/admin/bi/financeiro': typeof AdminBiFinanceiroRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
   '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
@@ -679,6 +688,7 @@ export interface FileRouteTypes {
     | '/portal-aluno/'
     | '/portal-responsavel/'
     | '/professor/'
+    | '/admin/bi/financeiro'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
     | '/admin/campeonatos/$championshipId/classificacao'
@@ -746,6 +756,7 @@ export interface FileRouteTypes {
     | '/portal-aluno'
     | '/portal-responsavel'
     | '/professor'
+    | '/admin/bi/financeiro'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
     | '/admin/campeonatos/$championshipId/classificacao'
@@ -813,6 +824,7 @@ export interface FileRouteTypes {
     | '/portal-aluno/'
     | '/portal-responsavel/'
     | '/professor/'
+    | '/admin/bi/financeiro'
     | '/admin/campeonatos/inscricoes'
     | '/dashboard/aluno/$id'
     | '/admin/campeonatos/$championshipId/classificacao'
@@ -849,7 +861,7 @@ export interface RootRouteChildren {
   TrocarSenhaRoute: typeof TrocarSenhaRoute
   TurmasRoute: typeof TurmasRoute
   AdminAgendaRoute: typeof AdminAgendaRoute
-  AdminBiRoute: typeof AdminBiRoute
+  AdminBiRoute: typeof AdminBiRouteWithChildren
   AdminCampeonatosRoute: typeof AdminCampeonatosRouteWithChildren
   AdminEnrollmentsRoute: typeof AdminEnrollmentsRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRouteWithChildren
@@ -1283,6 +1295,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCampeonatosInscricoesRouteImport
       parentRoute: typeof AdminCampeonatosRoute
     }
+    '/admin/bi/financeiro': {
+      id: '/admin/bi/financeiro'
+      path: '/financeiro'
+      fullPath: '/admin/bi/financeiro'
+      preLoaderRoute: typeof AdminBiFinanceiroRouteImport
+      parentRoute: typeof AdminBiRoute
+    }
     '/admin/financeiro/automacoes/historico': {
       id: '/admin/financeiro/automacoes/historico'
       path: '/automacoes/historico'
@@ -1366,6 +1385,17 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
   DashboardRouteChildren,
 )
 
+interface AdminBiRouteChildren {
+  AdminBiFinanceiroRoute: typeof AdminBiFinanceiroRoute
+}
+
+const AdminBiRouteChildren: AdminBiRouteChildren = {
+  AdminBiFinanceiroRoute: AdminBiFinanceiroRoute,
+}
+
+const AdminBiRouteWithChildren =
+  AdminBiRoute._addFileChildren(AdminBiRouteChildren)
+
 interface AdminCampeonatosInscricoesRouteChildren {
   AdminCampeonatosInscricoesRegistrationIdAtletasRoute: typeof AdminCampeonatosInscricoesRegistrationIdAtletasRoute
 }
@@ -1447,7 +1477,7 @@ const rootRouteChildren: RootRouteChildren = {
   TrocarSenhaRoute: TrocarSenhaRoute,
   TurmasRoute: TurmasRoute,
   AdminAgendaRoute: AdminAgendaRoute,
-  AdminBiRoute: AdminBiRoute,
+  AdminBiRoute: AdminBiRouteWithChildren,
   AdminCampeonatosRoute: AdminCampeonatosRouteWithChildren,
   AdminEnrollmentsRoute: AdminEnrollmentsRoute,
   AdminFinanceiroRoute: AdminFinanceiroRouteWithChildren,
