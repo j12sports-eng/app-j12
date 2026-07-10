@@ -71,6 +71,7 @@ test("BI router preserves foundation and exposes the protected executive endpoin
     { methods: ["get"], path: "/executive" },
     { methods: ["get"], path: "/financial" },
     { methods: ["get"], path: "/students" },
+    { methods: ["get"], path: "/classes" },
   ]);
   assert.equal(router.stack.filter((layer) => !layer.route).length, 2);
 });

@@ -1,5 +1,6 @@
 const express = require("express");
 const {
+  BiClassesService,
   BiExecutiveService,
   BiFinancialService,
   BiFoundationService,
@@ -12,12 +13,16 @@ const {
   MySqlBiFinancialRepository,
 } = require("../../infrastructure/repositories/mysql-bi-financial.repository.js");
 const { BiExecutiveController } = require("../controllers/bi-executive.controller.js");
+const { BiClassesController } = require("../controllers/bi-classes.controller.js");
 const { BiFinancialController } = require("../controllers/bi-financial.controller.js");
 const { BiFoundationController } = require("../controllers/bi-foundation.controller.js");
 const { BiStudentsController } = require("../controllers/bi-students.controller.js");
 const {
   MySqlBiStudentsRepository,
 } = require("../../infrastructure/repositories/mysql-bi-students.repository.js");
+const {
+  MySqlBiClassesRepository,
+} = require("../../infrastructure/repositories/mysql-bi-classes.repository.js");
 
 const BI_ADMIN_ROUTE_BASE_PATH = "/admin/bi";
 
@@ -34,13 +39,25 @@ function createBiAdminRouter(options = {}) {
   const studentsController =
     options.studentsController ||
     new BiStudentsController({ service: createBiStudentsService(options) });
+  const classesController =
+    options.classesController ||
+    new BiClassesController({ service: createBiClassesService(options) });
   router.use(options.authMiddleware || getAuthModule().requireAuth);
   router.use(options.accessMiddleware || ensureBiAdminAccess);
   router.get("/foundation", controller.describe);
   router.get("/executive", executiveController.getDashboard);
   router.get("/financial", financialController.getAnalytics);
   router.get("/students", studentsController.getAnalytics);
+  router.get("/classes", classesController.getAnalytics);
   return router;
+}
+
+function createBiClassesService(options = {}) {
+  if (options.classesService) return options.classesService;
+  const repository =
+    options.biClassesRepository ||
+    new MySqlBiClassesRepository({ queryRunner: options.queryRunner });
+  return new BiClassesService({ now: options.now, repository });
 }
 
 function createBiStudentsService(options = {}) {
@@ -80,6 +97,7 @@ function getAuthModule() {
 module.exports = {
   BI_ADMIN_ROUTE_BASE_PATH,
   createBiAdminRouter,
+  createBiClassesService,
   createBiExecutiveService,
   createBiFinancialService,
   createBiStudentsService,

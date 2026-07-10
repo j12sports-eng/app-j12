@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Bell,
+  Building2,
   CalendarClock,
   ClipboardCheck,
   CalendarCheck,
@@ -73,6 +74,13 @@ const ITEMS: AppSidebarNavItem[] = [
     icon: GraduationCap,
     roles: ["admin", "coordenador"],
     section: "overview",
+  },
+  {
+    to: "/admin/bi/turmas",
+    label: "BI de Turmas",
+    icon: Building2,
+    roles: ["admin", "coordenador"],
+    section: "operation",
   },
   {
     to: "/alunos",
