@@ -20,11 +20,18 @@ const DEFAULT_WORKFLOW_MAP = Object.freeze({
   [FinancialAutomationRequestType.REPROCESS_FAILURES]: "financeiro-reprocessar-falhas",
 });
 
+const AUTOMATION_HISTORY_PERSISTENCE_FAILED = "AUTOMATION_HISTORY_PERSISTENCE_FAILED";
+const DEFAULT_AUTOMATION_NAME = "financial-automation";
+
 class FinancialAutomationOrchestrator {
   constructor(options = {}) {
     this.financialAutomationService = options.financialAutomationService || null;
     this.auditService = options.auditService || null;
     this.audit = options.audit || null;
+    this.historyService =
+      options.historyService || options.financialAutomationHistoryService || null;
+    this.logger = normalizeLogger(options.logger);
+    this.automationName = normalizeText(options.automationName, 120) || DEFAULT_AUTOMATION_NAME;
     this.workflowMap = Object.freeze({ ...DEFAULT_WORKFLOW_MAP, ...(options.workflowMap || {}) });
     this.now = typeof options.now === "function" ? options.now : () => new Date();
     this.createCorrelationId =
@@ -76,6 +83,7 @@ class FinancialAutomationOrchestrator {
     let context = null;
     let requestType = null;
     let workflow = null;
+    let historyExecutionId = null;
     const warnings = [];
 
     try {
@@ -90,6 +98,7 @@ class FinancialAutomationOrchestrator {
         workflow,
       });
       const payload = this.buildPayload(input, context, requestType);
+      historyExecutionId = normalizeText(input.executionId, 191) || context.correlationId;
 
       await this.startAudit({
         context,
@@ -98,6 +107,12 @@ class FinancialAutomationOrchestrator {
       });
 
       context = context.withExecution({ startedAt: this.timestamp() });
+      await this.tryRecordHistory(
+        "recordStarted",
+        this.historyEntry({ context, historyExecutionId, input, requestType }),
+        warnings,
+        "started",
+      );
       const serviceResult = await withTimeout(
         this.getServiceMethod("startWorkflow")(payload),
         this.timeoutMs,
@@ -108,6 +123,25 @@ class FinancialAutomationOrchestrator {
       });
       warnings.push(...normalizeWarnings(serviceResult?.warnings));
 
+      const historyMethod = isCancelledStatus(serviceResult?.status)
+        ? "recordCancelled"
+        : "recordSucceeded";
+      await this.tryRecordHistory(
+        historyMethod,
+        this.historyEntry({
+          context,
+          historyExecutionId,
+          input,
+          output: {
+            executionId: normalizeText(serviceResult?.executionId, 191),
+            status: normalizeText(serviceResult?.status, 80) || "STARTED",
+          },
+          requestType,
+        }),
+        warnings,
+        isCancelledStatus(serviceResult?.status) ? "cancelled" : "succeeded",
+      );
+
       const audited = await this.tryFinishAudit({
         context,
         mode: resolveMode(input),
@@ -116,6 +150,13 @@ class FinancialAutomationOrchestrator {
         warnings,
       });
       if (!audited) warnings.push("AUTOMATION_AUDIT_COMPLETION_FAILED");
+      await this.recordHistoryWarnings({
+        context,
+        historyExecutionId,
+        input,
+        requestType,
+        warnings,
+      });
 
       return AutomationExecutionResult.succeeded({
         executionId: context.executionId,
@@ -129,8 +170,9 @@ class FinancialAutomationOrchestrator {
         details: { requestType, workflow },
       });
       if (context) {
+        context = context.withExecution({ completedAt: this.timestamp() });
         const audited = await this.tryFailAudit({
-          context: context.withExecution({ completedAt: this.timestamp() }),
+          context,
           error,
           mode: resolveMode(input),
           requestType,
@@ -138,6 +180,19 @@ class FinancialAutomationOrchestrator {
           warnings,
         });
         if (!audited) warnings.push("AUTOMATION_AUDIT_FAILURE_FAILED");
+        await this.tryRecordHistory(
+          error.category === AutomationErrorCategory.TIMEOUT ? "recordTimedOut" : "recordFailed",
+          this.historyEntry({ context, error, historyExecutionId, input, requestType }),
+          warnings,
+          error.category === AutomationErrorCategory.TIMEOUT ? "timed_out" : "failed",
+        );
+        await this.recordHistoryWarnings({
+          context,
+          historyExecutionId,
+          input,
+          requestType,
+          warnings,
+        });
       }
 
       return AutomationExecutionResult.failed({
@@ -148,6 +203,91 @@ class FinancialAutomationOrchestrator {
         warnings,
         workflow,
       });
+    }
+  }
+
+  historyEntry({
+    context,
+    error = null,
+    historyExecutionId,
+    input = {},
+    output = null,
+    requestType,
+  }) {
+    return {
+      attempt: normalizeAttempt(input.attempt),
+      automationName: this.automationName,
+      correlationId: context.correlationId,
+      durationMs: durationBetween(context.timestamps.startedAt, context.timestamps.completedAt),
+      error,
+      executionId: historyExecutionId || context.executionId || context.correlationId,
+      finishedAt: context.timestamps.completedAt,
+      input: {
+        mode: resolveMode(input),
+        requestType,
+      },
+      metadata: {
+        ...context.metadata,
+        actorId: context.actor.id,
+        actorType: context.actor.type,
+        externalExecutionId: context.executionId,
+      },
+      output,
+      startedAt: context.timestamps.startedAt || context.timestamps.requestedAt,
+      triggerType: requestType,
+      workflowName: context.workflow,
+    };
+  }
+
+  async tryRecordHistory(method, entry, warnings, event) {
+    if (!this.historyService) return true;
+    try {
+      const operation = this.historyService[method];
+      if (typeof operation !== "function") {
+        throw Object.assign(
+          new TypeError(`Financial automation history must implement ${method}.`),
+          {
+            code: "AUTOMATION_HISTORY_SERVICE_INVALID",
+          },
+        );
+      }
+      await operation.call(this.historyService, entry);
+      return true;
+    } catch (error) {
+      appendWarning(warnings, AUTOMATION_HISTORY_PERSISTENCE_FAILED);
+      this.logHistoryFailure(event, error);
+      return false;
+    }
+  }
+
+  async recordHistoryWarnings({ context, historyExecutionId, input, requestType, warnings }) {
+    const operationalWarnings = [...new Set(warnings)].filter(
+      (warning) => warning !== AUTOMATION_HISTORY_PERSISTENCE_FAILED,
+    );
+    for (const warning of operationalWarnings) {
+      await this.tryRecordHistory(
+        "recordWarning",
+        this.historyEntry({
+          context,
+          historyExecutionId,
+          input,
+          output: { warning },
+          requestType,
+        }),
+        warnings,
+        "warning",
+      );
+    }
+  }
+
+  logHistoryFailure(event, error) {
+    try {
+      this.logger.warn({
+        code: normalizeText(error?.code, 120) || "AUTOMATION_HISTORY_WRITE_FAILED",
+        event: `financial.automation.history.${event}.failed`,
+      });
+    } catch {
+      // Logging is also secondary and must never change the automation result.
     }
   }
 
@@ -335,6 +475,36 @@ function normalizeTimeout(value) {
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 120000 ? parsed : 10000;
 }
 
+function normalizeAttempt(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function durationBetween(startedAt, completedAt) {
+  if (!startedAt || !completedAt) return null;
+  const duration = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  return Number.isFinite(duration) && duration >= 0 ? duration : null;
+}
+
+function isCancelledStatus(value) {
+  return ["CANCELLED", "CANCELED", "CANCELADO"].includes(
+    String(value || "")
+      .trim()
+      .toUpperCase(),
+  );
+}
+
+function appendWarning(warnings, warning) {
+  if (!warnings.includes(warning)) warnings.push(warning);
+}
+
+function normalizeLogger(value) {
+  const logger = value && typeof value === "object" ? value : {};
+  return {
+    warn: typeof logger.warn === "function" ? logger.warn.bind(logger) : () => {},
+  };
+}
+
 function normalizeText(value, maxLength) {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -348,6 +518,7 @@ function isPlainObject(value) {
 }
 
 module.exports = {
+  AUTOMATION_HISTORY_PERSISTENCE_FAILED,
   DEFAULT_WORKFLOW_MAP,
   FinancialAutomationOrchestrator,
   FinancialAutomationRequestType,
