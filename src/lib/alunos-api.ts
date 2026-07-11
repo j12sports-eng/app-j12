@@ -39,9 +39,6 @@ async function apiGet<T>(path: string): Promise<T> {
 
   const token = getStoredAuthToken();
 
-  console.log("[alunos-api] GET:", url);
-  console.log("[alunos-api] TOKEN:", token);
-
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -65,8 +62,6 @@ async function apiSend<T>(
   const url = buildApiUrl(path);
 
   const token = getStoredAuthToken();
-
-  console.log(`[alunos-api] ${method}:`, url);
 
   const response = await fetch(url, {
     method,
@@ -274,8 +269,6 @@ function normalizeAluno(
 }
 
 export async function getAlunos(): Promise<Aluno[]> {
-  console.log("[alunos-api] Carregando alunos REAIS do MySQL 3001...");
-
   const [alunosResponse, planosResponse, turmasResponse, responsaveisResponse] = await Promise.all([
     apiGet<unknown>("/alunos"),
     apiGet<unknown>("/planos"),
@@ -290,38 +283,17 @@ export async function getAlunos(): Promise<Aluno[]> {
 
   const normalized = alunos.map((aluno) => normalizeAluno(aluno, planos, turmas, responsaveis));
 
-  console.log("[alunos-api] Total alunos reais:", normalized.length);
-  console.log("[alunos-api] Total planos:", planos.length);
-  console.log("[alunos-api] Total turmas:", turmas.length);
-  console.log("[alunos-api] Total responsáveis:", responsaveis.length);
-
-  console.log("[DEBUG] alunos recebidos da API:", alunos.length, alunos);
-
-  console.log("[DEBUG] alunos normalizados:", normalized.length, normalized);
-
   return normalized;
 }
 
 export async function createAluno(aluno: Aluno): Promise<Aluno> {
-  console.log("[alunos-api] Criando aluno no MySQL.", {
-    id: aluno.id,
-    nome: aluno.nome,
-  });
-
   return apiSend<Aluno>("/alunos", "POST", aluno);
 }
 
 export async function updateAluno(aluno: Aluno): Promise<Aluno> {
-  console.log("[alunos-api] Atualizando aluno no MySQL.", {
-    id: aluno.id,
-    nome: aluno.nome,
-  });
-
   return apiSend<Aluno>(`/alunos/${aluno.id}`, "PUT", aluno);
 }
 
 export async function deleteAluno(id: string): Promise<void> {
-  console.log("[alunos-api] Removendo aluno no MySQL.", { id });
-
   await apiSend<void>(`/alunos/${id}`, "DELETE");
 }

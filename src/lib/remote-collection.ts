@@ -72,25 +72,13 @@ export function createRemoteCollectionStore<T>(
   }
 
   async function persistSnapshot(snapshot: T): Promise<void> {
-    // Enviar com wrapper 'data' conforme esperado pelo backend
+    // Enviar com wrapper 'data' conforme esperado pelo backend, sem registrar snapshots sensiveis.
     const payload = { data: snapshot };
-    
-    console.log(`[RemoteCollection] Persistindo ${collection}:`, payload);
-    
-    try {
-      const response = await apiFetch<unknown>(`/api/state/${collection}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      console.log(`[RemoteCollection] ✓ ${collection} persistido com sucesso`, response);
-    } catch (error: any) {
-      console.error(`[RemoteCollection] ✗ Falha ao persistir ${collection}:`, {
-        status: error?.status,
-        message: error?.message,
-        data: error?.data,
-      });
-      throw error;
-    }
+
+    await apiFetch<unknown>(`/api/state/${collection}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
 
   function queuePersist(snapshot: T) {
@@ -101,7 +89,6 @@ export function createRemoteCollectionStore<T>(
       .catch((error: any) => {
         // Não retry em erro 400 (dados inválidos)
         if (error instanceof ApiError && error.status === 400) {
-          console.error(`[RemoteCollection] Erro 400 (dados inválidos) para ${collection}:`, error.data);
           errorMessage = formatApiErrorMessage(error, "Dados inválidos para salvar.");
           emit();
           return; // Não tentar novamente
@@ -109,7 +96,6 @@ export function createRemoteCollectionStore<T>(
 
         errorMessage = formatApiErrorMessage(error, "Nao foi possivel salvar os dados na API.");
         emit();
-        console.error(`Falha ao persistir a colecao ${collection}.`, error);
       });
   }
 
@@ -177,8 +163,6 @@ export function createRemoteCollectionStore<T>(
         }
 
         errorMessage = formatApiErrorMessage(error, "Nao foi possivel sincronizar os dados.");
-
-        console.error(`Falha ao carregar a colecao ${collection}.`, error);
       } finally {
         loading = false;
 
