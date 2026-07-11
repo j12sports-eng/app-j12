@@ -48,29 +48,42 @@ function normalizeNotificacao(item: Partial<NotificacaoResponsavel>): Notificaca
 }
 
 export function useResponsavelNotificacoes() {
-  const { alunos, loading: loadingAlunos, erro: erroAlunos, selectedStudentId } =
-    useResponsavelStudents();
+  const {
+    alunos,
+    loading: loadingAlunos,
+    erro: erroAlunos,
+    selectedStudentId,
+  } = useResponsavelStudents();
   const [notificacoes, setNotificacoes] = useState<NotificacaoResponsavel[]>([]);
   const [loadingDados, setLoadingDados] = useState(false);
   const [erroDados, setErroDados] = useState("");
   const endpoint = useMemo(() => buildEndpoint(selectedStudentId), [selectedStudentId]);
 
-  const carregar = useCallback(async () => {
-    if (loadingAlunos || erroAlunos || alunos.length === 0) return;
+  const carregar = useCallback(
+    async (isActive: () => boolean = () => true) => {
+      if (loadingAlunos || erroAlunos || alunos.length === 0) return;
 
-    try {
-      setLoadingDados(true);
-      setErroDados("");
+      try {
+        if (isActive()) {
+          setLoadingDados(true);
+          setErroDados("");
+        }
 
-      const response = await api.get<NotificacaoResponsavel[]>(endpoint);
-      setNotificacoes((Array.isArray(response) ? response : []).map(normalizeNotificacao));
-    } catch (error) {
-      setNotificacoes([]);
-      setErroDados(formatApiErrorMessage(error, "Erro ao carregar notificacoes"));
-    } finally {
-      setLoadingDados(false);
-    }
-  }, [alunos.length, endpoint, erroAlunos, loadingAlunos]);
+        const response = await api.get<NotificacaoResponsavel[]>(endpoint);
+        if (isActive()) {
+          setNotificacoes((Array.isArray(response) ? response : []).map(normalizeNotificacao));
+        }
+      } catch (error) {
+        if (isActive()) {
+          setNotificacoes([]);
+          setErroDados(formatApiErrorMessage(error, "Erro ao carregar notificacoes"));
+        }
+      } finally {
+        if (isActive()) setLoadingDados(false);
+      }
+    },
+    [alunos.length, endpoint, erroAlunos, loadingAlunos],
+  );
 
   async function marcarComoLida(id: string) {
     try {
@@ -107,7 +120,13 @@ export function useResponsavelNotificacoes() {
       return;
     }
 
-    void carregar();
+    // Impede que a resposta do dependente anterior substitua a selecao atual.
+    let active = true;
+    void carregar(() => active);
+
+    return () => {
+      active = false;
+    };
   }, [alunos.length, carregar, erroAlunos, loadingAlunos]);
 
   useEffect(() => {
@@ -129,4 +148,3 @@ export function useResponsavelNotificacoes() {
     marcarComoLida,
   };
 }
-
