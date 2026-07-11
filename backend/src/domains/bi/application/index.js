@@ -1,4 +1,5 @@
 module.exports = Object.freeze({
+  ...require("./analytics/bi-insights.js"),
   ...require("./contracts/bi-read.repository.contract.js"),
   ...require("./dtos/bi-foundation.dto.js"),
   ...require("./dtos/bi-championships.dto.js"),

@@ -1,9 +1,18 @@
+const {
+  createComparison,
+  createSeriesInsights,
+  unavailableGoal,
+} = require("../analytics/bi-insights.js");
+
 function createBiFinancialDto({ analytics, filters, generatedAt }) {
   const current = analytics.current || {};
   const previous = analytics.previous || {};
   const payingStudents = numeric(current.payingStudents);
   const previousPayingStudents = numeric(previous.payingStudents);
 
+  const evolution = (analytics.evolution || []).map((row) =>
+    Object.freeze({ period: text(row.period), receivedRevenue: money(row.receivedRevenue) }),
+  );
   return Object.freeze({
     breakdowns: Object.freeze({
       categories: rows(analytics.categories, "category"),
@@ -12,16 +21,14 @@ function createBiFinancialDto({ analytics, filters, generatedAt }) {
       units: rows(analytics.units, "unit"),
     }),
     contractVersion: "21.3",
-    evolution: Object.freeze(
-      (analytics.evolution || []).map((row) =>
-        Object.freeze({
-          period: text(row.period),
-          receivedRevenue: money(row.receivedRevenue),
-        }),
-      ),
-    ),
+    evolution: Object.freeze(evolution),
     filters,
     generatedAt,
+    insights: Object.freeze({
+      currentVsPrevious: createComparison(current.receivedRevenue, previous.receivedRevenue),
+      goal: unavailableGoal(),
+      receivedRevenue: createSeriesInsights(evolution, "receivedRevenue"),
+    }),
     kpis: Object.freeze({
       averageTicket: derivedMoney(
         payingStudents > 0 ? money(current.receivedRevenue) / payingStudents : null,

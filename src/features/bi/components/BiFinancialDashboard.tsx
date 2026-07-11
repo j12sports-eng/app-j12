@@ -12,7 +12,12 @@ import { AppShell } from "@/components/AppShell";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { formatApiErrorMessage } from "@/lib/api";
 import { useBiFinancial } from "../hooks/useBiFinancial";
-import type { BiFinancialBreakdown, BiFinancialMetric } from "../types/bi-financial.types";
+import type {
+  BiFinancialBreakdown,
+  BiFinancialContract,
+  BiFinancialMetric,
+  BiInsightComparison,
+} from "../types/bi-financial.types";
 import type { BiFoundationFilters, BiPeriod } from "../types/bi-foundation.types";
 
 const PERIODS: Array<{ value: BiPeriod; label: string }> = [
@@ -87,6 +92,7 @@ export function BiFinancialDashboard() {
               <Evolution data={query.data.evolution} />
               <Composition title="Receita por categoria" data={query.data.breakdowns.categories} />
             </section>
+            <FinancialInsights insights={query.data.insights} />
             <section className="grid gap-5 lg:grid-cols-3">
               <BreakdownTable
                 title="Receita por modalidade"
@@ -102,6 +108,70 @@ export function BiFinancialDashboard() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function FinancialInsights({ insights }: { insights: BiFinancialContract["insights"] }) {
+  const trendLabels = {
+    decline: "Queda",
+    growth: "Crescimento",
+    stable: "Estabilidade",
+    unavailable: "Indisponivel",
+  };
+  return (
+    <section className="j12-surface p-5" aria-label="Comparativos e tendencias financeiras">
+      <h2 className="text-lg font-bold text-white">Comparativos e tendencias</h2>
+      <p className="mt-1 text-xs text-slate-400">
+        Calculos determinísticos sobre receita recebida; nao representam previsao por IA.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <InsightCard title="Periodo anterior" comparison={insights.currentVsPrevious} />
+        <InsightCard title="Mes anterior" comparison={insights.receivedRevenue.monthOverMonth} />
+        <InsightCard
+          title="Mesmo mes do ano anterior"
+          comparison={insights.receivedRevenue.yearOverYear}
+        />
+        <article className="rounded-xl border border-white/10 bg-black/30 p-4">
+          <p className="text-xs font-semibold text-slate-400">Tendencia por media movel</p>
+          <p className="mt-2 text-lg font-black text-white">
+            {trendLabels[insights.receivedRevenue.trend.direction]}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {insights.receivedRevenue.trend.value === null
+              ? "Série insuficiente para tres pontos."
+              : `${currency(insights.receivedRevenue.trend.value)} · media movel de 3 meses`}
+          </p>
+        </article>
+      </div>
+      <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">
+        Meta indisponivel: ainda nao existe persistencia canonica de metas no sistema.
+      </div>
+    </section>
+  );
+}
+
+function InsightCard({ title, comparison }: { title: string; comparison: BiInsightComparison }) {
+  return (
+    <article className="rounded-xl border border-white/10 bg-black/30 p-4">
+      <p className="text-xs font-semibold text-slate-400">{title}</p>
+      {comparison.available ? (
+        <>
+          <p className="mt-2 text-lg font-black text-white">
+            {comparison.percent! > 0 ? "+" : ""}
+            {comparison.percent}%
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Diferenca absoluta: {currency(comparison.absolute || 0)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-sm font-semibold text-slate-300">
+          {comparison.reason === "PREVIOUS_VALUE_ZERO"
+            ? `Percentual indisponivel; diferenca ${currency(comparison.absolute || 0)}.`
+            : "Dados anteriores indisponiveis."}
+        </p>
+      )}
+    </article>
   );
 }
 
