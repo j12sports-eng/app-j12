@@ -3,7 +3,8 @@ module.exports = {
     {
       name: "j12-api",
       cwd: __dirname,
-      script: "server/index.mjs",
+      // Composition root canônico: monta rotas legadas e todos os domínios modernos.
+      script: "backend/server.js",
       interpreter: "node",
       node_args: "--env-file=.env",
       instances: 1,

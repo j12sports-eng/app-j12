@@ -3,7 +3,8 @@ module.exports = {
     {
       name: "j12-api-hml",
       cwd: __dirname,
-      script: "server/index.mjs",
+      // HML deve executar exatamente a mesma composição de API da produção.
+      script: "backend/server.js",
       interpreter: "node",
       node_args: "--env-file=.env",
       instances: 1,

@@ -16,6 +16,59 @@ function canManagePresencas(user) {
   return canManageSystem(user) || user?.role === "professor" || user?.perfil === "professor";
 }
 
+function teacherId(user) {
+  return text(user?.teacherId ?? user?.professor_id, 64);
+}
+
+async function assertTeacherCanAccessClass(user, turmaId) {
+  if (canManageSystem(user)) return;
+  const professorId = teacherId(user);
+  if (!professorId) {
+    throw Object.assign(new Error("Professor nao vinculado ao usuario."), { statusCode: 403 });
+  }
+  const rows = await query("SELECT id FROM j12_turmas WHERE id = ? AND professor_id = ? LIMIT 1", [
+    turmaId,
+    professorId,
+  ]);
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw Object.assign(new Error("Turma fora do escopo do professor."), { statusCode: 403 });
+  }
+}
+
+async function assertTeacherCanAccessStudent(user, alunoId) {
+  if (canManageSystem(user)) return;
+  const professorId = teacherId(user);
+  if (!professorId) {
+    throw Object.assign(new Error("Professor nao vinculado ao usuario."), { statusCode: 403 });
+  }
+  const rows = await query(
+    `SELECT aluno.id
+     FROM j12_alunos aluno
+     WHERE aluno.id = ?
+       AND (
+         EXISTS (
+           SELECT 1 FROM j12_turmas turma
+           WHERE turma.id = aluno.turma_id AND turma.professor_id = ?
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM enrollments enrollment
+           INNER JOIN enrollment_class_links link ON link.enrollment_id = enrollment.id
+           INNER JOIN j12_turmas turma ON turma.id = link.class_id
+           WHERE CAST(enrollment.student_person_id AS CHAR) = CAST(aluno.id AS CHAR)
+             AND enrollment.status = 'ACTIVE' AND enrollment.deleted_at IS NULL
+             AND link.status = 'ACTIVE' AND link.unlinked_at IS NULL
+             AND turma.professor_id = ?
+         )
+       )
+     LIMIT 1`,
+    [alunoId, professorId, professorId],
+  );
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw Object.assign(new Error("Aluno fora do escopo do professor."), { statusCode: 403 });
+  }
+}
+
 async function buildAlunoResumo(alunoId) {
   const rows = await query(
     `
@@ -68,6 +121,8 @@ router.get("/dashboard/:aluno_id", async (req, res, next) => {
         .json({ message: "Sem permissao para consultar o dashboard de presencas." });
     }
 
+    await assertTeacherCanAccessStudent(req.auth, req.params.aluno_id);
+
     const payload = await buildAlunoResumo(req.params.aluno_id);
     res.json({
       presentes: payload.presentes,
@@ -87,6 +142,10 @@ router.get("/ranking", async (req, res, next) => {
         .json({ message: "Sem permissao para consultar o ranking de presencas." });
     }
 
+    const professorId = teacherId(req.auth);
+    if (!canManageSystem(req.auth) && !professorId) {
+      return res.status(403).json({ message: "Professor nao vinculado ao usuario." });
+    }
     const rows = await query(
       `
         SELECT
@@ -95,13 +154,16 @@ router.get("/ranking", async (req, res, next) => {
           COUNT(presenca.id) AS total_aulas,
           SUM(CASE WHEN presenca.presente = 1 THEN 1 ELSE 0 END) AS presentes
         FROM j12_alunos aluno
+        INNER JOIN j12_turmas turma ON turma.id = aluno.turma_id
         LEFT JOIN student_presencas presenca ON presenca.aluno_id = aluno.id
+        WHERE (? IS NULL OR turma.professor_id = ?)
         GROUP BY aluno.id, aluno.nome_completo
         HAVING COUNT(presenca.id) > 0
         ORDER BY
           (SUM(CASE WHEN presenca.presente = 1 THEN 1 ELSE 0 END) / COUNT(presenca.id)) DESC,
           aluno.nome_completo ASC
       `,
+      canManageSystem(req.auth) ? [null, null] : [professorId, professorId],
     );
 
     res.json(
@@ -141,6 +203,9 @@ router.post("/", async (req, res, next) => {
         message: "Envie aluno_id, turma_id e status valido para salvar a chamada.",
       });
     }
+
+    await assertTeacherCanAccessClass(req.auth, turmaId);
+    await assertTeacherCanAccessStudent(req.auth, alunoId);
 
     const normalizedDate = new Date(dataAula).toISOString().slice(0, 10);
     const turmaRows = await query("SELECT nome, modalidade FROM j12_turmas WHERE id = ? LIMIT 1", [

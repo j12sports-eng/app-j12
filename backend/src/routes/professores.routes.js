@@ -113,6 +113,10 @@ async function findById(id) {
 }
 
 router.use(requireAuth);
+router.use((req, res, next) => {
+  if (canManageSystem(req.auth)) return next();
+  return res.status(403).json({ message: "Sem permissao para consultar professores." });
+});
 
 router.get("/", async (_req, res, next) => {
   try {

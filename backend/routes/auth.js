@@ -15,6 +15,36 @@ const {
 
 const router = express.Router();
 
+const AUTH_RATE_LIMIT_WINDOW_MS = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60_000);
+const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX || 10);
+const authRateLimitBuckets = new Map();
+
+function authRateLimit(req, res, next) {
+  if (process.env.NODE_ENV === "test" && process.env.AUTH_RATE_LIMIT_TEST !== "enabled") {
+    return next();
+  }
+  const now = Date.now();
+  const key = `${req.ip || req.socket?.remoteAddress || "unknown"}:${req.path}`;
+  const bucket = authRateLimitBuckets.get(key) || {
+    count: 0,
+    resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
+  };
+  if (bucket.resetAt <= now) {
+    bucket.count = 0;
+    bucket.resetAt = now + AUTH_RATE_LIMIT_WINDOW_MS;
+  }
+  bucket.count += 1;
+  authRateLimitBuckets.set(key, bucket);
+  if (bucket.count > AUTH_RATE_LIMIT_MAX) {
+    return res.status(429).json({
+      code: "AUTH_RATE_LIMITED",
+      message: "Muitas tentativas. Aguarde antes de tentar novamente.",
+      success: false,
+    });
+  }
+  return next();
+}
+
 function hasEnv(name) {
   return String(process.env[name] || "").trim().length > 0;
 }
@@ -99,7 +129,7 @@ function getBaseUrl(req) {
   return `http://${req.get("host") || "localhost:3000"}`;
 }
 
-router.post("/login", async (req, res, next) => {
+router.post("/login", authRateLimit, async (req, res, next) => {
   let identifier = "";
 
   try {
@@ -207,7 +237,7 @@ router.post("/logout", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/forgot-password", async (req, res, next) => {
+router.post("/forgot-password", authRateLimit, async (req, res, next) => {
   try {
     const identifier = String(req.body.email || req.body.login || req.body.identifier || "").trim();
     const channel = String(req.body.channel || "email")
@@ -219,22 +249,18 @@ router.post("/forgot-password", async (req, res, next) => {
     }
 
     const reset = await createPasswordResetToken(identifier, channel);
-    if (!reset) {
-      return res
-        .status(404)
-        .json({ message: "Nao encontramos um usuario com esse identificador." });
-    }
 
-    res.json({
+    const response = {
       ok: true,
-      message:
-        channel === "whatsapp"
-          ? "Recuperacao preparada para envio por WhatsApp."
-          : "Recuperacao preparada para envio por e-mail.",
-      previewUrl: `${getBaseUrl(req)}/reset-password/${reset.token}`,
-      expiresAt: reset.expiresAt,
-      channel,
-    });
+      message: "Se o usuario existir, as instrucoes de recuperacao serao enviadas.",
+    };
+    // Preview é útil apenas no desenvolvimento local e nunca pode vazar em produção.
+    if (process.env.NODE_ENV !== "production" && reset) {
+      response.previewUrl = `${getBaseUrl(req)}/reset-password/${reset.token}`;
+      response.expiresAt = reset.expiresAt;
+      response.channel = channel;
+    }
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -258,7 +284,7 @@ router.get("/reset-password/:token", async (req, res, next) => {
   }
 });
 
-router.post("/reset-password", async (req, res, next) => {
+router.post("/reset-password", authRateLimit, async (req, res, next) => {
   try {
     const token = String(req.body.token || "").trim();
     const password = String(req.body.senha || req.body.password || "");
@@ -305,7 +331,7 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/first-access", async (req, res, next) => {
+router.post("/first-access", authRateLimit, async (req, res, next) => {
   try {
     const user = await completeStudentFirstAccess(req.body || {});
     res.status(201).json({
