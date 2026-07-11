@@ -77,6 +77,22 @@ test("InterApplicationService consults Inter charge and reconciles paid status",
   assert.equal(repository.reconciliations[0].status, InterPaymentStatus.PAID);
 });
 
+test("InterApplicationService blocks partial Pix reconciliation", async () => {
+  const repository = new FakeInterRepository();
+  repository.seedPayment({ amount: 250, status: InterPaymentStatus.PENDING, txid: "TXID-PARTIAL" });
+  const client = new FakeInterClient();
+  client.seedRemoteCharge("TXID-PARTIAL", {
+    pix: [{ endToEndId: "E2E-PARTIAL", valor: "100.00" }],
+    status: "CONCLUIDA",
+  });
+  const service = new InterApplicationService({ client, repository });
+
+  await assert.rejects(() => service.consultarCobranca({ id: "TXID-PARTIAL" }), {
+    code: "INTER_PAYMENT_AMOUNT_MISMATCH",
+  });
+  assert.equal(repository.reconciliations.length, 0);
+});
+
 test("InterApplicationService synchronizes open payments and records paid/cancelled/expired statuses", async () => {
   const repository = new FakeInterRepository();
   repository.seedPayment({ status: InterPaymentStatus.PENDING, txid: "TXID-SYNC-PAID" });
@@ -162,6 +178,29 @@ test("InterApplicationService rejects invalid webhook signature and missing loca
   });
 
   assert.equal(result.erros, 1);
+});
+
+test("InterApplicationService does not settle a partial webhook payment", async () => {
+  const repository = new FakeInterRepository();
+  repository.seedPayment({
+    amount: 250,
+    status: InterPaymentStatus.PENDING,
+    txid: "TXID-WH-PARTIAL",
+  });
+  const service = new InterApplicationService({
+    client: new FakeInterClient(),
+    repository,
+    webhookSecret: "secret",
+  });
+
+  const result = await service.processarWebhook({
+    body: { pix: [{ txid: "TXID-WH-PARTIAL", valor: "249.99" }] },
+    headers: { "x-inter-token": "secret" },
+  });
+
+  assert.equal(result.processados, 0);
+  assert.equal(result.erros, 1);
+  assert.equal(repository.reconciliations.length, 0);
 });
 
 test("InterApplicationService exposes controlled errors for missing charge and payment", async () => {

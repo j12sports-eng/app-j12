@@ -63,6 +63,25 @@ test("PaymentProviderInter consults Pix and reconciles paid charge", async () =>
   assert.equal(repository.reconciliations[0].status, InterPaymentStatus.PAID);
 });
 
+test("PaymentProviderInter blocks a paid status with divergent amount", async () => {
+  const repository = new FakeInterRepository();
+  repository.seedPayment({ amount: 250, status: InterPaymentStatus.PENDING, txid: "TXID-PARTIAL" });
+  const provider = new PaymentProviderInter({
+    pixService: new FakePixService({
+      remoteCharge: {
+        pix: [{ endToEndId: "E2E-PARTIAL", valor: "125.00" }],
+        status: "CONCLUIDA",
+      },
+    }),
+    repository,
+  });
+
+  await assert.rejects(() => provider.getPix({ txid: "TXID-PARTIAL" }), {
+    code: "INTER_PROVIDER_PAYMENT_AMOUNT_MISMATCH",
+  });
+  assert.equal(repository.reconciliations.length, 0);
+});
+
 test("PaymentProviderInter cancels Pix and synchronizes open payments", async () => {
   const repository = new FakeInterRepository();
   repository.seedPayment({ status: InterPaymentStatus.PENDING, txid: "TXID-CANCEL" });
@@ -118,6 +137,21 @@ test("WebhookService validates signature, reconciles payment and keeps idempoten
   assert.equal(duplicate.duplicados, 1);
   assert.equal(repository.reconciliations.length, 1);
   assert.equal(repository.reconciliations[0].status, InterPaymentStatus.PAID);
+});
+
+test("WebhookService rejects partial payment without marking the event processed", async () => {
+  const repository = new FakeInterRepository();
+  repository.seedPayment({ amount: 250, status: InterPaymentStatus.PENDING, txid: "TXID-WH-PART" });
+  const webhook = new WebhookService({ repository, webhookSecret: "secret" });
+
+  const result = await webhook.processWebhook({
+    body: { pix: [{ txid: "TXID-WH-PART", valor: "200.00" }] },
+    headers: { "x-inter-token": "secret" },
+  });
+
+  assert.equal(result.processados, 0);
+  assert.equal(result.erros, 1);
+  assert.equal(repository.reconciliations.length, 0);
 });
 
 class FakePixService {

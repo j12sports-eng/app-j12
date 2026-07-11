@@ -226,6 +226,8 @@ class InterApplicationService {
           continue;
         }
 
+        assertPaidAmountMatches(payment, normalized.amount, normalized.status);
+
         const updatedPayment = await this.repository.reconcilePayment({
           e2eid: normalized.e2eid,
           interTransactionId: normalized.interTransactionId,
@@ -295,6 +297,11 @@ class InterApplicationService {
     }
 
     const pixEvent = extractFirstPixEvent(interCharge);
+    assertPaidAmountMatches(
+      payment,
+      pixEvent?.valor ?? pixEvent?.amount ?? interCharge?.valor?.original,
+      status,
+    );
     const updatedPayment = await this.repository.reconcilePayment({
       e2eid: pixEvent?.endToEndId ?? pixEvent?.e2eid,
       interTransactionId: pixEvent?.id ?? interCharge?.loc?.id,
@@ -326,6 +333,7 @@ function normalizeWebhookEvent(event = {}) {
   const txid = nullableText(event.txid ?? event.txId ?? event.cob?.txid, 35);
 
   return {
+    amount: event.valor ?? event.amount ?? event.valorPago ?? null,
     e2eid: nullableText(event.endToEndId ?? event.e2eid ?? event.e2eId ?? event.end_to_end_id, 191),
     interTransactionId: nullableText(
       event.id ?? event.transactionId ?? event.codigoSolicitacao,
@@ -337,6 +345,25 @@ function normalizeWebhookEvent(event = {}) {
     status,
     txid,
   };
+}
+
+function assertPaidAmountMatches(payment, receivedAmount, status) {
+  if (status !== InterPaymentStatus.PAID || receivedAmount == null || receivedAmount === "") return;
+
+  const expectedCents = moneyToCents(payment?.amount);
+  const receivedCents = moneyToCents(receivedAmount);
+  if (expectedCents === null || receivedCents === null || expectedCents !== receivedCents) {
+    throw controlledError(
+      "Valor recebido no Pix diverge do valor integral da cobranca; baixa automatica bloqueada.",
+      "INTER_PAYMENT_AMOUNT_MISMATCH",
+    );
+  }
+}
+
+function moneyToCents(value) {
+  const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : null;
 }
 
 function normalizeWebhookStatus(event = {}) {
@@ -428,4 +455,5 @@ module.exports = {
   extractWebhookEvents,
   normalizeInterChargeStatus,
   normalizeWebhookEvent,
+  assertPaidAmountMatches,
 };

@@ -261,6 +261,11 @@ class PaymentProviderInter extends PaymentProvider {
     }
 
     const pixEvent = extractFirstPixEvent(interCharge);
+    assertPaidAmountMatches(
+      payment,
+      pixEvent?.valor ?? pixEvent?.amount ?? interCharge?.valor?.original,
+      status,
+    );
     const updatedPayment = await this.getRepository().reconcilePayment({
       e2eid: pixEvent?.endToEndId ?? pixEvent?.e2eid,
       interTransactionId: pixEvent?.id ?? interCharge?.loc?.id,
@@ -287,6 +292,26 @@ class PaymentProviderInter extends PaymentProvider {
   }
 }
 
+function assertPaidAmountMatches(payment, receivedAmount, status) {
+  if (status !== InterPaymentStatus.PAID || receivedAmount == null || receivedAmount === "") return;
+
+  const expectedCents = moneyToCents(payment?.amount);
+  const receivedCents = moneyToCents(receivedAmount);
+  if (expectedCents === null || receivedCents === null || expectedCents !== receivedCents) {
+    const error = new Error(
+      "Valor recebido no Pix diverge do valor integral da cobranca; baixa automatica bloqueada.",
+    );
+    error.code = "INTER_PROVIDER_PAYMENT_AMOUNT_MISMATCH";
+    throw error;
+  }
+}
+
+function moneyToCents(value) {
+  const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : null;
+}
+
 function normalizeInterChargeStatus(interCharge = {}) {
   const status = String(interCharge.status ?? "").toUpperCase();
 
@@ -310,6 +335,7 @@ module.exports = {
   INTER_PROVIDER_CHARGE_NOT_FOUND_CODE,
   INTER_PROVIDER_PAYMENT_NOT_FOUND_CODE,
   PaymentProviderInter,
+  assertPaidAmountMatches,
   extractFirstPixEvent,
   normalizeInterChargeStatus,
 };
