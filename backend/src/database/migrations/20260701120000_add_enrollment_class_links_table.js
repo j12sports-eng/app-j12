@@ -84,11 +84,25 @@ async function up() {
 
 async function down() {
   await assertTableExists();
+  const rowCount = await countRows();
+
+  // Safety gate: rollback must never discard enrollment links implicitly.
+  if (rowCount > 0) {
+    throw new Error(
+      `Refusing to drop ${TABLE_NAME}: table contains ${rowCount} row(s). Use an approved data rollback plan first.`,
+    );
+  }
+
   await dropUniqueIndexIfExists();
   await dropForeignKeysIfExist();
   await query(DROP_TABLE_SQL);
   const state = await readState();
   printState(state);
+}
+
+async function countRows() {
+  const rows = await query(`SELECT COUNT(*) AS total FROM ${TABLE_NAME}`);
+  return Number(rows[0]?.total ?? 0);
 }
 
 async function status() {
@@ -102,7 +116,10 @@ async function status() {
 }
 
 async function assertRequiredTablesExist() {
-  const [enrollmentExists, classExists] = await Promise.all([tableExists(ENROLLMENT_TABLE_NAME), tableExists(CLASS_TABLE_NAME)]);
+  const [enrollmentExists, classExists] = await Promise.all([
+    tableExists(ENROLLMENT_TABLE_NAME),
+    tableExists(CLASS_TABLE_NAME),
+  ]);
 
   if (!enrollmentExists) {
     throw new Error(`Required table ${ENROLLMENT_TABLE_NAME} does not exist.`);
@@ -136,13 +153,19 @@ async function ensureForeignKeys() {
   const byName = new Map((foreignKeys || []).map((row) => [row.CONSTRAINT_NAME, row]));
 
   if (!byName.has(FK_ENROLLMENT_NAME)) {
-    await addForeignKeyIfMissing(FK_ENROLLMENT_NAME, `CONSTRAINT ${FK_ENROLLMENT_NAME} FOREIGN KEY (enrollment_id) REFERENCES ${ENROLLMENT_TABLE_NAME} (id)`);
+    await addForeignKeyIfMissing(
+      FK_ENROLLMENT_NAME,
+      `CONSTRAINT ${FK_ENROLLMENT_NAME} FOREIGN KEY (enrollment_id) REFERENCES ${ENROLLMENT_TABLE_NAME} (id)`,
+    );
   } else {
     console.log(`SKIP_FK_EXISTS=${FK_ENROLLMENT_NAME}`);
   }
 
   if (!byName.has(FK_CLASS_NAME)) {
-    await addForeignKeyIfMissing(FK_CLASS_NAME, `CONSTRAINT ${FK_CLASS_NAME} FOREIGN KEY (class_id) REFERENCES ${CLASS_TABLE_NAME} (id)`);
+    await addForeignKeyIfMissing(
+      FK_CLASS_NAME,
+      `CONSTRAINT ${FK_CLASS_NAME} FOREIGN KEY (class_id) REFERENCES ${CLASS_TABLE_NAME} (id)`,
+    );
   } else {
     console.log(`SKIP_FK_EXISTS=${FK_CLASS_NAME}`);
   }
@@ -199,8 +222,25 @@ async function dropForeignKeysIfExist() {
 async function assertLinkSchema() {
   const [tableExistsRows, columns, indexes, foreignKeys] = await Promise.all([
     tableExists(TABLE_NAME),
-    readColumns(["id", "enrollment_id", "class_id", "status", "linked_at", "linked_by", "unlinked_at", "unlinked_by", "created_at", "updated_at"]),
-    readIndexes(["idx_enrollment_class_links_enrollment_id", "idx_enrollment_class_links_class_id", "idx_enrollment_class_links_status", "idx_enrollment_class_links_enrollment_status", UNIQUE_INDEX_NAME]),
+    readColumns([
+      "id",
+      "enrollment_id",
+      "class_id",
+      "status",
+      "linked_at",
+      "linked_by",
+      "unlinked_at",
+      "unlinked_by",
+      "created_at",
+      "updated_at",
+    ]),
+    readIndexes([
+      "idx_enrollment_class_links_enrollment_id",
+      "idx_enrollment_class_links_class_id",
+      "idx_enrollment_class_links_status",
+      "idx_enrollment_class_links_enrollment_status",
+      UNIQUE_INDEX_NAME,
+    ]),
     readForeignKeys(),
   ]);
 
@@ -209,7 +249,18 @@ async function assertLinkSchema() {
   }
 
   const byName = new Map((columns || []).map((row) => [row.COLUMN_NAME, row]));
-  for (const columnName of ["id", "enrollment_id", "class_id", "status", "linked_at", "linked_by", "unlinked_at", "unlinked_by", "created_at", "updated_at"]) {
+  for (const columnName of [
+    "id",
+    "enrollment_id",
+    "class_id",
+    "status",
+    "linked_at",
+    "linked_by",
+    "unlinked_at",
+    "unlinked_by",
+    "created_at",
+    "updated_at",
+  ]) {
     if (!byName.has(columnName)) {
       throw new Error(`Missing expected column ${TABLE_NAME}.${columnName}`);
     }
@@ -221,7 +272,13 @@ async function assertLinkSchema() {
   }
 
   const indexNames = new Set((indexes || []).map((row) => row.Key_name || row.key_name));
-  if (!indexNames.has("idx_enrollment_class_links_enrollment_id") || !indexNames.has("idx_enrollment_class_links_class_id") || !indexNames.has("idx_enrollment_class_links_status") || !indexNames.has("idx_enrollment_class_links_enrollment_status") || !indexNames.has(UNIQUE_INDEX_NAME)) {
+  if (
+    !indexNames.has("idx_enrollment_class_links_enrollment_id") ||
+    !indexNames.has("idx_enrollment_class_links_class_id") ||
+    !indexNames.has("idx_enrollment_class_links_status") ||
+    !indexNames.has("idx_enrollment_class_links_enrollment_status") ||
+    !indexNames.has(UNIQUE_INDEX_NAME)
+  ) {
     throw new Error("Missing required indexes for enrollment_class_links.");
   }
 }
@@ -230,7 +287,13 @@ async function readState() {
   const [tableExistsRows, foreignKeys, indexes] = await Promise.all([
     tableExists(TABLE_NAME),
     readForeignKeys(),
-    readIndexes(["idx_enrollment_class_links_enrollment_id", "idx_enrollment_class_links_class_id", "idx_enrollment_class_links_status", "idx_enrollment_class_links_enrollment_status", UNIQUE_INDEX_NAME]),
+    readIndexes([
+      "idx_enrollment_class_links_enrollment_id",
+      "idx_enrollment_class_links_class_id",
+      "idx_enrollment_class_links_status",
+      "idx_enrollment_class_links_enrollment_status",
+      UNIQUE_INDEX_NAME,
+    ]),
   ]);
 
   const foreignKeyNames = new Set((foreignKeys || []).map((row) => row.CONSTRAINT_NAME));
@@ -238,8 +301,13 @@ async function readState() {
 
   return {
     tableExists: Boolean(tableExistsRows),
-    foreignKeysCreated: foreignKeyNames.has(FK_ENROLLMENT_NAME) && foreignKeyNames.has(FK_CLASS_NAME),
-    indexesCreated: indexNames.has("idx_enrollment_class_links_enrollment_id") && indexNames.has("idx_enrollment_class_links_class_id") && indexNames.has("idx_enrollment_class_links_status") && indexNames.has("idx_enrollment_class_links_enrollment_status"),
+    foreignKeysCreated:
+      foreignKeyNames.has(FK_ENROLLMENT_NAME) && foreignKeyNames.has(FK_CLASS_NAME),
+    indexesCreated:
+      indexNames.has("idx_enrollment_class_links_enrollment_id") &&
+      indexNames.has("idx_enrollment_class_links_class_id") &&
+      indexNames.has("idx_enrollment_class_links_status") &&
+      indexNames.has("idx_enrollment_class_links_enrollment_status"),
     uniqueIndexExists: indexNames.has(UNIQUE_INDEX_NAME),
   };
 }
@@ -327,6 +395,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  ADD_UNIQUE_INDEX_SQL,
+  CREATE_TABLE_SQL,
+  DROP_TABLE_SQL,
+  DROP_UNIQUE_INDEX_SQL,
+  countRows,
   down,
   status,
   up,
