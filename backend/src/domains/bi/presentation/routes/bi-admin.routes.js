@@ -8,6 +8,7 @@ const {
   BiExportService,
   BiFinancialService,
   BiFoundationService,
+  BiInsightsService,
   BiStudentsService,
 } = require("../../application/index.js");
 const {
@@ -24,6 +25,7 @@ const { BiCourtsController } = require("../controllers/bi-courts.controller.js")
 const { BiDelinquencyController } = require("../controllers/bi-delinquency.controller.js");
 const { BiFinancialController } = require("../controllers/bi-financial.controller.js");
 const { BiFoundationController } = require("../controllers/bi-foundation.controller.js");
+const { BiInsightsController } = require("../controllers/bi-insights.controller.js");
 const { BiStudentsController } = require("../controllers/bi-students.controller.js");
 const {
   MySqlBiStudentsRepository,
@@ -69,6 +71,9 @@ function createBiAdminRouter(options = {}) {
   const delinquencyController =
     options.delinquencyController ||
     new BiDelinquencyController({ service: createBiDelinquencyService(options) });
+  const insightsController =
+    options.insightsController ||
+    new BiInsightsController({ service: createBiInsightsService(options) });
   router.use(options.authMiddleware || getAuthModule().requireAuth);
   router.use(options.accessMiddleware || ensureBiAdminAccess);
   router.get("/foundation", controller.describe);
@@ -80,7 +85,22 @@ function createBiAdminRouter(options = {}) {
   router.get("/championships", championshipsController.getAnalytics);
   router.get("/courts", courtsController.getAnalytics);
   router.get("/delinquency", delinquencyController.getAnalytics);
+  router.get("/insights", insightsController.getInsights);
   return router;
+}
+function createBiInsightsService(options = {}) {
+  if (options.insightsService) return options.insightsService;
+  return new BiInsightsService({
+    now: options.now,
+    thresholds: options.insightThresholds,
+    services: {
+      classes: createBiClassesService(options),
+      courts: createBiCourtsService(options),
+      delinquency: createBiDelinquencyService(options),
+      financial: createBiFinancialService(options),
+      students: createBiStudentsService(options),
+    },
+  });
 }
 function createBiExportService(options = {}) {
   if (options.exportService) return options.exportService;
@@ -173,6 +193,7 @@ module.exports = {
   createBiExecutiveService,
   createBiExportService,
   createBiFinancialService,
+  createBiInsightsService,
   createBiStudentsService,
   ensureBiAdminAccess,
 };
