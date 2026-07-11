@@ -96,7 +96,7 @@ export default function ProfessorPresencasPage() {
   useEffect(() => {
     async function carregarTurmas() {
       try {
-        const response = await api.get<Turma[]>("/turmas");
+        const response = await api.get<Turma[]>("/professor/me/turmas");
         const loaded = Array.isArray(response)
           ? response.map((item) => ({
               id: String(item.id),
@@ -124,7 +124,9 @@ export default function ProfessorPresencasPage() {
       }
 
       try {
-        const response = await api.get<Aluno[]>(`/alunos/turma/${selectedTurmaId}`);
+        const response = await api.get<Aluno[]>(
+          `/professor/me/turmas/${encodeURIComponent(selectedTurmaId)}/alunos`,
+        );
         const loaded = Array.isArray(response)
           ? response.map((item) => ({
               id: String(item.id),
@@ -198,16 +200,11 @@ export default function ProfessorPresencasPage() {
     setSaving(true);
 
     try {
-      await Promise.all(
-        Object.entries(presencas).map(async ([alunoId, status]) =>
-          api.post("/presencas", {
-            aluno_id: alunoId,
-            turma_id: selectedTurmaId,
-            status,
-            data_aula: new Date().toISOString(),
-          }),
-        ),
-      );
+      await api.post("/professor/me/presencas", {
+        date: todayIso(),
+        records: Object.entries(presencas).map(([alunoId, status]) => ({ alunoId, status })),
+        turmaId: selectedTurmaId,
+      });
 
       toast.success("Chamada salva com sucesso!");
       setSearch("");

@@ -316,7 +316,10 @@ async function updateTeacherProfile(professorId, payload = {}, actor = "") {
   const normalizedProfessorId = requiredProfessorId(professorId);
   const current = await loadTeacherProfile(normalizedProfessorId);
   const email = nullableText(payload.email ?? payload.email_contato ?? current.email, 191);
-  const telefone = nullableText(payload.telefone ?? payload.telefone_contato ?? current.telefone, 50);
+  const telefone = nullableText(
+    payload.telefone ?? payload.telefone_contato ?? current.telefone,
+    50,
+  );
   const fotoUrl = nullableText(payload.fotoUrl ?? payload.foto_url ?? current.fotoUrl, 500);
 
   await query(
@@ -473,6 +476,18 @@ async function loadTeacherClassStudents(professorId, turmaId) {
   return [];
 }
 
+async function assertTeacherStudentInClass(professorId, turmaId, alunoId) {
+  const normalizedStudentId = nullableText(alunoId, 64);
+  if (!normalizedStudentId) throw httpError("Aluno invalido.", 400);
+
+  const students = await loadTeacherClassStudents(professorId, turmaId);
+  if (!students.some((student) => String(student.id) === normalizedStudentId)) {
+    throw httpError("Aluno nao pertence a uma turma autorizada para este professor.", 403);
+  }
+
+  return normalizedStudentId;
+}
+
 async function loadTeacherAgenda(professorId, options = {}) {
   await ensureTeacherPortalSchema();
   const normalizedProfessorId = requiredProfessorId(professorId);
@@ -533,14 +548,30 @@ async function updateTeacherAgendaStatus(professorId, agendaItemId, payload = {}
     throw httpError("Informe agendaItemId ou turma/data/horario para alterar o status.", 400);
   }
 
-  if (classId) {
-    await loadTeacherClassDetail(normalizedProfessorId, classId, { includeStudents: false });
+  let authorizedClassId = classId;
+  if (normalizedAgendaItemId && !authorizedClassId) {
+    if (!(await safeTableExists("enrollment_agenda_items"))) {
+      throw httpError("Item de agenda nao encontrado.", 404);
+    }
+
+    const agendaRows = await query(
+      "SELECT class_id FROM enrollment_agenda_items WHERE id = ? LIMIT 1",
+      [normalizedAgendaItemId],
+    );
+    authorizedClassId = nullableText(agendaRows?.[0]?.class_id, 64);
+    if (!authorizedClassId) throw httpError("Item de agenda nao encontrado.", 404);
+  }
+
+  if (authorizedClassId) {
+    await loadTeacherClassDetail(normalizedProfessorId, authorizedClassId, {
+      includeStudents: false,
+    });
   }
 
   const id = createId("tas");
   const uniqueKey = buildAgendaStatusUniqueKey({
     agendaItemId: normalizedAgendaItemId,
-    classId,
+    classId: authorizedClassId,
     professorId: normalizedProfessorId,
     scheduleDate,
     startTime,
@@ -570,7 +601,7 @@ async function updateTeacherAgendaStatus(professorId, agendaItemId, payload = {}
       id,
       normalizedProfessorId,
       normalizedAgendaItemId,
-      classId,
+      authorizedClassId,
       scheduleDate,
       startTime,
       status,
@@ -589,15 +620,15 @@ async function updateTeacherAgendaStatus(professorId, agendaItemId, payload = {}
       `
         UPDATE enrollment_agenda_items
         SET status = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND CAST(class_id AS CHAR) = ?
       `,
-      [status, normalizedAgendaItemId],
+      [status, normalizedAgendaItemId, authorizedClassId],
     );
   }
 
   return {
     agendaItemId: normalizedAgendaItemId,
-    classId,
+    classId: authorizedClassId,
     noAttendanceCreated: true,
     noFinancialSideEffects: true,
     noNotificationSideEffects: true,
@@ -668,7 +699,7 @@ async function saveTeacherAttendance(professorId, payload = {}, actor = "") {
   const turmaId = nullableText(payload.turmaId ?? payload.turma_id ?? payload.classId, 64);
   const date = normalizeDate(payload.date ?? payload.data_aula) || todayISO();
   const records = Array.isArray(payload.records ?? payload.registros)
-    ? payload.records ?? payload.registros
+    ? (payload.records ?? payload.registros)
     : [];
 
   if (!turmaId) {
@@ -682,6 +713,11 @@ async function saveTeacherAttendance(professorId, payload = {}, actor = "") {
   const turma = await loadTeacherClassDetail(normalizedProfessorId, turmaId, {
     includeStudents: false,
   });
+  const authorizedStudents = new Set(
+    (await loadTeacherClassStudents(normalizedProfessorId, turmaId)).map((student) =>
+      String(student.id),
+    ),
+  );
   const saved = [];
 
   for (const record of records) {
@@ -691,6 +727,9 @@ async function saveTeacherAttendance(professorId, payload = {}, actor = "") {
     const justificativa = nullableText(record.justificativa ?? record.justification, 65535);
 
     if (!alunoId) continue;
+    if (!authorizedStudents.has(alunoId)) {
+      throw httpError("Aluno nao pertence a uma turma autorizada para este professor.", 403);
+    }
 
     const existingRows = await query(
       `
@@ -895,6 +934,7 @@ async function createTeacherEvaluation(professorId, payload = {}, actor = "") {
   }
 
   await loadTeacherClassDetail(normalizedProfessorId, turmaId, { includeStudents: false });
+  await assertTeacherStudentInClass(normalizedProfessorId, turmaId, alunoId);
 
   const id = createId("eval");
   await query(
@@ -958,6 +998,10 @@ async function createTeacherOccurrence(professorId, payload = {}, actor = "") {
   }
 
   await loadTeacherClassDetail(normalizedProfessorId, turmaId, { includeStudents: false });
+  const alunoId = nullableText(payload.alunoId ?? payload.aluno_id, 64);
+  if (alunoId) {
+    await assertTeacherStudentInClass(normalizedProfessorId, turmaId, alunoId);
+  }
 
   const id = createId("occ");
   await query(
@@ -979,7 +1023,7 @@ async function createTeacherOccurrence(professorId, payload = {}, actor = "") {
       id,
       normalizedProfessorId,
       turmaId,
-      nullableText(payload.alunoId ?? payload.aluno_id, 64),
+      alunoId,
       normalizeOccurrenceType(payload.type ?? payload.tipo),
       title,
       nullableText(payload.description ?? payload.descricao, 65535),
@@ -1022,7 +1066,19 @@ async function upsertTeacherLessonPlan(professorId, payload = {}, actor = "") {
 
   await loadTeacherClassDetail(normalizedProfessorId, turmaId, { includeStudents: false });
 
-  const id = nullableText(payload.id, 64) || createId("plan");
+  const requestedId = nullableText(payload.id, 64);
+  if (requestedId) {
+    const existingRows = await query(
+      "SELECT professor_id FROM teacher_lesson_plans WHERE id = ? LIMIT 1",
+      [requestedId],
+    );
+    const ownerId = nullableText(existingRows?.[0]?.professor_id, 64);
+    if (ownerId && ownerId !== normalizedProfessorId) {
+      throw httpError("Planejamento nao pertence a este professor.", 403);
+    }
+  }
+
+  const id = requestedId || createId("plan");
   const exercises = Array.isArray(payload.exercicios)
     ? payload.exercicios.map((item) => text(item, 500)).filter(Boolean)
     : text(payload.exercicios, 2000)
@@ -1304,25 +1360,28 @@ async function loadPersistedAgendaOccurrences(professorId, classes, period) {
   );
 
   return (Array.isArray(rows) ? rows : []).flatMap((row) =>
-    buildOccurrencesForDayPattern({
-      agendaItemId: String(row.id),
-      agendaSource: "enrollment_agenda_items",
-      classId: row.class_id == null ? null : String(row.class_id),
-      className: row.class_name || "Aula J12",
-      classStatus: row.class_status || null,
-      dayOfWeek: row.day_of_week,
-      endTime: row.end_time,
-      modality: row.modalidade,
-      professorId,
-      professorName: row.professor_nome,
-      recurrenceFrequency: row.recurrence_type,
-      recurrenceStartDate: null,
-      recurrenceType: row.recurrence_type,
-      startTime: row.start_time,
-      status: row.status || "ACTIVE",
-      turmaName: row.class_name || "Aula J12",
-      unitName: row.unidade,
-    }, period),
+    buildOccurrencesForDayPattern(
+      {
+        agendaItemId: String(row.id),
+        agendaSource: "enrollment_agenda_items",
+        classId: row.class_id == null ? null : String(row.class_id),
+        className: row.class_name || "Aula J12",
+        classStatus: row.class_status || null,
+        dayOfWeek: row.day_of_week,
+        endTime: row.end_time,
+        modality: row.modalidade,
+        professorId,
+        professorName: row.professor_nome,
+        recurrenceFrequency: row.recurrence_type,
+        recurrenceStartDate: null,
+        recurrenceType: row.recurrence_type,
+        startTime: row.start_time,
+        status: row.status || "ACTIVE",
+        turmaName: row.class_name || "Aula J12",
+        unitName: row.unidade,
+      },
+      period,
+    ),
   );
 }
 
@@ -1931,7 +1990,12 @@ function buildAgendaStatusUniqueKey({
 }
 
 function buildAgendaStatusLookupKey({ agendaItemId, classId, scheduleDate, startTime }) {
-  return [String(agendaItemId || ""), String(classId || ""), String(scheduleDate || ""), String(startTime || "")].join("|");
+  return [
+    String(agendaItemId || ""),
+    String(classId || ""),
+    String(scheduleDate || ""),
+    String(startTime || ""),
+  ].join("|");
 }
 
 function dedupeSchedules(items) {
@@ -1955,9 +2019,12 @@ function dedupeSchedules(items) {
 function summarizeAgenda(schedules) {
   return {
     aulas: schedules.length,
-    canceladas: schedules.filter((item) => normalizeAgendaStatus(item.status) === "CANCELLED").length,
-    concluidas: schedules.filter((item) => normalizeAgendaStatus(item.status) === "COMPLETED").length,
-    planejadas: schedules.filter((item) => normalizeAgendaStatus(item.status) !== "COMPLETED").length,
+    canceladas: schedules.filter((item) => normalizeAgendaStatus(item.status) === "CANCELLED")
+      .length,
+    concluidas: schedules.filter((item) => normalizeAgendaStatus(item.status) === "COMPLETED")
+      .length,
+    planejadas: schedules.filter((item) => normalizeAgendaStatus(item.status) !== "COMPLETED")
+      .length,
   };
 }
 
