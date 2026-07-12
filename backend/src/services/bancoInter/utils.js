@@ -164,17 +164,26 @@ function resolvePixKey() {
   );
 }
 
-function buildTxid(seed = "") {
-  const random = crypto.randomBytes(10).toString("hex").toUpperCase();
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const hash = crypto
-    .createHash("sha256")
-    .update(`${seed}:${timestamp}:${random}`)
-    .digest("hex")
-    .slice(0, 12)
-    .toUpperCase();
+function buildTxid(seed) {
+  const normalizedSeed = String(seed ?? "").trim();
+  const entropy = normalizedSeed
+    ? crypto.createHash("sha256").update(normalizedSeed).digest("hex").slice(0, 32)
+    : crypto.randomBytes(16).toString("hex");
 
-  return `J12${timestamp}${hash}`.replace(/[^A-Za-z0-9]/g, "").slice(0, 35);
+  return `J12${entropy}`.toUpperCase();
+}
+
+function resolvePixTxid(explicitTxid, seed) {
+  const explicit = String(explicitTxid ?? "").trim();
+  if (!explicit) return buildTxid(seed);
+
+  if (!/^[A-Za-z0-9]{26,35}$/.test(explicit)) {
+    const error = new Error("Txid Pix deve conter de 26 a 35 caracteres alfanumericos.");
+    error.code = "INTER_TXID_INVALID";
+    throw error;
+  }
+
+  return explicit;
 }
 
 function money(value) {
@@ -231,6 +240,7 @@ module.exports = {
   nullableText,
   parseJson,
   resolveInterBaseUrl,
+  resolvePixTxid,
   resolvePixKey,
   safeJsonStringify,
   text,

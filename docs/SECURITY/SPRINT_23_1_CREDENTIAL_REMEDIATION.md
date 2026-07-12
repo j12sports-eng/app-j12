@@ -36,3 +36,17 @@ Nenhuma rotação, revogação, limpeza de histórico ou correção remota é de
 Testes focados cobrem JWT ausente/placeholder, OAuth sem credenciais, validação TLS obrigatória, conteúdo mTLS inválido sem vazamento e regressões existentes de OAuth/Pix/segurança.
 
 Homologação exige testes, lint e builds finais aprovados, além de configuração segura. Produção permanece bloqueada até evidência de rotação/revogação, auditoria remota e decisão coordenada sobre limpeza do histórico.
+
+## Validação operacional complementar — 2026-07-12
+
+A validação manual, executada anteriormente com credenciais mantidas fora do Git, confirmou mTLS, OAuth, consulta HTTP 200, criação, Pix Copia e Cola, Payment Link e consulta individual. A cobrança técnica iniciou como `ATIVA`. O cancelamento antigo falhou porque enviava um campo adicional incompatível; o payload contendo somente `status` foi aprovado com HTTP 200 e a consulta final confirmou `REMOVIDA_PELO_USUARIO_RECEBEDOR`.
+
+Também foi confirmado que o txid automático antigo possuía apenas 23 caracteres, abaixo do mínimo Pix de 26. A implementação agora produz 35 caracteres alfanuméricos: hash determinístico quando existe `chargeId`/`mensalidadeId` e 128 bits aleatórios quando não há identificador estável. Txids explícitos novos são validados sem truncamento silencioso.
+
+O parâmetro de motivo permanece nas APIs superiores para compatibilidade e auditoria local, mas não é enviado ao Banco Inter. As duas implementações ativas de cliente usam o payload mínimo de cancelamento.
+
+Os testes da correção usam somente clientes injetados e fixtures falsas; nenhuma chamada real, cobrança ou cancelamento foi executado.
+
+### Observabilidade do QR Code
+
+O `catch` de `getPixQrCode()` continua retornando objeto vazio, conforme o limite desta correção. Isso reduz observabilidade e pode mascarar 401, 403, 404, timeout e 5xx. Recomenda-se tratar logging seguro e classificação de falhas em sprint posterior, sem expor tokens ou o conteúdo Pix.

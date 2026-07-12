@@ -1,8 +1,8 @@
 const {
-  buildTxid,
   money,
   nullableText,
   resolvePixKey,
+  resolvePixTxid,
   text,
 } = require("../../../../../../services/bancoInter/utils.js");
 const { InterClient } = require("./inter-client.js");
@@ -17,7 +17,7 @@ class PixService {
   }
 
   async createPixCharge(input = {}) {
-    const txid = nullableText(input.txid, 35) || buildTxid(input.chargeId || input.mensalidadeId);
+    const txid = resolvePixTxid(input.txid, input.chargeId || input.mensalidadeId);
     const requestPayload = buildPixChargePayload({
       ...input,
       pixKey: input.pixKey || this.pixKey,
@@ -60,10 +60,9 @@ class PixService {
     return response.data || {};
   }
 
-  async cancelPixCharge(txid, reason = "Cancelamento solicitado pelo financeiro J12") {
+  async cancelPixCharge(txid) {
     const response = await this.client.request({
       data: {
-        solicitacaoPagador: text(reason, 140),
         status: "REMOVIDA_PELO_USUARIO_RECEBEDOR",
       },
       method: "PATCH",

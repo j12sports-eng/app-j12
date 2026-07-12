@@ -149,7 +149,7 @@ test("BancoInterClient creates Pix charge payload with debtor and payment link f
     responsibleCpf: "123.456.789-09",
     responsibleName: "Responsavel",
     studentName: "Aluno",
-    txid: "TXID123",
+    txid: "TXIDEXPLICITVALID12345678901",
   });
 
   assert.equal(payload.devedor.cpf, "12345678909");
@@ -158,7 +158,7 @@ test("BancoInterClient creates Pix charge payload with debtor and payment link f
   assert.equal(issued.pixCopyPaste, "pix-copy");
   assert.equal(issued.qrCode, "data:image/png;base64,base64");
   assert.equal(requests[0].method, "PUT");
-  assert.equal(requests[0].url, "/pix/v2/cob/TXID123");
+  assert.equal(requests[0].url, "/pix/v2/cob/TXIDEXPLICITVALID12345678901");
 });
 
 test("BancoInterClient rejects missing credentials before external request", async () => {
@@ -174,4 +174,28 @@ test("BancoInterClient rejects missing credentials before external request", asy
   await assert.rejects(() => client.getAccessToken(), {
     code: INTER_CLIENT_CREDENTIALS_MISSING_CODE,
   });
+});
+
+test("BancoInterClient envia payload minimo no cancelamento Pix", async () => {
+  const requests = [];
+  const client = new BancoInterClient({
+    clientId: "fixture-client-id",
+    clientSecret: "fixture-client-secret",
+    httpClient: {
+      async post() {
+        return { data: { access_token: "fixture-token", expires_in: 3600 } };
+      },
+      async request(config) {
+        requests.push(config);
+        return { data: { status: "REMOVIDA_PELO_USUARIO_RECEBEDOR" } };
+      },
+    },
+    httpsAgentFactory() {
+      return {};
+    },
+    pixKey: "fixture-pix-key",
+  });
+  await client.cancelPixCharge("TXID-HISTORICO", "motivo local");
+  assert.deepEqual(requests[0].data, { status: "REMOVIDA_PELO_USUARIO_RECEBEDOR" });
+  assert.deepEqual(Object.keys(requests[0].data), ["status"]);
 });

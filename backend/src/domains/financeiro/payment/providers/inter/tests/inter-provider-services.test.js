@@ -177,12 +177,12 @@ test("PixService creates, consults and cancels Pix charge through InterClient", 
     responsibleCpf: "12345678909",
     responsibleName: "Responsavel",
     studentName: "Aluno",
-    txid: "TXID-1",
+    txid: "TXIDEXPLICITVALID12345678901",
   });
   const consulted = await pix.getPixCharge("TXID-1");
   const cancelled = await pix.cancelPixCharge("TXID-1", "cancelamento");
 
-  assert.equal(created.txid, "TXID-1");
+  assert.equal(created.txid, "TXIDEXPLICITVALID12345678901");
   assert.equal(created.pixCopyPaste, "pix-copy");
   assert.equal(created.paymentLink, "https://inter.test/pagar/TXID-1");
   assert.equal(created.qrCode, "data:image/png;base64,base64-image");
@@ -191,10 +191,80 @@ test("PixService creates, consults and cancels Pix charge through InterClient", 
   assert.deepEqual(
     requests.map((item) => [item.method, item.url]),
     [
-      ["PUT", "/pix/v2/cob/TXID-1"],
-      ["GET", "/pix/v2/cob/TXID-1/qrcode"],
+      ["PUT", "/pix/v2/cob/TXIDEXPLICITVALID12345678901"],
+      ["GET", "/pix/v2/cob/TXIDEXPLICITVALID12345678901/qrcode"],
       ["GET", "/pix/v2/cob/TXID-1"],
       ["PATCH", "/pix/v2/cob/TXID-1"],
     ],
   );
+});
+
+test("PixService gera txids Pix validos em todos os cenarios novos", async () => {
+  const urls = [];
+  const pix = new PixService({
+    client: {
+      async request(config) {
+        urls.push(config.url);
+        return config.url.endsWith("/qrcode")
+          ? { data: { pixCopiaECola: "fixture-pix-copy" } }
+          : { data: { status: "ATIVA" } };
+      },
+    },
+    pixKey: "fixture-pix-key",
+  });
+  const cases = [
+    { chargeId: "cobranca-com espacos/acentos-á_uuid-123" },
+    { mensalidadeId: "mensalidade/ç_123-456" },
+    {},
+    {},
+  ];
+  const results = [];
+  for (const input of cases) results.push(await pix.createPixCharge({ amount: 1, ...input }));
+  for (const result of results) {
+    assert.match(result.txid, /^[A-Za-z0-9]{26,35}$/);
+    assert.equal(result.txid.length, 35);
+    assert.equal(urls.includes(`/pix/v2/cob/${result.txid}`), true);
+  }
+  assert.equal(results[0].txid, (await pix.createPixCharge({ amount: 1, ...cases[0] })).txid);
+  assert.equal(results[1].txid, (await pix.createPixCharge({ amount: 1, ...cases[1] })).txid);
+  assert.notEqual(results[2].txid, results[3].txid);
+});
+
+test("PixService valida txid explicito sem truncamento silencioso", async () => {
+  const explicit = "TXIDEXPLICITVALID12345678901";
+  const requests = [];
+  const pix = new PixService({
+    client: {
+      async request(config) {
+        requests.push(config);
+        return config.url.endsWith("/qrcode")
+          ? { data: { pixCopiaECola: "fixture-pix-copy" } }
+          : { data: { status: "ATIVA" } };
+      },
+    },
+    pixKey: "fixture-pix-key",
+  });
+  const issued = await pix.createPixCharge({ amount: 1, txid: explicit });
+  assert.equal(issued.txid, explicit);
+  assert.equal(requests[0].url, `/pix/v2/cob/${explicit}`);
+  await assert.rejects(
+    pix.createPixCharge({ amount: 1, txid: `${explicit}TOO-LONG-AND-INVALID` }),
+    { code: "INTER_TXID_INVALID" },
+  );
+});
+
+test("PixService envia somente status no cancelamento Pix", async () => {
+  const requests = [];
+  const pix = new PixService({
+    client: {
+      async request(config) {
+        requests.push(config);
+        return { data: { status: "REMOVIDA_PELO_USUARIO_RECEBEDOR" } };
+      },
+    },
+    pixKey: "fixture-pix-key",
+  });
+  await pix.cancelPixCharge("TXID-HISTORICO", "motivo mantido na camada de auditoria");
+  assert.deepEqual(requests[0].data, { status: "REMOVIDA_PELO_USUARIO_RECEBEDOR" });
+  assert.deepEqual(Object.keys(requests[0].data), ["status"]);
 });
