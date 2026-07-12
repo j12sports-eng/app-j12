@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
-import jwt from "jsonwebtoken";
 
 const backendRequire = createRequire(new URL("../../backend/package.json", import.meta.url));
 const express = backendRequire("express");
 const { query } = backendRequire("./db.js");
+const { verifyJwt } = backendRequire("./src/utils/jwt.js");
 
 const router = express.Router();
 
@@ -26,7 +26,7 @@ router.get("/financeiro", async (req, res) => {
     }
 
     // DECODIFICA JWT
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyJwt(token);
 
     const alunoId = decoded.id;
 

@@ -108,8 +108,7 @@ function getCorsRejectionReason(origin) {
     }
 
     const sameHost = allowedUrl.hostname === originUrl.hostname;
-    const sameHostIgnoringWww =
-      allowedUrl.hostname.replace(/^www\./, "") === originHostWithoutWww;
+    const sameHostIgnoringWww = allowedUrl.hostname.replace(/^www\./, "") === originHostWithoutWww;
 
     if (sameHost && allowedUrl.protocol !== originUrl.protocol) {
       return `protocol_mismatch_allowed_${allowedUrl.protocol.replace(":", "")}`;
@@ -250,7 +249,7 @@ function getMissingLoginConfig() {
     missing.push("DATABASE_URL ou DB_HOST/DB_USER/DB_NAME");
   }
 
-  if (!hasAnyEnv(["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"])) {
+  if (!hasEnv("JWT_SECRET")) {
     missing.push("JWT_SECRET");
   }
 

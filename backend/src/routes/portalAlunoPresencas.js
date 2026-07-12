@@ -1,6 +1,6 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 const db = require("../config/db.js");
+const { verifyJwt } = require("../utils/jwt.js");
 
 const router = express.Router();
 
@@ -16,7 +16,7 @@ router.get("/portal-aluno/presencas", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyJwt(token);
 
     const alunoId = decoded.aluno_id;
 

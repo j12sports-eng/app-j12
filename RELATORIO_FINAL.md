@@ -114,7 +114,7 @@ curl http://localhost:3001/api/test
 MYSQL_CONFIG = {
   host: "108.167.168.27",
   user: "bestt486_appj12",
-  password: "Jessica12@#$",
+  password: "<REDACTED_HISTORICAL_SECRET>",
   database: "bestt486_appj12",
   port: 3306,
   
@@ -226,7 +226,7 @@ Starting J12 API...
 |-------|-------|--------|
 | DB_HOST | 108.167.168.27 | ✅ |
 | DB_USER | bestt486_appj12 | ✅ |
-| DB_PASSWORD | Jessica12@#$ | ✅ |
+| DB_PASSWORD | <REDACTED_HISTORICAL_SECRET> | ✅ |
 | DB_NAME | bestt486_appj12 | ✅ |
 | DB_PORT | 3306 | ✅ |
 

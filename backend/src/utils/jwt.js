@@ -1,11 +1,14 @@
 const { createHmac, timingSafeEqual } = require("node:crypto");
 
 const JWT_ALGORITHM = "HS256";
-const JWT_SECRET_ENV_NAMES = ["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"];
+const JWT_CANONICAL_SECRET_ENV_NAME = "JWT_SECRET";
+const JWT_LEGACY_SECRET_ENV_NAMES = ["AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"];
 const JWT_EXPIRES_ENV_NAMES = ["JWT_EXPIRES", "JWT_EXPIRES_IN", "JWT_EXPIRES_IN_SECONDS"];
 const UNSAFE_SECRET_PATTERNS = [
   /^(change|replace)[-_ ]?me$/i,
   /^(your|example|dummy|fake|test)[-_ ]?(jwt[-_ ]?)?secret$/i,
+  /^troque[-_ ]?este[-_ ]?segredo$/i,
+  /^<.*(?:example|not[-_ ]a[-_ ]real|configure).*>$/i,
   /^secret$/i,
 ];
 
@@ -27,11 +30,9 @@ function base64UrlDecode(value) {
 }
 
 function getJwtSecret() {
-  const secret = JWT_SECRET_ENV_NAMES.map((name) => process.env[name]).find((value) =>
-    String(value || "").trim(),
-  );
+  const secret = process.env[JWT_CANONICAL_SECRET_ENV_NAME];
 
-  if (!secret) {
+  if (!String(secret || "").trim()) {
     throw createJwtConfigError("JWT_SECRET nao configurado.", "JWT_SECRET_MISSING");
   }
 
@@ -39,6 +40,21 @@ function getJwtSecret() {
   if (UNSAFE_SECRET_PATTERNS.some((pattern) => pattern.test(normalized))) {
     throw createJwtConfigError("JWT_SECRET possui placeholder inseguro.", "JWT_SECRET_INVALID");
   }
+
+  // Aliases antigos nao selecionam mais o segredo. Se ainda estiverem presentes,
+  // precisam coincidir com a fonte canonica para evitar rotacao parcial silenciosa.
+  const hasConflictingLegacySecret = JWT_LEGACY_SECRET_ENV_NAMES.some((name) => {
+    const legacySecret = process.env[name];
+    return String(legacySecret || "").trim() && String(legacySecret).trim() !== normalized;
+  });
+
+  if (hasConflictingLegacySecret) {
+    throw createJwtConfigError(
+      "Configuracao JWT ambigua: aliases legados divergem de JWT_SECRET.",
+      "JWT_SECRET_CONFLICT",
+    );
+  }
+
   return normalized;
 }
 

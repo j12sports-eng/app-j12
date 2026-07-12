@@ -41,7 +41,7 @@ type UserFormState = {
 const defaultForm: UserFormState = {
   nome: "",
   email: "",
-  senha: "123456",
+  senha: "",
   role: "professor",
   teacherId: "",
   studentId: "",

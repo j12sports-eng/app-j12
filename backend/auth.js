@@ -658,8 +658,47 @@ async function seedBaseData() {
   }
 }
 
+const AUTH_SEED_PASSWORD_ENV_BY_ROLE = Object.freeze({
+  admin: "AUTH_SEED_ADMIN_PASSWORD",
+  coordenador: "AUTH_SEED_COORDENADOR_PASSWORD",
+  professor: "AUTH_SEED_PROFESSOR_PASSWORD",
+  aluno: "AUTH_SEED_ALUNO_PASSWORD",
+  responsavel: "AUTH_SEED_RESPONSAVEL_PASSWORD",
+});
+
+function isAuthSeedEnabled(env = process.env) {
+  return (
+    String(env.AUTH_SEED_ENABLED || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+function getAuthSeedPassword(role, env = process.env) {
+  const envName = AUTH_SEED_PASSWORD_ENV_BY_ROLE[role];
+  const password = envName ? env[envName] : null;
+  if (!envName || typeof password !== "string" || password.length < 16) {
+    const error = new Error("Bootstrap de autenticacao requer password externa valida.");
+    error.code = "AUTH_SEED_PASSWORD_MISSING";
+    throw error;
+  }
+  if (
+    /change|replace|configure|example|dummy|fake|test|placeholder|not[-_ ]a[-_ ]real/i.test(
+      password,
+    )
+  ) {
+    const error = new Error("Bootstrap de autenticacao rejeitou password insegura.");
+    error.code = "AUTH_SEED_PASSWORD_INVALID";
+    throw error;
+  }
+  return password;
+}
+
 async function ensureAuthSeedData() {
   await seedBaseData();
+
+  // Contas bootstrap so podem ser criadas por opt-in explicito.
+  if (!isAuthSeedEnabled()) return;
 
   const legacyAlunoRows = await query(
     `
@@ -727,7 +766,7 @@ async function ensureAuthSeedData() {
       classScope: [],
       phoneWhatsapp: null,
       status: "ativo",
-      password: "123456",
+      password: getAuthSeedPassword("admin"),
     },
     {
       id: "usr-coord",
@@ -742,7 +781,7 @@ async function ensureAuthSeedData() {
       classScope: [],
       phoneWhatsapp: null,
       status: "ativo",
-      password: "123456",
+      password: getAuthSeedPassword("coordenador"),
     },
   ];
 
@@ -759,7 +798,7 @@ async function ensureAuthSeedData() {
     classScope: resolvedProfessorScope,
     phoneWhatsapp: null,
     status: "ativo",
-    password: "123456",
+    password: getAuthSeedPassword("professor"),
   });
 
   if (resolvedAlunoId != null) {
@@ -776,7 +815,7 @@ async function ensureAuthSeedData() {
       classScope: [],
       phoneWhatsapp: demoStudentRows?.[0]?.telefone_contato ?? null,
       status: "ativo",
-      password: "123456",
+      password: getAuthSeedPassword("aluno"),
     });
   }
 
@@ -795,7 +834,7 @@ async function ensureAuthSeedData() {
       classScope: [],
       phoneWhatsapp: null,
       status: "ativo",
-      password: "123456",
+      password: getAuthSeedPassword("responsavel"),
     });
   }
 

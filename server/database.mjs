@@ -1012,7 +1012,46 @@ function syncEnrollmentTurmas(turmas, selectedTurmas, alunoId) {
   });
 }
 
+const AUTH_SEED_PASSWORD_ENV_BY_ROLE = Object.freeze({
+  admin: "AUTH_SEED_ADMIN_PASSWORD",
+  coordenador: "AUTH_SEED_COORDENADOR_PASSWORD",
+  professor: "AUTH_SEED_PROFESSOR_PASSWORD",
+  aluno: "AUTH_SEED_ALUNO_PASSWORD",
+  responsavel: "AUTH_SEED_RESPONSAVEL_PASSWORD",
+});
+
+function isAuthSeedEnabled(env = process.env) {
+  return (
+    String(env.AUTH_SEED_ENABLED || "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+function getAuthSeedPassword(role, env = process.env) {
+  const envName = AUTH_SEED_PASSWORD_ENV_BY_ROLE[role];
+  const password = envName ? env[envName] : null;
+  if (!envName || typeof password !== "string" || password.length < 16) {
+    const error = new Error("Bootstrap de autenticacao requer password externa valida.");
+    error.code = "AUTH_SEED_PASSWORD_MISSING";
+    throw error;
+  }
+  if (
+    /change|replace|configure|example|dummy|fake|test|placeholder|not[-_ ]a[-_ ]real/i.test(
+      password,
+    )
+  ) {
+    const error = new Error("Bootstrap de autenticacao rejeitou password insegura.");
+    error.code = "AUTH_SEED_PASSWORD_INVALID";
+    throw error;
+  }
+  return password;
+}
+
 function seedUsers() {
+  // O banco local nao cria contas previsiveis sem opt-in e secrets externos.
+  if (!isAuthSeedEnabled()) return;
+
   const now = new Date().toISOString();
   const defaults = [
     {
@@ -1022,7 +1061,7 @@ function seedUsers() {
       role: "admin",
       teacherId: null,
       studentId: null,
-      password: "123456",
+      password: getAuthSeedPassword("admin"),
     },
     {
       id: "2",
@@ -1031,7 +1070,7 @@ function seedUsers() {
       role: "coordenador",
       teacherId: null,
       studentId: null,
-      password: "123456",
+      password: getAuthSeedPassword("coordenador"),
     },
     {
       id: "3",
@@ -1040,7 +1079,7 @@ function seedUsers() {
       role: "professor",
       teacherId: "pr1",
       studentId: null,
-      password: "123456",
+      password: getAuthSeedPassword("professor"),
     },
     {
       id: "4",
@@ -1049,7 +1088,7 @@ function seedUsers() {
       role: "aluno",
       teacherId: null,
       studentId: "a1",
-      password: "123456",
+      password: getAuthSeedPassword("aluno"),
     },
     {
       id: "5",
@@ -1058,7 +1097,7 @@ function seedUsers() {
       role: "responsavel",
       teacherId: null,
       studentId: "a1",
-      password: "123456",
+      password: getAuthSeedPassword("responsavel"),
     },
   ];
 

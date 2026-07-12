@@ -62,7 +62,7 @@ function getMissingLoginConfig() {
     missing.push("DATABASE_URL ou DB_HOST/DB_USER/DB_NAME");
   }
 
-  if (!hasAnyEnv(["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"])) {
+  if (!hasEnv("JWT_SECRET")) {
     missing.push("JWT_SECRET");
   }
 

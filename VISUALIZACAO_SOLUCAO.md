@@ -132,7 +132,7 @@
 │  │  │                                                              │   │
 │  │  ├─ Valida credenciais                                          │   │
 │  │  ├─ Gera JWT token                                              │   │
-│  │  ├─ Retorna: { success: true, data: { token: "..." } }         │   │
+│  │  ├─ Retorna: { success: true, data: { token: "<EXAMPLE_ONLY_NOT_A_REAL_SECRET>" } }         │   │
 │  │  │                                                              │   │
 │  │  └─ ✓ SSR → Nginx → Browser                                     │   │
 │  │     └─ Browser recebe 200 OK com dados!                         │   │
