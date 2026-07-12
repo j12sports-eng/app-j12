@@ -3,6 +3,7 @@ const https = require("node:https");
 const path = require("node:path");
 
 const INTER_MTLS_CERTIFICATE_MISSING_CODE = "INTER_MTLS_CERTIFICATE_MISSING";
+const INTER_MTLS_INVALID_CODE = "INTER_MTLS_INVALID";
 
 class MTLSService {
   constructor(options = {}) {
@@ -10,7 +11,13 @@ class MTLSService {
     this.env = options.env || process.env;
     this.fs = options.fs || fs;
     this.path = options.path || path;
-    this.rejectUnauthorized = options.rejectUnauthorized !== false;
+    if (options.rejectUnauthorized === false) {
+      throw controlledError(
+        "Banco Inter requer validacao TLS do servidor.",
+        INTER_MTLS_INVALID_CODE,
+      );
+    }
+    this.rejectUnauthorized = true;
   }
 
   createHttpsAgent() {
@@ -52,6 +59,7 @@ class MTLSService {
       throw controlledError(
         `Banco Inter requer ${label} mTLS configurado por variavel de ambiente.`,
         INTER_MTLS_CERTIFICATE_MISSING_CODE,
+        INTER_MTLS_INVALID_CODE,
         { label },
       );
     }
@@ -61,10 +69,25 @@ class MTLSService {
       throw controlledError(
         `Arquivo de ${label} mTLS do Banco Inter esta vazio.`,
         INTER_MTLS_CERTIFICATE_MISSING_CODE,
+        INTER_MTLS_INVALID_CODE,
         { label },
       );
     }
 
+    const normalized = content.toString("utf8");
+    const isCertificate = label === "certificado cliente";
+    const hasValidEnvelope = isCertificate
+      ? /-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----/.test(normalized)
+      : /-----BEGIN (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----[\s\S]+-----END (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----/.test(
+          normalized,
+        );
+    if (!hasValidEnvelope) {
+      throw controlledError(
+        "Arquivo mTLS do Banco Inter possui formato invalido.",
+        INTER_MTLS_INVALID_CODE,
+        { label },
+      );
+    }
     return content;
   }
 
@@ -115,5 +138,6 @@ function controlledError(message, code, details = {}) {
 
 module.exports = {
   INTER_MTLS_CERTIFICATE_MISSING_CODE,
+  INTER_MTLS_INVALID_CODE,
   MTLSService,
 };

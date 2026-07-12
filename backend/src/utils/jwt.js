@@ -3,6 +3,11 @@ const { createHmac, timingSafeEqual } = require("node:crypto");
 const JWT_ALGORITHM = "HS256";
 const JWT_SECRET_ENV_NAMES = ["JWT_SECRET", "AUTH_JWT_SECRET", "APP_JWT_SECRET", "SESSION_SECRET"];
 const JWT_EXPIRES_ENV_NAMES = ["JWT_EXPIRES", "JWT_EXPIRES_IN", "JWT_EXPIRES_IN_SECONDS"];
+const UNSAFE_SECRET_PATTERNS = [
+  /^(change|replace)[-_ ]?me$/i,
+  /^(your|example|dummy|fake|test)[-_ ]?(jwt[-_ ]?)?secret$/i,
+  /^secret$/i,
+];
 
 function createJwtConfigError(message, code) {
   const error = new Error(message);
@@ -30,7 +35,11 @@ function getJwtSecret() {
     throw createJwtConfigError("JWT_SECRET nao configurado.", "JWT_SECRET_MISSING");
   }
 
-  return String(secret);
+  const normalized = String(secret).trim();
+  if (UNSAFE_SECRET_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    throw createJwtConfigError("JWT_SECRET possui placeholder inseguro.", "JWT_SECRET_INVALID");
+  }
+  return normalized;
 }
 
 function parseDurationSeconds(value) {

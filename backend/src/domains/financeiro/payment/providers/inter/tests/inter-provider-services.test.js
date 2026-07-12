@@ -102,7 +102,11 @@ test("MTLSService loads client certificate, private key and certificate chain fr
     },
     readFileSync(filePath) {
       reads.push(filePath);
-      return Buffer.from(`content:${filePath}`);
+      if (filePath.endsWith("cert.pem"))
+        return Buffer.from("-----BEGIN CERTIFICATE-----\nfixture-only\n-----END CERTIFICATE-----");
+      if (filePath.endsWith("key.pem"))
+        return Buffer.from("-----BEGIN PRIVATE KEY-----\nfixture-only\n-----END PRIVATE KEY-----");
+      return Buffer.from("fixture-ca-chain");
     },
     statSync() {
       return { isFile: () => true };

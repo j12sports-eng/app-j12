@@ -23,6 +23,15 @@ backend/.env
 !.env.api.production.example
 backend/node_modules/
 
+# Sprint 23.1: credenciais mTLS devem permanecer fora do Git.
+certs/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
 data/
 
 # Editor directories and files
