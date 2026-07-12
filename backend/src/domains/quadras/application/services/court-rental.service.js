@@ -515,6 +515,12 @@ class CourtRentalService {
   async confirmReservationPayment(reservationId, payload = {}, authUser = null) {
     await this.ensureSchema();
     const current = await this.getReservationById(reservationId);
+
+    // A cancelled reservation cannot be revived financially or settle its linked charge.
+    if (current.status === "cancelled") {
+      throw httpError("Nao e permitido confirmar pagamento de uma reserva cancelada.", 409);
+    }
+
     const paymentMethod = payload.paymentMethod
       ? normalizePaymentMethod(payload.paymentMethod)
       : current.paymentMethod;

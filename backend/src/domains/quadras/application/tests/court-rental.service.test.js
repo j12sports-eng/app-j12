@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
 const {
+  CourtRentalService,
   DEFAULT_OPENING_HOURS,
   buildReservationOccurrences,
   calculateReservationValue,
@@ -9,6 +10,33 @@ const {
   normalizeCourtPayload,
   overlaps,
 } = require("../services/court-rental.service.js");
+
+test("confirmReservationPayment rejects cancelled reservations before any mutation", async () => {
+  const queries = [];
+  const service = new CourtRentalService({
+    queryRunner: async (sql, params) => {
+      queries.push({ params, sql });
+      return [];
+    },
+  });
+  service.ensureSchema = async () => {};
+  service.getReservationById = async () => ({
+    financialChargeId: "charge-cancelled",
+    id: "reservation-cancelled",
+    paymentMethod: "pix",
+    status: "cancelled",
+  });
+
+  await assert.rejects(
+    () => service.confirmReservationPayment("reservation-cancelled"),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.match(error.message, /reserva cancelada/i);
+      return true;
+    },
+  );
+  assert.equal(queries.length, 0);
+});
 
 test("calculateReservationValue applies weekday price rules and discounts", () => {
   const quote = calculateReservationValue({
