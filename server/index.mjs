@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import dotenv from "dotenv";
 import alunoRoutes from "./routes/aluno.mjs";
+import { createDatabaseHealthController } from "./database-health.mjs";
 
 process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
@@ -134,6 +135,8 @@ const databaseState = {
   checkedAt: null,
   error: null,
 };
+
+let databaseHealthController = null;
 
 let authSchemaInitPromise = null;
 
@@ -732,6 +735,12 @@ async function refreshDatabaseState(reason) {
   }
 }
 
+databaseHealthController = createDatabaseHealthController({
+  state: databaseState,
+  probe: refreshDatabaseState,
+  cooldownMs: process.env.DB_HEALTH_RETRY_COOLDOWN_MS,
+});
+
 async function bootstrap() {
   log("info", "startup.begin", {
     host: HOST,
@@ -741,7 +750,7 @@ async function bootstrap() {
     skippedRoutes,
   });
 
-  const connected = await refreshDatabaseState("startup-precheck");
+  const connected = await databaseHealthController.refresh("startup-precheck");
   if (!connected) {
     log("warn", "startup.continuing-without-database");
     return;
@@ -782,13 +791,13 @@ async function bootstrap() {
     log("error", "startup.enrollment.registry.failed", serializeError(error));
   }
 
-  await refreshDatabaseState("startup-post-init");
+  await databaseHealthController.refresh("startup-post-init");
   log("info", "startup.complete");
 }
 
 async function handleHealth(req, res, context) {
   if (!databaseState.ok) {
-    await refreshDatabaseState("health-check");
+    await databaseHealthController.refreshForHealth();
   }
 
   const status = databaseState.ok ? "ok" : "degraded";
@@ -859,7 +868,7 @@ async function handleLogin(req, res, context) {
 
     logLogin("info", "Verificando banco", context, loginMeta);
     if (!databaseState.ok) {
-      const connected = await refreshDatabaseState("login-precheck");
+      const connected = await databaseHealthController.refresh("login-precheck");
       if (!connected) {
         throw createHttpError("Banco de dados indisponivel.", 503, {
           code: "DATABASE_UNAVAILABLE",

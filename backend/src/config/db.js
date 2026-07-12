@@ -1,6 +1,7 @@
 const mysql = require("mysql2/promise");
 const path = require("node:path");
 const dotenv = require("dotenv");
+const { createDatabaseConnectivity } = require("./database-connectivity.js");
 
 dotenv.config({
   path: [path.resolve(__dirname, "../../../.env"), path.resolve(__dirname, "../../.env")],
@@ -94,9 +95,6 @@ console.log(`  - Keep-Alive: ${MYSQL_CONFIG.enableKeepAlive}`);
 console.log(`  - Keep-Alive Delay: ${MYSQL_CONFIG.keepAliveInitialDelay}ms`);
 
 let pool = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
-
 function createPool() {
   console.log("[DB] Criando novo pool de conexões...");
   return mysql.createPool(MYSQL_CONFIG);
@@ -708,46 +706,11 @@ async function persistJ12SectionsFromLegacyRow(connection, row) {
   );
 }
 
-async function testConnection() {
-  try {
-    console.log("[DB] Testando conexão com banco de dados...");
-    
-    const connection = await pool.getConnection();
-    console.log("[DB] ✓ Conexão adquirida do pool");
-
-    try {
-      await connection.ping();
-      console.log("[DB] ✓ Ping ao banco de dados bem-sucedido");
-    } finally {
-      connection.release();
-      console.log("[DB] ✓ Conexão liberada");
-    }
-    
-    console.log("[DB] ✓ Teste de conexão concluído com sucesso");
-    reconnectAttempts = 0;
-    return true;
-  } catch (error) {
-    reconnectAttempts += 1;
-    const retryMessage = 
-      reconnectAttempts < MAX_RECONNECT_ATTEMPTS 
-        ? ` (Tentativa ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
-        : " (Máximo de tentativas excedido)";
-    
-    console.error(`[ERROR] Falha na conexão com banco de dados${retryMessage}`);
-    console.error(`  Code: ${error?.code}`);
-    console.error(`  Error: ${error?.errno}`);
-    console.error(`  Message: ${error?.message}`);
-    
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      const delayMs = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
-      console.log(`[DB] Aguardando ${delayMs}ms antes de tentar novamente...`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      return testConnection();
-    }
-    
-    throw error;
-  }
-}
+const databaseConnectivity = createDatabaseConnectivity({
+  pool,
+  maxAttempts: process.env.DB_MAX_RECONNECT_ATTEMPTS,
+});
+const testConnection = databaseConnectivity.testConnection;
 
 async function query(sql, params = []) {
   let connection = null;
@@ -2250,13 +2213,11 @@ async function syncEnrollmentNumberRegistry() {
   return { synced: registryEntries.size, skipped: false, reason: null };
 }
 
-setInterval(async () => {
-  try {
-    await pool.query("SELECT 1");
-  } catch (err) {
-    console.error("[mysql] keepalive error:", err.message);
-  }
-}, 30000).unref?.();
+// Disabled by default to avoid permanent background traffic and failure amplification.
+databaseConnectivity.startKeepalive({
+  enabled: String(process.env.DB_KEEPALIVE_ENABLED || "").toLowerCase() === "true",
+  intervalMs: process.env.DB_KEEPALIVE_INTERVAL_MS,
+});
 
 module.exports = {
   MYSQL_CONFIG,
