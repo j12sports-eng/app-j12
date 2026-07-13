@@ -1,0 +1,18 @@
+# Operational paths only. This file contains no credentials.
+J12_ROOT=/opt/j12-sports
+J12_RELEASES_DIR=/opt/j12-sports/releases
+J12_SHARED_DIR=/opt/j12-sports/shared
+J12_CURRENT_LINK=/opt/j12-sports/current
+J12_SERVICE_USER=j12
+J12_SERVICE_GROUP=j12
+J12_ENV_FILE=/opt/j12-sports/shared/.env
+J12_CERTS_DIR=/opt/j12-sports/shared/certs
+J12_LOGS_DIR=/opt/j12-sports/shared/logs
+J12_PM2_HOME=/opt/j12-sports/shared/pm2
+J12_PM2_CONFIG=ecosystem.config.cjs
+J12_PM2_SYSTEMD_UNIT=pm2-j12
+J12_API_READY_URL=http://127.0.0.1:3001/ready
+J12_SSR_READY_URL=http://127.0.0.1:4173/ready
+J12_SHUTDOWN_TIMEOUT_SECONDS=20
+J12_KEEP_RELEASES=5
+
