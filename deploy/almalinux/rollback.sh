@@ -37,4 +37,3 @@ if ! reload_pm2 "$target" || ! smoke_release; then
 fi
 save_pm2
 printf 'rollback=ok release=%s previous=%s migrations=untouched\n' "$target" "$previous"
-

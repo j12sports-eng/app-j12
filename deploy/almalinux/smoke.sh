@@ -7,4 +7,3 @@ load_config
 assert_safe_layout
 smoke_release
 printf 'smoke=ok api=ready ssr=ready\n'
-

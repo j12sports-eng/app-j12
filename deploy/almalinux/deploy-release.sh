@@ -70,4 +70,3 @@ fi
 save_pm2
 trap - ERR
 printf 'deploy=ok release=%s previous=%s migrations=not-applied\n' "$release" "$previous"
-

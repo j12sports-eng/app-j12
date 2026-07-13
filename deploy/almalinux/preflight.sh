@@ -40,4 +40,3 @@ fi
 
 printf 'preflight=ok os=%s node=%s selinux=%s current=%s\n' \
   "$PRETTY_NAME" "$(node --version)" "$selinux_mode" "$(current_release)"
-

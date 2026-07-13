@@ -72,4 +72,3 @@ reload_pm2() {
   HOME="$J12_SHARED_DIR" PM2_HOME="$J12_PM2_HOME" \
     pm2 startOrReload "$release/$J12_PM2_CONFIG" --update-env
 }
-
