@@ -1,14 +1,15 @@
-const mysql = require("mysql2/promise");
+﻿const mysql = require("mysql2/promise");
 const path = require("node:path");
 const dotenv = require("dotenv");
 const { createDatabaseConnectivity } = require("./database-connectivity.js");
+const { createNoopDdlResult, createRuntimeDdlPolicy } = require("./runtime-ddl-policy.js");
 
 dotenv.config({
   path: [path.resolve(__dirname, "../../../.env"), path.resolve(__dirname, "../../.env")],
 });
 
 // ====================================
-// VALIDAÇÃO DE CREDENCIAIS
+// VALIDAÃ‡ÃƒO DE CREDENCIAIS
 // ====================================
 function parseDatabaseUrl(value) {
   const raw = String(value || "").trim();
@@ -39,13 +40,13 @@ const DB_PORT = Number(process.env.DB_PORT || DATABASE_URL_CONFIG.port || 3306);
 console.log("[DB] Validando credenciais do banco de dados...");
 if (!DB_HOST || !DB_USER || !DB_NAME) {
   console.error("[ERROR] Credenciais do banco incompletas!");
-  console.error(`[DB] HOST: ${DB_HOST ? "✓" : "✗"}`);
-  console.error(`[DB] USER: ${DB_USER ? "✓" : "✗"}`);
-  console.error(`[DB] NAME: ${DB_NAME ? "✓" : "✗"}`);
-  console.error(`[DB] PASS: ${DB_PASSWORD ? "✓" : "✗"}`);
+  console.error(`[DB] HOST: ${DB_HOST ? "âœ“" : "âœ—"}`);
+  console.error(`[DB] USER: ${DB_USER ? "âœ“" : "âœ—"}`);
+  console.error(`[DB] NAME: ${DB_NAME ? "âœ“" : "âœ—"}`);
+  console.error(`[DB] PASS: ${DB_PASSWORD ? "âœ“" : "âœ—"}`);
   process.exit(1);
 }
-console.log("[DB] ✓ Credenciais validadas com sucesso");
+console.log("[DB] âœ“ Credenciais validadas com sucesso");
 console.log(`[DB] Host: ${DB_HOST}:${DB_PORT}`);
 console.log(`[DB] Database: ${DB_NAME}`);
 console.log(`[DB] User: ${DB_USER}`);
@@ -56,39 +57,39 @@ const MYSQL_CONFIG = {
   password: DB_PASSWORD,
   database: DB_NAME,
   port: DB_PORT,
-  
+
   // ====================================
-  // POOL DE CONEXÃO OTIMIZADO
+  // POOL DE CONEXÃƒO OTIMIZADO
   // ====================================
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 20),
   queueLimit: 0,
-  
+
   // ====================================
   // TIMEOUTS AUMENTADOS PARA HOSTGATOR
   // ====================================
   connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 60000), // 60 segundos
   socketPath: undefined,
-  
+
   // ====================================
-  // KEEP-ALIVE E RECONEXÃO
+  // KEEP-ALIVE E RECONEXÃƒO
   // ====================================
   enableKeepAlive: true,
   keepAliveInitialDelay: 30000, // 30 segundos
-  
+
   // ====================================
-  // CONFIGURAÇÃO DO CHARSET
+  // CONFIGURAÃ‡ÃƒO DO CHARSET
   // ====================================
   charset: "utf8mb4",
   dateStrings: true,
-  
+
   // ====================================
   // SSL/TLS (desativar para HostGator)
   // ====================================
   ssl: process.env.DB_USE_SSL === "true" ? "Amazon RDS" : undefined,
 };
 
-console.log(`[DB] Configuração do pool:`);
+console.log(`[DB] ConfiguraÃ§Ã£o do pool:`);
 console.log(`  - Connection Limit: ${MYSQL_CONFIG.connectionLimit}`);
 console.log(`  - Connect Timeout: ${MYSQL_CONFIG.connectTimeout}ms`);
 console.log(`  - Keep-Alive: ${MYSQL_CONFIG.enableKeepAlive}`);
@@ -96,11 +97,48 @@ console.log(`  - Keep-Alive Delay: ${MYSQL_CONFIG.keepAliveInitialDelay}ms`);
 
 let pool = null;
 function createPool() {
-  console.log("[DB] Criando novo pool de conexões...");
+  console.log("[DB] Criando novo pool de conexÃµes...");
   return mysql.createPool(MYSQL_CONFIG);
 }
 
 pool = createPool();
+
+// Production runtime is validation-only for schema. The canonical migration
+// runner opts in explicitly before importing this module.
+const rawPoolQuery = pool.query.bind(pool);
+const rawPoolExecute = pool.execute.bind(pool);
+const rawPoolGetConnection = pool.getConnection.bind(pool);
+const runtimeDdlPolicy = createRuntimeDdlPolicy({
+  environment: process.env.NODE_ENV,
+  migrationContext: process.env.J12_MIGRATION_RUNNER_CONTEXT,
+  async inspectTable(tableName) {
+    const [rows] = await rawPoolExecute(
+      "SELECT COUNT(*) AS total FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
+      [tableName],
+    );
+    return Number(rows?.[0]?.total || 0) > 0;
+  },
+});
+
+async function executeWithRuntimeDdlPolicy(execute, sql, args) {
+  const decision = await runtimeDdlPolicy.beforeExecute(sql);
+  if (!decision.execute) return [createNoopDdlResult(), []];
+  return execute(sql, ...args);
+}
+
+function guardConnectionDdl(connection) {
+  if (connection.__j12RuntimeDdlGuarded) return connection;
+  const rawExecute = connection.execute.bind(connection);
+  const rawQuery = connection.query.bind(connection);
+  connection.execute = (sql, ...args) => executeWithRuntimeDdlPolicy(rawExecute, sql, args);
+  connection.query = (sql, ...args) => executeWithRuntimeDdlPolicy(rawQuery, sql, args);
+  Object.defineProperty(connection, "__j12RuntimeDdlGuarded", { value: true });
+  return connection;
+}
+
+pool.execute = (sql, ...args) => executeWithRuntimeDdlPolicy(rawPoolExecute, sql, args);
+pool.query = (sql, ...args) => executeWithRuntimeDdlPolicy(rawPoolQuery, sql, args);
+pool.getConnection = async (...args) => guardConnectionDdl(await rawPoolGetConnection(...args));
 
 function sanitizeIdentifier(value) {
   const normalized = String(value ?? "").trim();
@@ -726,25 +764,27 @@ async function query(sql, params = []) {
       sql: sql.substring(0, 100),
       timestamp: new Date().toISOString(),
     });
-    
-    // Reconectar em caso de erro de conexão perdida
-    if (error?.code === "PROTOCOL_CONNECTION_LOST" || 
-        error?.code === "PROTOCOL_ERROR" ||
-        error?.code === "ER_QUERY_INTERRUPTED" ||
-        error?.errno === 1041) {
-      console.warn("[DB] Reconectando ao banco após erro de conexão...");
-      if (pool && typeof pool.clearOldest === 'function') {
+
+    // Reconectar em caso de erro de conexÃ£o perdida
+    if (
+      error?.code === "PROTOCOL_CONNECTION_LOST" ||
+      error?.code === "PROTOCOL_ERROR" ||
+      error?.code === "ER_QUERY_INTERRUPTED" ||
+      error?.errno === 1041
+    ) {
+      console.warn("[DB] Reconectando ao banco apÃ³s erro de conexÃ£o...");
+      if (pool && typeof pool.clearOldest === "function") {
         pool.clearOldest?.();
       }
     }
-    
+
     throw error;
   } finally {
     if (connection) {
       try {
         connection.release();
       } catch (releaseError) {
-        console.warn("[DB] Erro ao liberar conexão:", releaseError?.message);
+        console.warn("[DB] Erro ao liberar conexÃ£o:", releaseError?.message);
       }
     }
   }

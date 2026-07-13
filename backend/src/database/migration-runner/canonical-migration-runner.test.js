@@ -1,4 +1,4 @@
-﻿const assert = require("node:assert/strict");
+const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { CanonicalMigrationRunner } = require("./canonical-migration-runner.js");
@@ -24,9 +24,9 @@ test("catalog orders migrations deterministically and calculates stable SHA-256 
 
 test("default catalog discovers every current versioned migration", async () => {
   const result = await discoverMigrationCatalog();
-  assert.equal(result.length, 10);
+  assert.equal(result.length, 12);
   assert.equal(result[0].id, "20260629134546_create_enrollments_table");
-  assert.equal(result.at(-1).id, "20260709220000_create_financial_automation_execution_history");
+  assert.equal(result.at(-1).id, "20260712184500_create_auth_runtime_tables");
 });
 test("catalog rejects duplicate migration timestamps before execution", () => {
   assert.throws(

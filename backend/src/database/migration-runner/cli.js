@@ -13,6 +13,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   }
 
   assertExplicitDatabaseTarget(options, env);
+  process.env.J12_MIGRATION_RUNNER_CONTEXT = "true";
   // Import delayed deliberately: plan/dry-run cannot even create a database pool.
   const database = require("../../config/db.js");
   const { MigrationExecutor } = require("./migration-executor.js");

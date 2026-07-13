@@ -1,4 +1,4 @@
-console.log("Starting J12 API...");
+﻿console.log("Starting J12 API...");
 
 require("dotenv").config();
 
@@ -665,13 +665,17 @@ function runBootstrapInBackground() {
       startupState.database = "error";
       startupState.lastError = error?.message || "Falha ao inicializar banco de dados.";
       console.error("[ERROR] Falha ao inicializar banco de dados:", error);
+      if (String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+        process.exitCode = 1;
+        server.close();
+      }
     });
 }
 
 async function startServer() {
   try {
     console.log("\n========================================");
-    console.log("🚀 INICIANDO J12 API");
+    console.log("ðŸš€ INICIANDO J12 API");
     console.log("========================================\n");
 
     console.log(`[SERVER] Host: ${HOST}`);
@@ -680,10 +684,10 @@ async function startServer() {
     console.log(`[SERVER] Bootstrap Timeout: ${BOOTSTRAP_WARN_TIMEOUT_MS}ms (60s)\n`);
 
     server.listen(PORT, HOST, () => {
-      console.log(`✓ [SERVER] API ouvindo em http://${HOST}:${PORT}`);
-      console.log(`✓ [ENDPOINTS] Health: http://127.0.0.1:${PORT}/health`);
-      console.log(`✓ [ENDPOINTS] Login: POST http://127.0.0.1:${PORT}/auth/login`);
-      console.log(`✓ [ENDPOINTS] Test: http://127.0.0.1:${PORT}/api/test\n`);
+      console.log(`âœ“ [SERVER] API ouvindo em http://${HOST}:${PORT}`);
+      console.log(`âœ“ [ENDPOINTS] Health: http://127.0.0.1:${PORT}/health`);
+      console.log(`âœ“ [ENDPOINTS] Login: POST http://127.0.0.1:${PORT}/auth/login`);
+      console.log(`âœ“ [ENDPOINTS] Test: http://127.0.0.1:${PORT}/api/test\n`);
       console.log("[SERVER] Inicializando banco de dados em background...\n");
       runBootstrapInBackground();
     });

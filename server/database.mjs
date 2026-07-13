@@ -10,6 +10,15 @@ const DATA_DIR = resolve(ROOT_DIR, "data");
 const DATABASE_PATH = resolve(DATA_DIR, "j12.sqlite");
 const SESSION_DURATION_DAYS = 30;
 
+// The SQLite adapter is legacy/local-only. Opening DatabaseSync can create a
+// file and its schema, so production must fail before any filesystem mutation.
+if (String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+  const error = new Error(
+    "Legacy SQLite runtime schema is disabled in production. Use the canonical MySQL schema and migration runner.",
+  );
+  error.code = "PRODUCTION_SQLITE_RUNTIME_SCHEMA_DISABLED";
+  throw error;
+}
 export const ALLOWED_COLLECTIONS = new Set([
   "alunos",
   "professores",

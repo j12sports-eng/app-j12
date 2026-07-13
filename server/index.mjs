@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+﻿import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import dotenv from "dotenv";
@@ -1160,5 +1160,9 @@ server.listen(PORT, HOST, () => {
 
   void bootstrap().catch((error) => {
     log("error", "startup.unhandled", serializeError(error));
+    if (NODE_ENV === "production") {
+      process.exitCode = 1;
+      server.close();
+    }
   });
 });
