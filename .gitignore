@@ -33,6 +33,7 @@ certs/
 *.cer
 
 data/
+artifacts/
 
 # Editor directories and files
 .vscode/*

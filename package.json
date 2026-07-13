@@ -35,7 +35,11 @@
     "ci:test:frontend": "node scripts/ci/test-suites.cjs frontend",
     "ci:quality:changed": "node scripts/ci/changed-quality.cjs",
     "ci:secrets": "node scripts/ci/secret-scan.cjs",
-    "ci:test:backend": "node scripts/ci/test-suites.cjs backend"
+    "ci:test:backend": "node scripts/ci/test-suites.cjs backend",
+    "e2e:23.11:preflight": "node scripts/e2e/sprint-23-11-preflight.cjs",
+    "e2e:23.11": "playwright test --config=playwright.config.cjs",
+    "e2e:23.11:inspect": "node scripts/e2e/sprint-23-11-runner.cjs --inspect-only",
+    "e2e:23.11:local": "node scripts/e2e/sprint-23-11-runner.cjs --apply-local-migrations"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -103,6 +107,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

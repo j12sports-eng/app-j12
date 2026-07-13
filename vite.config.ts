@@ -101,6 +101,11 @@ export default defineConfig(async ({ command }: ConfigEnv): Promise<UserConfig> 
       host: true,
       allowedHosts,
       proxy: apiProxy,
+      // Playwright writes reports inside the repository; watching them causes
+      // reload loops while a browser journey is running.
+      watch: {
+        ignored: ["**/artifacts/**"],
+      },
     },
     preview: {
       host: true,
