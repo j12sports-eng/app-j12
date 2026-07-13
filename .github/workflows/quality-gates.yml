@@ -1,0 +1,80 @@
+name: Quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [main, sprint-23]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - name: Resolve comparison base
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
+            echo "CI_BASE_SHA=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
+          elif [[ -n "${{ github.event.before }}" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            echo "CI_BASE_SHA=${{ github.event.before }}" >> "$GITHUB_ENV"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            echo "CI_BASE_SHA=$(git rev-parse HEAD^)" >> "$GITHUB_ENV"
+          else
+            echo "CI_BASE_SHA=$(git hash-object -t tree /dev/null)" >> "$GITHUB_ENV"
+          fi
+      - name: Reproducible installation
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix backend ci --ignore-scripts
+      - name: Secret scan and forbidden files
+        run: npm run ci:secrets
+      - name: CI contracts
+        run: npm run ci:test:contracts
+      - name: Migration contracts
+        run: npm run ci:test:migrations
+      - name: Security tests
+        run: npm run ci:test:security
+      - name: Backend tests
+        run: npm run ci:test:backend
+      - name: Frontend tests
+        run: npm run ci:test:frontend
+      - name: Progressive lint baseline
+        run: npm run ci:lint:baseline
+      - name: Changed-file ESLint, Prettier and whitespace
+        run: npm run ci:quality:changed
+      - name: Client and SSR build
+        run: npm run build
+      - name: Validate build artifacts
+        run: test -d dist/client && test -f dist/server/server.mjs
+      - name: Upload build and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/client
+            dist/server
+            artifacts/ci
+            .ci/eslint-baseline.json

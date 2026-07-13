@@ -27,7 +27,15 @@
     "pm2:logs": "pm2 logs j12-api j12-frontend",
     "preview": "node scripts/serve-ssr.mjs --host 127.0.0.1 --port 4173",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "ci:lint:baseline": "node scripts/ci/eslint-baseline.cjs",
+    "ci:test:contracts": "node --test scripts/ci/*.test.cjs deploy/almalinux/atomic-deploy.contract.test.cjs",
+    "ci:test:security": "node scripts/ci/test-suites.cjs security",
+    "ci:test:migrations": "node scripts/ci/test-suites.cjs migrations",
+    "ci:test:frontend": "node scripts/ci/test-suites.cjs frontend",
+    "ci:quality:changed": "node scripts/ci/changed-quality.cjs",
+    "ci:secrets": "node scripts/ci/secret-scan.cjs",
+    "ci:test:backend": "node scripts/ci/test-suites.cjs backend"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
