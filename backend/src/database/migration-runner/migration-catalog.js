@@ -2,6 +2,8 @@
 const { promises: fs } = require("node:fs");
 const path = require("node:path");
 
+const { MIGRATION_DEPENDENCIES } = require("./migration-dependencies.js");
+
 const MIGRATION_FILE_PATTERN = /^(\d{14})_([a-z0-9]+(?:_[a-z0-9]+)*)\.(js|sql)$/;
 
 async function discoverMigrationCatalog({ directory = defaultMigrationsDirectory() } = {}) {
@@ -18,10 +20,10 @@ async function discoverMigrationCatalog({ directory = defaultMigrationsDirectory
     });
   }
 
-  return buildMigrationCatalog(files);
+  return buildMigrationCatalog(files, { dependencies: MIGRATION_DEPENDENCIES });
 }
 
-function buildMigrationCatalog(files = []) {
+function buildMigrationCatalog(files = [], { dependencies = {} } = {}) {
   if (!Array.isArray(files)) throw new TypeError("Migration catalog requires a file array.");
 
   const migrations = files.map((file) => {
@@ -54,7 +56,55 @@ function buildMigrationCatalog(files = []) {
   migrations.sort((left, right) => left.id.localeCompare(right.id));
   assertUnique(migrations, "id", "MIGRATION_ID_DUPLICATE");
   assertUnique(migrations, "timestamp", "MIGRATION_TIMESTAMP_DUPLICATE");
-  return Object.freeze(migrations);
+  return orderByDependencies(migrations, dependencies);
+}
+
+function orderByDependencies(migrations, dependencies = {}) {
+  const byId = new Map(migrations.map((migration) => [migration.id, migration]));
+  for (const migrationId of Object.keys(dependencies)) {
+    if (!byId.has(migrationId))
+      throw migrationError(
+        `Dependency declaration references unknown migration ${migrationId}.`,
+        "MIGRATION_DEPENDENCY_DECLARATION_UNKNOWN",
+        { migrationId },
+      );
+  }
+
+  const ordered = [];
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(migration) {
+    if (visited.has(migration.id)) return;
+    if (visiting.has(migration.id))
+      throw migrationError(
+        `Migration dependency cycle at ${migration.id}.`,
+        "MIGRATION_DEPENDENCY_CYCLE",
+        { migrationId: migration.id },
+      );
+    visiting.add(migration.id);
+    const migrationDependencies = dependencies[migration.id] || [];
+    for (const dependencyId of migrationDependencies) {
+      const dependency = byId.get(dependencyId);
+      if (!dependency)
+        throw migrationError(
+          `Migration ${migration.id} requires missing migration ${dependencyId}.`,
+          "MIGRATION_DEPENDENCY_MISSING",
+          { dependencyId, migrationId: migration.id },
+        );
+      visit(dependency);
+    }
+    visiting.delete(migration.id);
+    visited.add(migration.id);
+    ordered.push(
+      Object.freeze({
+        ...migration,
+        dependencies: Object.freeze([...migrationDependencies]),
+      }),
+    );
+  }
+
+  migrations.forEach(visit);
+  return Object.freeze(ordered);
 }
 
 function assertUnique(migrations, field, code) {
@@ -86,4 +136,5 @@ module.exports = {
   defaultMigrationsDirectory,
   discoverMigrationCatalog,
   migrationError,
+  orderByDependencies,
 };

@@ -21,7 +21,8 @@ A non-local `DB_HOST` additionally requires `--allow-remote`. That flag is a tec
 The runner:
 
 - discovers only `YYYYMMDDHHMMSS_name.js|sql` files in the official migrations directory;
-- orders by the complete unique identifier and rejects duplicate timestamps;
+- orders deterministically with explicit dependency-first topology and rejects
+  missing dependencies, cycles and duplicate timestamps;
 - stores the SHA-256 checksum and rejects changed applied migrations;
 - uses `j12_schema_migrations` with `APPLYING`, `APPLIED` and `FAILED` states;
 - obtains the MySQL named lock `j12:schema-migrations` before ledger or migration mutations;

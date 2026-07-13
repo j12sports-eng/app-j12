@@ -24,9 +24,74 @@ test("catalog orders migrations deterministically and calculates stable SHA-256 
 
 test("default catalog discovers every current versioned migration", async () => {
   const result = await discoverMigrationCatalog();
-  assert.equal(result.length, 12);
-  assert.equal(result[0].id, "20260629134546_create_enrollments_table");
+  assert.equal(result.length, 14);
+  assert.equal(result[0].id, "20260712183000_create_people_domain_tables");
+  assert.ok(
+    result.findIndex((item) => item.id === "20260712183000_create_people_domain_tables") <
+      result.findIndex((item) => item.id === "20260629134546_create_enrollments_table"),
+  );
+  assert.ok(
+    result.findIndex((item) => item.id === "20260713100000_create_classes_foundation_table") <
+      result.findIndex((item) => item.id === "20260701103000_add_enrollment_class_links_table"),
+  );
   assert.equal(result.at(-1).id, "20260712184500_create_auth_runtime_tables");
+});
+
+test("catalog resolves explicit dependencies without changing content checksums", () => {
+  const files = [
+    { content: "-- dependent", fileName: "20260701000000_dependent.sql" },
+    { content: "-- foundation", fileName: "20260702000000_foundation.sql" },
+  ];
+  const lexical = buildMigrationCatalog(files);
+  const ordered = buildMigrationCatalog(files, {
+    dependencies: {
+      "20260701000000_dependent": ["20260702000000_foundation"],
+    },
+  });
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["20260702000000_foundation", "20260701000000_dependent"],
+  );
+  assert.equal(
+    ordered.find((item) => item.name === "dependent").checksum,
+    lexical.find((item) => item.name === "dependent").checksum,
+  );
+});
+
+test("catalog fails closed for missing dependencies and cycles", () => {
+  assert.throws(
+    () =>
+      buildMigrationCatalog([{ content: "-- a", fileName: "20260701000000_a.sql" }], {
+        dependencies: { "20260701000000_a": ["20260702000000_missing"] },
+      }),
+    (error) => error.code === "MIGRATION_DEPENDENCY_MISSING",
+  );
+  assert.throws(
+    () =>
+      buildMigrationCatalog(
+        [
+          { content: "-- a", fileName: "20260701000000_a.sql" },
+          { content: "-- b", fileName: "20260702000000_b.sql" },
+        ],
+        {
+          dependencies: {
+            "20260701000000_a": ["20260702000000_b"],
+            "20260702000000_b": ["20260701000000_a"],
+          },
+        },
+      ),
+    (error) => error.code === "MIGRATION_DEPENDENCY_CYCLE",
+  );
+});
+
+test("catalog fails closed for dependency declarations targeting unknown migrations", () => {
+  assert.throws(
+    () =>
+      buildMigrationCatalog([{ content: "-- a", fileName: "20260701000000_a.sql" }], {
+        dependencies: { "20260702000000_unknown": [] },
+      }),
+    (error) => error.code === "MIGRATION_DEPENDENCY_DECLARATION_UNKNOWN",
+  );
 });
 test("catalog rejects duplicate migration timestamps before execution", () => {
   assert.throws(
@@ -87,6 +152,28 @@ test("runner fails closed when an applied migration checksum changed", async () 
       }).up(),
     (error) => error.code === "MIGRATION_LEDGER_BLOCKED" && error.state === "CHECKSUM_MISMATCH",
   );
+});
+
+test("runner refuses a pre-existing FAILED ledger record without executor calls", async () => {
+  const migrations = catalog("20260701000000_first.sql");
+  const ledger = new InMemoryLedger([
+    { checksum: migrations[0].checksum, id: migrations[0].id, status: "FAILED" },
+  ]);
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      new CanonicalMigrationRunner({
+        catalog: migrations,
+        executor: {
+          async apply() {
+            calls += 1;
+          },
+        },
+        ledger,
+      }).up(),
+    (error) => error.code === "MIGRATION_LEDGER_BLOCKED" && error.state === "FAILED",
+  );
+  assert.equal(calls, 0);
 });
 
 test("runner records FAILED and stops after an intermediate migration failure", async () => {
@@ -160,6 +247,56 @@ test("dry-run is deterministic and performs zero ledger or executor mutations", 
     result.plan.map((item) => item.id),
     migrations.map((item) => item.id),
   );
+});
+
+test("canonical dry-run exposes the effective topological order without adapters", async () => {
+  const migrations = await discoverMigrationCatalog();
+  const result = await new CanonicalMigrationRunner({
+    catalog: migrations,
+    executor: {
+      async apply() {
+        throw new Error("executor must not run");
+      },
+    },
+    ledger: {
+      async list() {
+        throw new Error("ledger must not run");
+      },
+    },
+  }).up({ dryRun: true });
+  assert.deepEqual(
+    result.plan.map((item) => item.id),
+    migrations.map((item) => item.id),
+  );
+  assert.deepEqual(
+    result.plan.map((item) => item.dependencies),
+    migrations.map((item) => item.dependencies),
+  );
+});
+
+test("runner supports a partially applied dependency-first catalog", async () => {
+  const migrations = buildMigrationCatalog(
+    [
+      { content: "-- consumer", fileName: "20260701000000_consumer.sql" },
+      { content: "-- foundation", fileName: "20260702000000_foundation.sql" },
+    ],
+    { dependencies: { "20260701000000_consumer": ["20260702000000_foundation"] } },
+  );
+  const ledger = new InMemoryLedger([
+    { checksum: migrations[0].checksum, id: migrations[0].id, status: "APPLIED" },
+  ]);
+  const calls = [];
+  const result = await new CanonicalMigrationRunner({
+    catalog: migrations,
+    executor: {
+      async apply(item) {
+        calls.push(item.id);
+      },
+    },
+    ledger,
+  }).up();
+  assert.deepEqual(result.skipped, ["20260702000000_foundation"]);
+  assert.deepEqual(calls, ["20260701000000_consumer"]);
 });
 
 test("CLI requires exact database confirmation and explicit remote opt-in", () => {

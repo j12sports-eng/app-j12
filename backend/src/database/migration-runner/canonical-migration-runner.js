@@ -128,7 +128,13 @@ function sanitizeError(error) {
 }
 
 function toPlanItem(item) {
-  return { checksum: item.checksum, fileName: item.fileName, id: item.id, state: item.state };
+  return {
+    checksum: item.checksum,
+    dependencies: item.dependencies || [],
+    fileName: item.fileName,
+    id: item.id,
+    state: item.state,
+  };
 }
 
 module.exports = { CanonicalMigrationRunner, MigrationLedgerStatus, buildStatus, sanitizeError };
