@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createServer, request as createHttpProxyRequest } from "node:http";
 import { request as createHttpsProxyRequest } from "node:https";
 import net from "node:net";
@@ -6,6 +7,10 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import express from "express";
+import { createSsrHealth } from "./runtime/ssr-health.mjs";
+
+const require = createRequire(import.meta.url);
+const { createGracefulShutdown } = require("../backend/src/operations/graceful-shutdown.js");
 
 process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
@@ -67,6 +72,14 @@ const CLIENT_DIR = path.resolve(rootDir, getArg("client-dist", "dist/client"));
 const SERVER_ENTRY = path.resolve(rootDir, getArg("server-entry", "dist/server/server.mjs"));
 const API_TARGET = new URL(resolveApiTarget());
 const SSR_TIMEOUT_MS = Number(getArg("ssr-timeout-ms", "30000"));
+const SHUTDOWN_TIMEOUT_MS = Number(getArg("shutdown-timeout-ms", "15000"));
+const runtimeState = { shuttingDown: false };
+const ssrHealth = createSsrHealth({
+  clientDir: CLIENT_DIR,
+  serverEntry: SERVER_ENTRY,
+  existsSync,
+  state: runtimeState,
+});
 
 const mimeTypes = {
   ".avif": "image/avif",
@@ -481,6 +494,12 @@ app.use((req, res) => {
       pathname: url.pathname,
     });
 
+    if (req.method === "GET" && ["/live", "/ready", "/health"].includes(url.pathname)) {
+      const result = url.pathname === "/live" ? ssrHealth.liveness() : ssrHealth.readiness();
+      res.status(result.statusCode).json(result.body);
+      return;
+    }
+
     if (isApiRequest(url)) {
       proxyHttp(req, res, getApiProxyPath(url));
       return;
@@ -543,6 +562,20 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
+const gracefulShutdown = createGracefulShutdown({
+  server,
+  state: runtimeState,
+  timeoutMs: SHUTDOWN_TIMEOUT_MS,
+});
+
+function handleSignal(signal) {
+  void gracefulShutdown(signal).then((result) => {
+    process.exitCode = result.completed ? 0 : 1;
+  });
+}
+
+process.once("SIGTERM", () => handleSignal("SIGTERM"));
+process.once("SIGINT", () => handleSignal("SIGINT"));
 server.listen(PORT, HOST, () => {
   console.log(`Frontend SSR Express server listening on http://${HOST}:${PORT}`);
   console.log(`Serving client assets from ${CLIENT_DIR}`);

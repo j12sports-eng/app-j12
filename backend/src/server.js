@@ -1,4 +1,4 @@
-﻿console.log("Starting J12 API...");
+console.log("Starting J12 API...");
 
 require("dotenv").config();
 
@@ -20,7 +20,11 @@ const {
   syncJ12FinanceFromLegacy,
   syncJ12TablesFromLegacy,
   testConnection,
+  pool,
+  stopDatabaseJobs,
 } = require("./config/db.js");
+const { createRuntimeHealth } = require("./operations/runtime-health.js");
+const { createGracefulShutdown } = require("./operations/graceful-shutdown.js");
 const { ensureAuthSeedData } = require("../auth.js");
 
 const authRoutes = require("../routes/auth.js");
@@ -90,6 +94,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
 const REQUEST_LIMIT = process.env.REQUEST_LIMIT || "8mb";
 const BOOTSTRAP_WARN_TIMEOUT_MS = Number(process.env.BOOTSTRAP_WARN_TIMEOUT_MS || 60000);
+const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS || 15000);
 
 const app = express();
 const server = http.createServer(app);
@@ -116,7 +121,16 @@ const startupState = {
   lastError: null,
   startedAt: new Date().toISOString(),
   readyAt: null,
+  shuttingDown: false,
 };
+
+const runtimeHealth = createRuntimeHealth({
+  state: startupState,
+  probeDatabase: async () => {
+    await pool.query("SELECT 1");
+    return true;
+  },
+});
 
 const DATABASE_ERROR_CODES = new Set([
   "PROTOCOL_CONNECTION_LOST",
@@ -418,7 +432,7 @@ function securityHeaders(_req, res, next) {
 }
 
 function rateLimit(req, res, next) {
-  if (req.method === "OPTIONS" || req.path === "/health") {
+  if (req.method === "OPTIONS" || ["/health", "/live", "/ready"].includes(req.path)) {
     next();
     return;
   }
@@ -481,22 +495,25 @@ function mount(paths, router) {
   }
 }
 
-app.get(["/health", "/api/health"], (_req, res) => {
-  const degraded = startupState.database !== "ready";
-
-  res.status(200).json({
-    success: true,
-    data: {
-      status: degraded ? "degraded" : "ok",
-      database: startupState.database,
-      schemaReady: startupState.schemaReady,
-      lastError: startupState.lastError,
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-    },
-  });
+app.get(["/live", "/api/live"], (_req, res) => {
+  const result = runtimeHealth.liveness();
+  res.status(result.statusCode).json(result.body);
 });
 
+app.get(["/ready", "/api/ready", "/health", "/api/health"], async (_req, res) => {
+  const result = await runtimeHealth.readiness();
+  res.status(result.statusCode).json(result.body);
+});
+
+app.get("/internal/health", async (req, res) => {
+  const configured = String(process.env.HEALTH_INTERNAL_TOKEN || "");
+  const received = String(req.headers["x-health-token"] || "");
+  if (!configured || received !== configured) {
+    return res.status(404).json({ status: "not_found" });
+  }
+  const result = await runtimeHealth.internalHealth();
+  return res.status(result.statusCode).json(result.body);
+});
 app.get("/api/test", (_req, res) => {
   res.json({
     success: true,
@@ -704,14 +721,25 @@ async function startServer() {
 
 startServer();
 
-process.on("SIGTERM", () => {
-  server.close(() => process.exit(0));
+const gracefulShutdown = createGracefulShutdown({
+  server,
+  get io() {
+    return global.io;
+  },
+  pool,
+  jobs: [{ stop: stopDatabaseJobs }],
+  state: startupState,
+  timeoutMs: SHUTDOWN_TIMEOUT_MS,
 });
 
-process.on("SIGINT", () => {
-  server.close(() => process.exit(0));
-});
+function handleSignal(signal) {
+  void gracefulShutdown(signal).then((result) => {
+    process.exitCode = result.completed ? 0 : 1;
+  });
+}
 
+process.once("SIGTERM", () => handleSignal("SIGTERM"));
+process.once("SIGINT", () => handleSignal("SIGINT"));
 process.on("uncaughtException", (error) => {
   console.error("uncaughtException:", error);
 });

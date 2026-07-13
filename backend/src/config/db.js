@@ -1,4 +1,4 @@
-﻿const mysql = require("mysql2/promise");
+const mysql = require("mysql2/promise");
 const path = require("node:path");
 const dotenv = require("dotenv");
 const { createDatabaseConnectivity } = require("./database-connectivity.js");
@@ -2254,14 +2254,19 @@ async function syncEnrollmentNumberRegistry() {
 }
 
 // Disabled by default to avoid permanent background traffic and failure amplification.
-databaseConnectivity.startKeepalive({
+const databaseKeepaliveTimer = databaseConnectivity.startKeepalive({
   enabled: String(process.env.DB_KEEPALIVE_ENABLED || "").toLowerCase() === "true",
   intervalMs: process.env.DB_KEEPALIVE_INTERVAL_MS,
 });
 
+function stopDatabaseJobs() {
+  if (databaseKeepaliveTimer) clearInterval(databaseKeepaliveTimer);
+}
+
 module.exports = {
   MYSQL_CONFIG,
   pool,
+  stopDatabaseJobs,
   query,
   tableExists,
   transaction,
