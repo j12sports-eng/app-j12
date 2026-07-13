@@ -6,7 +6,8 @@ module.exports = {
       // HML deve executar exatamente a mesma composição de API da produção.
       script: "backend/server.js",
       interpreter: "node",
-      node_args: "--env-file=.env",
+      // HML nunca compartilha o arquivo de secrets da producao.
+      node_args: "--env-file=.env.hml",
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
@@ -18,6 +19,11 @@ module.exports = {
       error_file: "logs/j12-api-hml.error.log",
       env: {
         NODE_ENV: "production",
+        J12_ENVIRONMENT: "hml",
+        HML_ISOLATED: "true",
+        HML_REAL_INTEGRATIONS_ENABLED: "false",
+        EMAIL_PROVIDER: "disabled",
+        INTER_INTEGRATION_MODE: "disabled",
         HOST: "127.0.0.1",
         PORT: "3001",
         CORS_ORIGIN: "https://hml.app.j12sports.com.br,https://www.hml.app.j12sports.com.br",
@@ -41,6 +47,8 @@ module.exports = {
       error_file: "logs/j12-frontend-hml.error.log",
       env: {
         NODE_ENV: "production",
+        J12_ENVIRONMENT: "hml",
+        HML_ISOLATED: "true",
         API_TARGET: "http://127.0.0.1:3001",
         SSR_API_URL: "http://127.0.0.1:3001",
         API_BASE_URL: "http://127.0.0.1:3001",
