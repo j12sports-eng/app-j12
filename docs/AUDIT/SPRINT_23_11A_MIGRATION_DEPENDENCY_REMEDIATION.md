@@ -201,6 +201,49 @@ evidencia integra existente foi aproveitada sem sobrescrever os datadirs 23-11a-
 23-11a-3. O retry operacional registrado no datadir anterior nao e usado como evidencia
 do conteudo final; idempotencia e fail-closed permanecem cobertos pelos testes offline.
 
+### 9.1 Auditoria somente leitura apos a interrupcao
+
+A retomada em HEAD `0eeeeab1c9e1cfc4b060e3ea8f33f241b8277848` classificou o comando
+interrompido como **concluido validamente**, e nao como tentativa ausente, parcial ou
+falha:
+
+| Evidencia                        | Resultado atual                                                             |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| Processos e portas               | nenhum `node`/`mysqld` e nenhum listener em 3000, 3101 ou 3307 na entrada   |
+| Datadir `23-11a-3`               | 195 arquivos, 200.795.140 bytes; schema `j12_e2e_hml` materializado         |
+| Log interno `mysql-e2e.err`      | ready em 3307, shutdown solicitado, `Normal shutdown` e `Shutdown complete` |
+| Binlog interno `binlog.000001`   | 14 inserts APPLYING, 14 updates APPLIED e 0 transicao FAILED                |
+| Working tree de migrations       | nenhum delta nas 14 migrations em relacao ao HEAD                           |
+| Migrations historicas originais  | 12/12 checksums iguais aos valores fixos auditados                          |
+| Necessidade de novo datadir `-4` | nenhuma; a evidencia final continuava integra e foi reutilizada             |
+
+Os arquivos genericos `preflight.json`, `migration-plan.json`, inventories e
+`migration-apply.stdout/stderr.log` em `artifacts/e2e/` foram atualizados novamente as
+20:16 por uma execucao posterior sobre `mysql-data-sprint-23-11b`. Eles mostram o mesmo
+catalogo atual, 23 tabelas, 22 FKs, ledger 14/0/0 e stderr vazio, mas **nao** foram
+reatribuidos ao datadir `23-11a-3`. Para o `-3`, a prova atual usa somente seu log
+interno, seu binlog imutavel, os hashes atuais e o inventario final registrado antes da
+sobrescrita dos nomes genericos.
+
+### 9.2 Checksums finais confirmados pelo binlog do datadir `23-11a-3`
+
+| Migration                                                        | SHA-256                                                          |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 20260712183000_create_people_domain_tables                       | 0dfbca2723adac1d906769e1bd12b40ca9d486fafdab2a03529fffc6945609d3 |
+| 20260629134546_create_enrollments_table                          | 0f0e8a713af0b20138519b007d24dbc5d7ddf55b4ea4f230be14bd2bf1609115 |
+| 20260629190607_add_active_draft_unique_constraint_to_enrollments | 67e96a77c32e2477c7b23ee58eccb651bc72e07a222e0a77b4e4a91a2c524b1a |
+| 20260629232350_add_enrollment_confirmation_audit_columns         | e0c4cb886c96690c1c5b1ea27f209b56869573553a89351a672608d411f8510c |
+| 20260713100000_create_classes_foundation_table                   | 831c913c9670ac4b42bb2a62821379276acfdc55b516758be9746d7aed4bee0f |
+| 20260701103000_add_enrollment_class_links_table                  | c409b99ec23ca23ccc044a7da1d73abc160f4aa329799fefabaa389307c7f96e |
+| 20260713101500_reconcile_enrollment_class_links_indexes          | 6af1b45c9de6726b4f38c9fef5992f48bd122f4f215797f86eddbe4dd03b8495 |
+| 20260701120000_add_enrollment_class_links_table                  | d18f38c57747459782c7ca20220fb520f3fff50ee4e743df0d44588d40debb70 |
+| 20260702120000_create_enrollment_financial_obligations_table     | a12c5e6af7b0441951fc9d9b1586c842b321e93701f053ee9b3e3e945659cf92 |
+| 20260702133000_create_enrollment_agenda_items_table              | 6cd128d59b6169e16a46d91219ccd2c92d16db2754acbf33bd6bae5a85c41c8e |
+| 20260703130000_create_agenda_recurrence_tables                   | be981acab4de5c2c735b0de1bcafb6d49396608cae712eb9f8e66f6dabc8c8a3 |
+| 20260703143000_create_agenda_notification_tables                 | b83fcbd0edb59fd3e0369d46a9a1db8cbb0274a952902ac1b12fb082e398eb50 |
+| 20260709220000_create_financial_automation_execution_history     | 388b17b35800a0feb280ef6c7e8699bda99392532ed7749184443c541732d27f |
+| 20260712184500_create_auth_runtime_tables                        | c50b48b4c2072991a8b135240fd97ca535889a2cf5d5b0f3dabab16723cd875e |
+
 ## 10. Retomada da Sprint 23.11
 
 Com schema valido, o harness iniciou API em 127.0.0.1:3101, confirmou /ready 200,
@@ -240,11 +283,17 @@ Nao houve request externa inesperada no teste aprovado.
 - As 20 jornadas funcionais restantes precisam de fixture e assertions por dominio; a
   Sprint 23.11 segue parcialmente concluida.
 - Nginx, PM2, VPS, HML externa e producao nao foram testados nem acessados.
+- O working tree atual contem alteracoes posteriores da Sprint 23.11B. O ESLint
+  ampliado encontrou 43 erros de formatacao Prettier em seis arquivos desse trabalho
+  posterior; eles nao foram alterados nesta retomada por estarem fora do escopo 23.11A.
 
 ## 12. Gates finais
 
 Resultados devem ser lidos como contratos locais; testes que carregam db.js usam alvo
 127.0.0.1:1 invalido, exceto o ensaio E2E explicitamente isolado em 3307.
+
+A tabela abaixo preserva o fechamento originalmente versionado. A subsecao 12.1
+registra e prevalece como a validacao atual executada nesta retomada.
 
 | Gate                      | Resultado                                    |
 | ------------------------- | -------------------------------------------- |
@@ -265,6 +314,34 @@ Resultados devem ser lidos como contratos locais; testes que carregam db.js usam
 | Ledger final              | PASS; APPLIED 14, APPLYING 0, FAILED 0       |
 | Retry idempotente         | PASS offline; ensaio final nao sobrescrito   |
 | Browser 23.11             | Historico: PASS 1, FAIL 0, BLOCKED 20        |
+
+### 12.1 Validacao atual desta retomada
+
+| Gate                            | Resultado atual                                                   |
+| ------------------------------- | ----------------------------------------------------------------- |
+| Dry-run canonico                | PASS; 14 PENDING em ordem dependency-first, zero acesso a DB      |
+| Focados 23.11A + harness        | PASS 37/37                                                        |
+| Contratos CI/deploy             | PASS 12/12                                                        |
+| Contratos migrations            | PASS 38/38                                                        |
+| Seguranca                       | PASS 34/34                                                        |
+| Backend completo                | PASS 622/622                                                      |
+| Frontend completo               | PASS 78/78                                                        |
+| Secret scanner                  | PASS; 1.635 arquivos, 0 findings                                  |
+| Build Client                    | PASS; 3.737 modulos, 27,98 s                                      |
+| Build SSR                       | PASS; 449 modulos, 8,95 s                                         |
+| ESLint nucleo 23.11A            | PASS nos 9 arquivos-fonte da remediacao                           |
+| Prettier 23.11A                 | PASS nos 9 fontes, README e este relatorio                        |
+| ESLint ampliado do working tree | 43 erros Prettier em 6 arquivos posteriores, fora do escopo A     |
+| Baseline ESLint global          | timeout em 10 min; os 2 processos locais remanescentes encerrados |
+| git diff --check                | PASS apos a atualizacao final do relatorio                        |
+| MySQL base nova                 | PASS 14/14 APPLIED no datadir preservado `23-11a-3`               |
+| Ledger pelo binlog              | PASS; 14 APPLYING, 14 APPLIED e 0 FAILED                          |
+| Migrations originais            | PASS; 12/12 bytes e checksums intactos                            |
+| Browser 23.11                   | nao reexecutado; resultado historico preservado                   |
+
+O timeout do baseline global nao foi convertido em PASS. O PASS de ESLint/Prettier
+desta sprint e estritamente o escopo 23.11A; a pendencia posterior permanece visivel
+sem contaminar a conclusao funcional da remediacao de migrations.
 
 ## 13. Arquivos
 
@@ -295,11 +372,20 @@ Removido/substituido:
 - e2e/sprint-23-11/journeys.blocked.spec.cjs, placeholder substituido pela suite real
   parcial. Nenhuma funcionalidade de produto foi removida.
 
+Nesta retomada apos a interrupcao, somente
+`docs/AUDIT/SPRINT_23_11A_MIGRATION_DEPENDENCY_REMEDIATION.md` foi alterado.
+Nenhum arquivo de codigo, teste ou migration recebeu nova modificacao.
+
 ## 14. Classificacao
 
 Sprint 23.11A: **CONCLUIDA** quanto ao objetivo de migrations. Causa raiz corrigida,
 topologia valida, 14 migrations aplicadas realmente em banco descartavel, ledger limpo,
 retry idempotente e checksums historicos preservados.
+
+Percentual funcional real da Sprint 23.11A: **100%** do objetivo de remediacao de
+migrations. Esse percentual nao declara o working tree inteiro livre de pendencias:
+os erros de formatacao posteriores e fora do escopo permanecem reportados no gate
+ampliado.
 
 Sprint 23.11: **PARCIALMENTE CONCLUIDA**. Runtime e browser foram desbloqueados e J01
 passou; 20 jornadas continuam BLOCKED por trabalho funcional E2E nao pertencente a
@@ -319,3 +405,19 @@ realizado.
 - Untracked: entregas 23.10, 23.11 e os oito arquivos novos 23.11A listados acima.
 - Ignored: artifacts/e2e/ com todos os datadirs e evidencias preservados.
 - Commit/push/tag: nenhum.
+
+### 15.1 Estado Git desta retomada
+
+- Branch: `sprint-23`.
+- HEAD: `0eeeeab1c9e1cfc4b060e3ea8f33f241b8277848`, ja existente na entrada.
+- Relacao com `origin/sprint-23`: up to date.
+- Staged: nenhum.
+- Modified tracked: 15 ao final, sendo 14 alteracoes preexistentes preservadas e este
+  relatorio atualizado.
+- Untracked: 6 entregas preexistentes preservadas.
+- Migrations e migration-runner: nenhum delta em relacao ao HEAD.
+- Ignored: `artifacts/e2e/` preservado, inclusive todos os datadirs anteriores e o
+  datadir final `mysql-data-sprint-23-11a-3`.
+- Processos finais: nenhum `node`/`mysqld`; sem listeners em 3000, 3101 ou 3307.
+- Nenhum novo commit, push, tag, deploy, acesso externo ou descarte foi realizado nesta
+  retomada.
