@@ -106,10 +106,11 @@ class MySqlEnrollmentFinancialObligationRepository {
   async listEnrollmentFinancialObligations(input = {}) {
     const enrollmentId = requiredText(input.enrollmentId, "enrollmentId", 64);
     const limit = normalizeLimit(input.limit, 100);
-    const rows = await this.query(SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_ENROLLMENT_SQL, [
-      enrollmentId,
+    const sql = withNormalizedLimit(
+      SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_ENROLLMENT_SQL,
       limit,
-    ]);
+    );
+    const rows = await this.query(sql, [enrollmentId]);
 
     return readRows(rows).map(toEnrollmentFinancialObligationData).filter(Boolean);
   }
@@ -122,11 +123,11 @@ class MySqlEnrollmentFinancialObligationRepository {
     const studentPersonId = requiredText(input.studentPersonId, "studentPersonId", 64);
     const studentProfileId = requiredText(input.studentProfileId, "studentProfileId", 64);
     const limit = normalizeLimit(input.limit, 250);
-    const rows = await this.query(SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_STUDENT_SCOPE_SQL, [
-      studentPersonId,
-      studentProfileId,
+    const sql = withNormalizedLimit(
+      SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_STUDENT_SCOPE_SQL,
       limit,
-    ]);
+    );
+    const rows = await this.query(sql, [studentPersonId, studentProfileId]);
 
     return readRows(rows).map(toEnrollmentFinancialObligationData).filter(Boolean);
   }
@@ -445,6 +446,11 @@ function normalizeLimit(value, max) {
   }
 
   return Math.min(Math.trunc(parsed), max);
+}
+
+function withNormalizedLimit(sql, limit) {
+  // MySQL 8.4 may reject LIMIT markers in prepared statements; limit is a clamped integer.
+  return sql.replace("LIMIT ?", `LIMIT ${limit}`);
 }
 
 /**

@@ -1,7 +1,9 @@
 const express = require("express");
 const legacyFinanceiroRoutes = require("../../routes/financeiro.js");
 const { requireAuth, canManageSystem } = require("../../auth.js");
-const { gerarMensalidadesDoMesAtual } = require("../services/financeiro.service.js");
+const {
+  executeMonthlyBillingAutomation,
+} = require("../services/financeiro-automation-history.service.js");
 
 const {
   getResumoFinanceiro,
@@ -14,6 +16,11 @@ const {
 const { pool } = require("../config/db.js");
 
 const router = express.Router();
+
+// Important: preserve the established authorization, schema compatibility and
+// realtime contracts. New endpoints remain additive fallbacks when legacy does
+// not handle a path.
+router.use("/", legacyFinanceiroRoutes);
 
 /**
  * ====================================
@@ -135,12 +142,16 @@ router.post(
 
   async (req, res, next) => {
     try {
-      const summary = await gerarMensalidadesDoMesAtual({
+      const { executionId, summary } = await executeMonthlyBillingAutomation({
         competencia: req.body?.competencia,
+        correlationId: req.id,
+        requestedBy: req.auth?.email || req.auth?.id || "admin",
       });
 
       return res.json({
         success: true,
+
+        execution_id: executionId,
 
         competencia: summary.competencia,
 
@@ -310,13 +321,5 @@ router.get(
     }
   },
 );
-
-/**
- * ====================================
- * ROTAS LEGADAS
- * ====================================
- */
-
-router.use("/", legacyFinanceiroRoutes);
 
 module.exports = router;

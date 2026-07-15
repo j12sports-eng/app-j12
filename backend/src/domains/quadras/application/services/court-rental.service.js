@@ -392,6 +392,8 @@ class CourtRentalService {
       params.push(toSqlDateTime(filters.to));
     }
 
+    const limit = normalizeLimit(filters.limit, 500);
+
     const rows = await this.query(
       `
         SELECT
@@ -406,9 +408,10 @@ class CourtRentalService {
         INNER JOIN j12_locatarios locatario ON locatario.id = reserva.locatario_id
         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
         ORDER BY reserva.start_at ASC, reserva.created_at DESC
-        LIMIT ?
+        -- MySQL 8.4 rejects LIMIT markers in some prepared statements; limit is a clamped integer.
+        LIMIT ${limit}
       `,
-      [...params, normalizeLimit(filters.limit, 500)],
+      params,
     );
 
     return readRows(rows).map(mapReservationRow);
@@ -1374,14 +1377,16 @@ class CourtRentalService {
 
   async listAudit(filters = {}) {
     await this.ensureSchema();
+    const limit = normalizeLimit(filters.limit, 120);
     const rows = await this.query(
       `
         SELECT *
         FROM j12_quadra_audit_logs
         ORDER BY created_at DESC
-        LIMIT ?
+        -- MySQL 8.4 rejects LIMIT markers in some prepared statements; limit is a clamped integer.
+        LIMIT ${limit}
       `,
-      [normalizeLimit(filters.limit, 120)],
+      [],
     );
 
     return readRows(rows).map(mapAuditRow);

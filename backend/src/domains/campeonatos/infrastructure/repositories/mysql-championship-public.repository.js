@@ -88,6 +88,7 @@ class MySqlChampionshipPublicRepository {
     const total = Number(readFirstRow(totalRows)?.total || 0);
     const limit = normalizeLimitValue(filters.limit, 20);
     const page = normalizePageValue(filters.page);
+    const offset = (page - 1) * limit;
     const orderColumn =
       PUBLIC_CHAMPIONSHIP_SORT_COLUMNS[filters.sortBy] ||
       PUBLIC_CHAMPIONSHIP_SORT_COLUMNS.publishedAt;
@@ -98,10 +99,10 @@ class MySqlChampionshipPublicRepository {
         FROM ${CHAMPIONSHIP_TABLE_NAME}
         WHERE ${where.join(" AND ")}
         ORDER BY ${orderColumn} ${orderDirection}, start_date DESC, name ASC
-        LIMIT ?
-        OFFSET ?
+        LIMIT ${limit}
+        OFFSET ${offset}
       `,
-      [...params, limit, (page - 1) * limit],
+      params,
     );
 
     return {
@@ -168,6 +169,7 @@ class MySqlChampionshipPublicRepository {
     const total = Number(readFirstRow(totalRows)?.total || 0);
     const limit = normalizeLimitValue(filters.limit, 100);
     const page = normalizePageValue(filters.page);
+    const offset = (page - 1) * limit;
     const rows = await this.query(
       `
         SELECT
@@ -195,10 +197,10 @@ class MySqlChampionshipPublicRepository {
         ${fromClause}
         WHERE ${where.join(" AND ")}
         ORDER BY group_item.display_order ASC, assignment.draw_position ASC, team.name ASC
-        LIMIT ?
-        OFFSET ?
+        LIMIT ${limit}
+        OFFSET ${offset}
       `,
-      [...params, limit, (page - 1) * limit],
+      params,
     );
 
     return {

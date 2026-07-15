@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -221,6 +221,11 @@ function LoadingState() {
 }
 
 function FinanceiroAdminPage() {
+  const location = useLocation();
+  if (location.pathname !== "/admin/financeiro") {
+    return <Outlet />;
+  }
+
   return (
     <ProtectedRoute roles={["admin", "coordenador"]}>
       <FinanceiroAdminContent />

@@ -85,9 +85,10 @@ class MySqlAutomationExecutionHistoryRepository extends AutomationExecutionHisto
       SELECT * FROM ${TABLE_NAME}
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
       ORDER BY ${sortColumn} ${filters.sortDirection.toUpperCase()}, id DESC
-      LIMIT ? OFFSET ?
+      LIMIT ${filters.limit} OFFSET ${filters.offset}
     `;
-    params.push(filters.limit, filters.offset);
+    // Pagination values come from normalizeHistoryFilters and are safe integers.
+    // Embedding them avoids MySQL 8.4 prepared-statement failures on LIMIT/OFFSET markers.
     const rows = await this.query(sql, params);
     return readRows(rows).map(toDomain);
   }

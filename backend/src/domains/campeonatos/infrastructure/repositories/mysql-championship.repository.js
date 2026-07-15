@@ -173,7 +173,7 @@ class MySqlChampionshipRepository {
       params.push(search, search, search);
     }
 
-    params.push(normalizeLimit(filters.limit, 100));
+    const limit = normalizeLimit(filters.limit, 100);
 
     const rows = await this.query(
       `
@@ -181,7 +181,7 @@ class MySqlChampionshipRepository {
         FROM ${CHAMPIONSHIP_TABLE_NAME}
         WHERE ${where.join(" AND ")}
         ORDER BY start_date DESC, created_at DESC
-        LIMIT ?
+        LIMIT ${limit}
       `,
       params,
     );

@@ -14,7 +14,7 @@ const {
 test("confirmReservationPayment rejects cancelled reservations before any mutation", async () => {
   const queries = [];
   const service = new CourtRentalService({
-    queryRunner: async (sql, params) => {
+    query: async (sql, params) => {
       queries.push({ params, sql });
       return [];
     },
@@ -36,6 +36,47 @@ test("confirmReservationPayment rejects cancelled reservations before any mutati
     },
   );
   assert.equal(queries.length, 0);
+});
+
+test("listReservations embeds a normalized LIMIT literal for MySQL 8.4", async () => {
+  const queries = [];
+  const service = new CourtRentalService({
+    query: async (sql, params) => {
+      queries.push({ params, sql });
+      return [];
+    },
+  });
+  service.ensureSchema = async () => {};
+
+  const reservations = await service.listReservations({
+    courtId: "court-1",
+    limit: "37.9",
+  });
+
+  assert.deepEqual(reservations, []);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /LIMIT 37\s*$/);
+  assert.doesNotMatch(queries[0].sql, /LIMIT\s+\?/);
+  assert.deepEqual(queries[0].params, ["court-1"]);
+});
+
+test("listAudit embeds a normalized LIMIT literal for MySQL 8.4", async () => {
+  const queries = [];
+  const service = new CourtRentalService({
+    query: async (sql, params) => {
+      queries.push({ params, sql });
+      return [];
+    },
+  });
+  service.ensureSchema = async () => {};
+
+  const audit = await service.listAudit({ limit: "80.9" });
+
+  assert.deepEqual(audit, []);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /LIMIT 80\s*$/);
+  assert.doesNotMatch(queries[0].sql, /LIMIT\s+\?/);
+  assert.deepEqual(queries[0].params, []);
 });
 
 test("calculateReservationValue applies weekday price rules and discounts", () => {

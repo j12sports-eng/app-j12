@@ -258,12 +258,14 @@ test("MySqlEnrollmentFinancialObligationRepository lists admin obligations by en
     }
 
     if (sql.includes("WHERE enrollment_id = ?")) {
-      assert.deepEqual(params, ["enrollment-admin-list", 50]);
+      assert.match(sql, /LIMIT 50/);
+      assert.deepEqual(params, ["enrollment-admin-list"]);
       return rows;
     }
 
     assert.match(sql, /INNER JOIN enrollment_financial_obligations/);
-    assert.deepEqual(params, ["person-admin", "profile-admin", 50]);
+    assert.match(sql, /LIMIT 50/);
+    assert.deepEqual(params, ["person-admin", "profile-admin"]);
     return rows;
   };
   const repository = new MySqlEnrollmentFinancialObligationRepository({ queryRunner });

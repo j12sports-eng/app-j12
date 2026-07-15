@@ -31,7 +31,9 @@ const authRoutes = require("../routes/auth.js");
 const alunoMeRoutes = require("../routes/aluno-me.js");
 const professorMeRoutes = require("../routes/professor-me.js");
 const dashboardRoutes = require("./routes/dashboard.routes.js");
-const financeiroRoutes = require("../routes/financeiro.js");
+// Keep both server entrypoints on the compatible Financeiro router. It exposes
+// the current endpoints first and delegates the remaining legacy routes.
+const financeiroRoutes = require("./routes/financeiro.routes.js");
 
 const alunoCompletoRoutes = require("./routes/aluno-completo.routes.js");
 const alunosRoutes = require("./routes/alunos.routes.js");

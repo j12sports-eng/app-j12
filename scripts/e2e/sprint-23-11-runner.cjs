@@ -9,12 +9,16 @@ const mysql = require("mysql2/promise");
 const { assertSprint2311Environment } = require("./sprint-23-11-environment.cjs");
 
 const ROOT = path.resolve(__dirname, "../..");
-const ARTIFACTS = path.join(ROOT, "artifacts/e2e");
-// Keep the failed pre-remediation datadir immutable as audit evidence.
-const DATADIR = path.join(ARTIFACTS, "mysql-data-sprint-23-11a-3");
+const ARTIFACTS_ROOT = path.join(ROOT, "artifacts/e2e");
+const RUN_NAME = process.env.E2E_RUN_NAME || "sprint-23-11b-final";
+const ARTIFACTS = path.join(ARTIFACTS_ROOT, "runs", RUN_NAME);
+// Sprint 23.11B must never mutate the preserved 23.11/23.11A datadirs.
+const DATADIR = path.join(ARTIFACTS_ROOT, "mysql-data-" + RUN_NAME);
+const LOCAL_PORTS = [3000, 3101, 3307];
 const MYSQLD =
   process.env.E2E_MYSQLD_PATH || "C:/Program Files/MySQL/MySQL Server 8.4/bin/mysqld.exe";
 const processes = [];
+let portsPreflightPassed = false;
 
 function buildEnvironment() {
   const secret = randomBytes(24).toString("base64url");
@@ -36,6 +40,7 @@ function buildEnvironment() {
     JWT_SECRET: `LocalOnlyJwt-${randomBytes(32).toString("base64url")}`,
     E2E_BASE_URL: "http://127.0.0.1:3000",
     E2E_API_URL: "http://127.0.0.1:3101",
+    E2E_ARTIFACTS_DIR: path.join(ARTIFACTS, "playwright"),
     VITE_API_URL: "http://127.0.0.1:3101",
     CORS_ORIGIN: "http://127.0.0.1:3000",
     AUTH_SEED_ENABLED: "true",
@@ -48,6 +53,9 @@ function buildEnvironment() {
     EMAIL_PROVIDER: "disabled",
     INTER_INTEGRATION_MODE: "disabled",
     RATE_LIMIT_MAX: "5000",
+    // Each Playwright journey starts with a fresh browser context and performs
+    // a real login, so the local-only suite needs a ceiling above the catalog.
+    AUTH_RATE_LIMIT_MAX: "5000",
     BOOTSTRAP_WARN_TIMEOUT_MS: "60000",
     INTER_CLIENT_ID: "",
     INTER_CLIENT_SECRET: "",
@@ -73,7 +81,10 @@ async function main() {
   const guard = assertSprint2311Environment(env);
   writeJson("preflight.json", { checkedAt: new Date().toISOString(), ...guard.identity });
   assertMysqlBinary();
-  await assertPortFree(3307);
+  for (const port of LOCAL_PORTS) {
+    await assertPortFree(port);
+  }
+  portsPreflightPassed = true;
 
   const plan = await runCapture(
     process.execPath,
@@ -106,6 +117,10 @@ async function main() {
     password: "",
   });
   try {
+    if (process.argv.includes("--apply-local-migrations")) {
+      // The database is disposable and local-only; recreating it keeps every run deterministic.
+      await root.query("DROP DATABASE IF EXISTS j12_e2e_hml");
+    }
     await provisionUser(root, env);
     await writeDatabaseInventory(root, "database-inventory-before.json", false);
     if (process.argv.includes("--apply-local-migrations")) {
@@ -132,11 +147,35 @@ async function main() {
     return;
   }
 
+  const bootstrapApi = start(process.execPath, ["backend/server.js"], env, "api-bootstrap");
+  await waitForHttp("http://127.0.0.1:3101/ready", 90_000);
+  await stopRuntime(bootstrapApi);
+
+  const fixtureSetup = await runCapture(
+    process.execPath,
+    ["scripts/e2e/sprint-23-11-fixtures.cjs", "setup"],
+    env,
+  );
+  fs.writeFileSync(path.join(ARTIFACTS, "fixtures-setup.stdout.log"), fixtureSetup.stdout);
+  fs.writeFileSync(path.join(ARTIFACTS, "fixtures-setup.stderr.log"), fixtureSetup.stderr);
+  if (fixtureSetup.code !== 0) throw new Error(`Fixture setup failed: ${fixtureSetup.stderr}`);
+
   start(process.execPath, ["backend/server.js"], env, "api-runtime");
   await waitForHttp("http://127.0.0.1:3101/ready", 90_000);
+
+  const fixtureLinks = await runCapture(
+    process.execPath,
+    ["scripts/e2e/sprint-23-11-fixtures.cjs", "link-accounts"],
+    env,
+  );
+  fs.writeFileSync(path.join(ARTIFACTS, "fixtures-links.stdout.log"), fixtureLinks.stdout);
+  fs.writeFileSync(path.join(ARTIFACTS, "fixtures-links.stderr.log"), fixtureLinks.stderr);
+  if (fixtureLinks.code !== 0)
+    throw new Error(`Fixture account links failed: ${fixtureLinks.stderr}`);
+
   start(
     process.execPath,
-    ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "3000"],
+    ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "3000", "--strictPort"],
     env,
     "frontend-runtime",
   );
@@ -144,7 +183,12 @@ async function main() {
 
   const result = await runCapture(
     process.execPath,
-    ["node_modules/@playwright/test/cli.js", "test", "--config=playwright.config.cjs"],
+    [
+      "node_modules/@playwright/test/cli.js",
+      "test",
+      "--config=playwright.config.cjs",
+      ...(process.env.E2E_GREP ? ["--grep", process.env.E2E_GREP] : []),
+    ],
     env,
   );
   fs.writeFileSync(path.join(ARTIFACTS, "playwright.stdout.log"), result.stdout);
@@ -290,10 +334,32 @@ async function assertPortFree(port) {
   await new Promise((resolve) => server.close(resolve));
 }
 
+async function waitForPortsFree(ports, timeout) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try {
+      for (const port of ports) {
+        await assertPortFree(port);
+      }
+      return;
+    } catch {
+      await delay(300);
+    }
+  }
+  throw new Error(`Timed out waiting for ports ${ports.join(", ")} to become free.`);
+}
+
 async function stopMysql(child) {
   if (!child || child.exitCode !== null) return;
   child.kill("SIGTERM");
   await Promise.race([new Promise((resolve) => child.once("exit", resolve)), delay(10_000)]);
+}
+
+async function stopRuntime(child) {
+  if (!child || child.exitCode !== null) return;
+  stopChild(child);
+  await Promise.race([new Promise((resolve) => child.once("exit", resolve)), delay(10_000)]);
+  if (child.exitCode === null) throw new Error(`Timed out stopping ${child.j12Name}.`);
 }
 
 function writeJson(name, value) {
@@ -324,6 +390,10 @@ async function cleanup() {
     }
   }
   await delay(750);
+  if (portsPreflightPassed) {
+    await waitForPortsFree(LOCAL_PORTS, 15_000);
+    process.stdout.write(`Local ports confirmed free: ${LOCAL_PORTS.join(", ")}.\n`);
+  }
 }
 
 function stopChild(child) {

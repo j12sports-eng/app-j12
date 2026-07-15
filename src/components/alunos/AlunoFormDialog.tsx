@@ -642,6 +642,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div className="sm:col-span-2">
               <label className={labelCls}>Nome completo *</label>
               <input
+                aria-label="Nome completo"
                 className={inputCls}
                 value={form.nome}
                 onChange={(e) => {
@@ -655,6 +656,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>E-mail *</label>
               <input
+                aria-label="E-mail do aluno"
                 type="email"
                 className={inputCls}
                 value={form.email}
@@ -671,6 +673,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>Telefone *</label>
               <input
+                aria-label="Telefone do aluno"
                 className={inputCls}
                 value={form.telefone}
                 onChange={(e) => {
@@ -687,6 +690,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>Data de nascimento</label>
               <input
+                aria-label="Data de nascimento"
                 type="date"
                 className={inputCls}
                 value={form.dataNascimento}
@@ -697,6 +701,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>Status</label>
               <select
+                aria-label="Status do aluno"
                 className={inputCls}
                 value={form.status}
                 onChange={(e) => setField("status", e.target.value as StatusAluno)}
@@ -716,6 +721,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>Nome do responsável</label>
               <input
+                aria-label="Nome do responsavel"
                 className={inputCls}
                 value={form.responsavel}
                 onChange={(e) => setField("responsavel", e.target.value)}
@@ -725,6 +731,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>WhatsApp do responsável</label>
               <input
+                aria-label="WhatsApp do responsavel"
                 className={inputCls}
                 value={form.telefoneResponsavel}
                 onChange={(e) => setField("telefoneResponsavel", e.target.value)}
@@ -741,6 +748,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>Modalidade *</label>
               <select
+                aria-label="Modalidade"
                 className={inputCls}
                 value={modalidadeSelecionada}
                 onChange={(e) => handleModalidadeChange(e.target.value)}
@@ -760,6 +768,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div>
               <label className={labelCls}>Unidade *</label>
               <select
+                aria-label="Unidade"
                 className={modalidadeSelecionada ? inputCls : disabledCls}
                 value={unidadeSelecionada}
                 onChange={(e) => handleUnidadeChange(e.target.value)}
@@ -844,6 +853,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
             <div className="sm:col-span-2">
               <label className={labelCls}>Plano *</label>
               <select
+                aria-label="Plano"
                 className={modalidadeSelecionada && unidadeSelecionada ? inputCls : disabledCls}
                 value={planoSelecionado}
                 onChange={(e) => handlePlanoChange(e.target.value)}

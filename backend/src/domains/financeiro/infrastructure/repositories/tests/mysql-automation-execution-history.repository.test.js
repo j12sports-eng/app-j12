@@ -84,6 +84,7 @@ test("MySQL history list builds dynamic parameterized filters and pagination", a
   assert.deepEqual(result, []);
   assert.match(calls[0].sql, /ORDER BY duration_ms ASC, id DESC/);
   assert.match(calls[0].sql, /automation_name = \?/);
+  assert.match(calls[0].sql, /LIMIT 25 OFFSET 10/);
   assert.deepEqual(calls[0].params, [
     "billing",
     "workflow-a",
@@ -91,8 +92,6 @@ test("MySQL history list builds dynamic parameterized filters and pagination", a
     "corr-db",
     "manual",
     "2026-07-01T00:00:00.000Z",
-    25,
-    10,
   ]);
   await assert.rejects(repository.list({ limit: 0 }), {
     code: "AUTOMATION_HISTORY_FILTER_INVALID",

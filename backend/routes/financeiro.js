@@ -1082,7 +1082,10 @@ router.patch("/cobrancas/:id/pagar", async (req, res, next) => {
       sanitizeIsoDate(req.body?.pagoEm) ||
       dataRecebimento;
     const valorRecebido = sanitizeNumber(
-      req.body?.valorRecebido ?? req.body?.valor_recebido ?? req.body?.valorFinal ?? req.body?.valor,
+      req.body?.valorRecebido ??
+        req.body?.valor_recebido ??
+        req.body?.valorFinal ??
+        req.body?.valor,
     );
     const valorRecebidoParam = valorRecebido > 0 ? valorRecebido : null;
     const observacaoPagamento = sanitizeNullableString(
@@ -1187,6 +1190,10 @@ router.patch("/cobrancas/:id/cancelar", async (req, res, next) => {
   }
 });
 
+const {
+  executeMonthlyBillingAutomation,
+} = require("../src/services/financeiro-automation-history.service.js");
+
 async function handleGenerateMonth(req, res, next) {
   try {
     if (!canManageSystem(req.auth)) {
@@ -1195,12 +1202,12 @@ async function handleGenerateMonth(req, res, next) {
         .json({ message: "Apenas administradores e coordenadores podem gerar mensalidades." });
     }
 
-    const summary = await generateMonthlyCharges({
-      referenceCompetencia:
+    const { executionId, summary } = await executeMonthlyBillingAutomation({
+      competencia:
         req.body?.competencia ?? req.body?.referencia ?? req.body?.competency ?? undefined,
-      actorName: req.auth?.nome || req.auth?.email || "admin",
+      correlationId: req.id,
+      requestedBy: req.auth?.nome || req.auth?.email || req.auth?.id || "admin",
     });
-    await syncAllChargeCompatibilityTables();
     emitFinanceiroRealtime("mensalidades_geradas", {
       competencia: summary.competencia,
       createdCount: summary.created,
@@ -1208,9 +1215,17 @@ async function handleGenerateMonth(req, res, next) {
     });
 
     return res.json({
+      success: true,
+      execution_id: executionId,
       competencia: summary.competencia,
       createdCount: summary.created,
       skippedCount: summary.skipped,
+      criadas: summary.created,
+      geradas: summary.created,
+      ignoradas: summary.skipped,
+      existentes: summary.existentes,
+      erros: summary.erros,
+      total_alunos: summary.total_alunos,
       message:
         summary.created > 0
           ? `${summary.created} mensalidade(s) gerada(s) e ${summary.skipped} ignorada(s).`

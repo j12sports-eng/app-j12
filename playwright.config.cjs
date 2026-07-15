@@ -1,7 +1,10 @@
 const path = require("node:path");
 const { defineConfig, devices } = require("@playwright/test");
 
-const artifacts = path.resolve(__dirname, "artifacts/e2e/playwright");
+const artifacts = path.resolve(
+  __dirname,
+  process.env.E2E_ARTIFACTS_DIR || "artifacts/e2e/playwright",
+);
 
 module.exports = defineConfig({
   testDir: "./e2e/sprint-23-11",

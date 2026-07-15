@@ -156,7 +156,11 @@ class MySqlEnrollmentRepository {
    * @param {number} [options.lockTimeoutSeconds]
    * @param {(sql: string, params?: unknown[]) => Promise<unknown>} [options.queryRunner]
    */
-  constructor({ logger = console, lockTimeoutSeconds = DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS, queryRunner = null } = {}) {
+  constructor({
+    logger = console,
+    lockTimeoutSeconds = DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS,
+    queryRunner = null,
+  } = {}) {
     this.logger = logger;
     this.lockTimeoutSeconds = normalizeLockTimeoutSeconds(lockTimeoutSeconds);
     this.query = queryRunner || getDefaultQueryRunner();
@@ -305,7 +309,11 @@ class MySqlEnrollmentRepository {
       }
 
       try {
-        const createdEnrollment = await this.create({ ...input, id, status: EnrollmentStatus.DRAFT });
+        const createdEnrollment = await this.create({
+          ...input,
+          id,
+          status: EnrollmentStatus.DRAFT,
+        });
         this.logInfo("[enrollments] Created new draft Enrollment inside idempotency lock.", {
           enrollmentId: createdEnrollment?.id ?? null,
           lockName,
@@ -329,26 +337,32 @@ class MySqlEnrollmentRepository {
         });
 
         if (!recoveredEnrollment) {
-          this.logWarn("[enrollments] Draft Enrollment duplicate constraint hit, but no reusable draft was found.", {
+          this.logWarn(
+            "[enrollments] Draft Enrollment duplicate constraint hit, but no reusable draft was found.",
+            {
+              code: createError?.code ?? DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
+              errno: createError?.errno ?? null,
+              indexName: ACTIVE_DRAFT_UNIQUE_INDEX_NAME,
+              lockName,
+              studentPersonId: values.student_person_id,
+              studentProfileId: values.student_profile_id,
+            },
+          );
+          throw createError;
+        }
+
+        this.logWarn(
+          "[enrollments] Draft Enrollment duplicate constraint hit; reusing existing draft.",
+          {
             code: createError?.code ?? DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
+            enrollmentId: recoveredEnrollment.id ?? null,
             errno: createError?.errno ?? null,
             indexName: ACTIVE_DRAFT_UNIQUE_INDEX_NAME,
             lockName,
             studentPersonId: values.student_person_id,
             studentProfileId: values.student_profile_id,
-          });
-          throw createError;
-        }
-
-        this.logWarn("[enrollments] Draft Enrollment duplicate constraint hit; reusing existing draft.", {
-          code: createError?.code ?? DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
-          enrollmentId: recoveredEnrollment.id ?? null,
-          errno: createError?.errno ?? null,
-          indexName: ACTIVE_DRAFT_UNIQUE_INDEX_NAME,
-          lockName,
-          studentPersonId: values.student_person_id,
-          studentProfileId: values.student_profile_id,
-        });
+          },
+        );
 
         return {
           created: false,
@@ -374,7 +388,10 @@ class MySqlEnrollmentRepository {
           this.logError("[enrollments] Draft Enrollment idempotency lock release failed.", {
             code: releaseError?.code ?? DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED_CODE,
             lockName,
-            message: releaseError instanceof Error ? releaseError.message : String(releaseError ?? "Unknown error"),
+            message:
+              releaseError instanceof Error
+                ? releaseError.message
+                : String(releaseError ?? "Unknown error"),
             studentPersonId: values.student_person_id,
             studentProfileId: values.student_profile_id,
           });
@@ -473,8 +490,13 @@ class MySqlEnrollmentRepository {
     const likeTerm = `%${escapeLikeTerm(search)}%`;
     const documentDigits = search.replace(/\D/g, "");
     const documentTerm =
-      documentDigits.length >= 2 ? `%${escapeLikeTerm(documentDigits)}%` : "__J12_NO_DOCUMENT_MATCH__";
-    const rows = await this.query(SEARCH_ENROLLMENT_STUDENT_SCOPES_SQL, [
+      documentDigits.length >= 2
+        ? `%${escapeLikeTerm(documentDigits)}%`
+        : "__J12_NO_DOCUMENT_MATCH__";
+    // MySQL 8.4 can reject a LIMIT marker in this prepared statement. The value is
+    // already clamped to an integer, so only that safe literal is embedded in SQL.
+    const searchSql = withNormalizedLimit(SEARCH_ENROLLMENT_STUDENT_SCOPES_SQL, safeLimit);
+    const rows = await this.query(searchSql, [
       EnrollmentStatus.DRAFT,
       EnrollmentStatus.ACTIVE,
       likeTerm,
@@ -483,7 +505,6 @@ class MySqlEnrollmentRepository {
       likeTerm,
       search,
       search,
-      safeLimit,
     ]);
     const list = Array.isArray(rows?.[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
 
@@ -495,7 +516,10 @@ class MySqlEnrollmentRepository {
    * @returns {Promise<void>}
    */
   async acquireDraftEnrollmentLock(lockName) {
-    const rows = await this.query(GET_DRAFT_ENROLLMENT_LOCK_SQL, [lockName, this.lockTimeoutSeconds]);
+    const rows = await this.query(GET_DRAFT_ENROLLMENT_LOCK_SQL, [
+      lockName,
+      this.lockTimeoutSeconds,
+    ]);
     const row = readFirstRow(rows);
     const locked = Number(row?.locked);
 
@@ -503,7 +527,8 @@ class MySqlEnrollmentRepository {
       return;
     }
 
-    const errorCode = locked === 0 ? DRAFT_ENROLLMENT_LOCK_TIMEOUT_CODE : DRAFT_ENROLLMENT_LOCK_FAILED_CODE;
+    const errorCode =
+      locked === 0 ? DRAFT_ENROLLMENT_LOCK_TIMEOUT_CODE : DRAFT_ENROLLMENT_LOCK_FAILED_CODE;
     const error = new Error(
       locked === 0
         ? "MySqlEnrollmentRepository timed out while acquiring draft enrollment idempotency lock."
@@ -537,10 +562,13 @@ class MySqlEnrollmentRepository {
     const released = normalizedReleaseValue === 1;
 
     if (!released) {
-      this.logWarn("[enrollments] Draft Enrollment idempotency lock release returned non-success.", {
-        lockName,
-        releaseValue: normalizedReleaseValue,
-      });
+      this.logWarn(
+        "[enrollments] Draft Enrollment idempotency lock release returned non-success.",
+        {
+          lockName,
+          releaseValue: normalizedReleaseValue,
+        },
+      );
     }
 
     return {
@@ -698,6 +726,10 @@ function normalizeSearchLimit(value) {
   return Math.min(Math.trunc(parsed), 25);
 }
 
+function withNormalizedLimit(sql, limit) {
+  return sql.replace("LIMIT ?", `LIMIT ${limit}`);
+}
+
 /**
  * @param {string} value
  * @returns {string}
@@ -758,11 +790,7 @@ function isActiveDraftDuplicateEntryError(error) {
     return false;
   }
 
-  const message = [
-    candidate.message,
-    candidate.sqlMessage,
-    candidate.sql,
-  ]
+  const message = [candidate.message, candidate.sqlMessage, candidate.sql]
     .filter(Boolean)
     .join(" ");
 
