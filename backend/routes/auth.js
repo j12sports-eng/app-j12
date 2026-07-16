@@ -1,6 +1,12 @@
 const express = require("express");
 const { ensureAuthSchema } = require("../db.js");
 const {
+  SECURITY_EVENTS,
+  createBruteForceProtection,
+  logSecurityEvent,
+  validateAuthInput,
+} = require("../src/security/security-hardening.js");
+const {
   PASSWORD_RULE_MESSAGE,
   authenticateUserDetailed,
   changePassword,
@@ -18,6 +24,7 @@ const router = express.Router();
 const AUTH_RATE_LIMIT_WINDOW_MS = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60_000);
 const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX || 10);
 const authRateLimitBuckets = new Map();
+const bruteForceProtection = createBruteForceProtection();
 
 function authRateLimit(req, res, next) {
   if (process.env.NODE_ENV === "test" && process.env.AUTH_RATE_LIMIT_TEST !== "enabled") {
@@ -25,17 +32,17 @@ function authRateLimit(req, res, next) {
   }
   const now = Date.now();
   const key = `${req.ip || req.socket?.remoteAddress || "unknown"}:${req.path}`;
-  const bucket = authRateLimitBuckets.get(key) || {
-    count: 0,
-    resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
-  };
-  if (bucket.resetAt <= now) {
-    bucket.count = 0;
-    bucket.resetAt = now + AUTH_RATE_LIMIT_WINDOW_MS;
-  }
-  bucket.count += 1;
-  authRateLimitBuckets.set(key, bucket);
-  if (bucket.count > AUTH_RATE_LIMIT_MAX) {
+  const attempts = (authRateLimitBuckets.get(key) || []).filter(
+    (timestamp) => timestamp > now - AUTH_RATE_LIMIT_WINDOW_MS,
+  );
+  attempts.push(now);
+  authRateLimitBuckets.set(key, attempts);
+  if (attempts.length > AUTH_RATE_LIMIT_MAX) {
+    logSecurityEvent(SECURITY_EVENTS.RATE_LIMIT_TRIGGERED, req, {
+      policy: "authentication",
+      retryAfterSeconds: Math.ceil(AUTH_RATE_LIMIT_WINDOW_MS / 1000),
+    });
+    res.setHeader("Retry-After", String(Math.ceil(AUTH_RATE_LIMIT_WINDOW_MS / 1000)));
     return res.status(429).json({
       code: "AUTH_RATE_LIMITED",
       message: "Muitas tentativas. Aguarde antes de tentar novamente.",
@@ -142,6 +149,17 @@ router.post("/login", authRateLimit, async (req, res, next) => {
     const password = String(req.body.senha || req.body.password || "");
     const loginMeta = { usuarioInformado: identifier || null };
 
+    if (!validateAuthInput(req)) {
+      logSecurityEvent(SECURITY_EVENTS.VALIDATION_FAILED, req, { field: "body" });
+      return res.status(400).json({
+        success: false,
+        message: "Dados invalidos. Informe email/login e senha.",
+        code: "VALIDATION_ERROR",
+        requestId: req.id || null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     logLogin("info", "Validando entrada", req, {
       ...loginMeta,
       hasIdentifier: Boolean(identifier),
@@ -154,6 +172,14 @@ router.post("/login", authRateLimit, async (req, res, next) => {
         code: "VALIDATION_ERROR",
         requestId: req.id || null,
         timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (bruteForceProtection.check(req, identifier)) {
+      return res.status(429).json({
+        success: false,
+        message: "Muitas tentativas. Aguarde antes de tentar novamente.",
+        code: "AUTH_RATE_LIMITED",
       });
     }
 
@@ -173,6 +199,11 @@ router.post("/login", authRateLimit, async (req, res, next) => {
     });
     const user = authResult.user;
     if (!user) {
+      bruteForceProtection.failure(req, identifier);
+      logSecurityEvent(SECURITY_EVENTS.LOGIN_FAILURE, req, {
+        found: authResult.found,
+        reason: authResult.reason,
+      });
       logLogin("warn", "Credenciais invalidas", req, {
         ...loginMeta,
         found: authResult.found,
@@ -196,6 +227,10 @@ router.post("/login", authRateLimit, async (req, res, next) => {
     });
 
     const token = await createSession(user);
+    bruteForceProtection.success(req, identifier);
+    logSecurityEvent(SECURITY_EVENTS.LOGIN_SUCCESS, req, {
+      user: { id: user.id, role: user.role },
+    });
 
     logLogin("info", "Login concluido", req, {
       ...loginMeta,

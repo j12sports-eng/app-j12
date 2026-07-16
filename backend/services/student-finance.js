@@ -1,6 +1,11 @@
 const { randomUUID } = require("node:crypto");
 const { getCollectionSnapshot, query, tableExists, transaction } = require("../db.js");
 
+const PLAN_COLUMNS =
+  "id, nome, valor, modalidade, unidade, dias_horarios, frequencia, status, categoria, descricao, preco_mensal, taxa_matricula, fidelidade_meses, aulas_por_semana, modalidades_json, tags_json, contrato_vinculado, aceita_upgrade, destaque_comercial, created_at, updated_at";
+const CHARGE_COLUMNS =
+  "id, aluno_id, numero_matricula, nome_aluno, competencia, descricao, tipo, valor, vencimento, status, origem, periodicidade, plano_id, plano_nome, modalidade, turma, unidade, responsavel_financeiro, responsavel_cpf, telefone_whatsapp, email, observacao, pago_em, forma_pagamento, data_geracao, data_pagamento, valor_original, desconto_valor, desconto_percentual, bolsa_valor, bolsa_percentual, multa_percentual, juros_dia_percentual, valor_final, tipo_cobranca, ativo, alterado_em, alterado_por, cancelamento_motivo, desconto_motivo, created_at, updated_at";
+
 function text(value, max = 191) {
   return String(value ?? "")
     .trim()
@@ -75,16 +80,24 @@ function normalizeEmail(value) {
   return normalized || null;
 }
 
-async function getPlanCatalog() {
-  const hasMysqlCatalog = await tableExists("j12_planos");
+async function getPlanCatalog(connection = null) {
+  const hasMysqlCatalog = connection
+    ? await connectionTableExists(connection, "j12_planos")
+    : await tableExists("j12_planos");
   if (hasMysqlCatalog) {
-    const rows = await query(
-      `
-        SELECT *
-        FROM j12_planos
-        ORDER BY nome ASC
-      `,
-    );
+    const rows = connection
+      ? (
+          await connection.execute(`
+            SELECT ${PLAN_COLUMNS}
+            FROM j12_planos
+            ORDER BY nome ASC
+          `)
+        )[0]
+      : await query(`
+          SELECT ${PLAN_COLUMNS}
+          FROM j12_planos
+          ORDER BY nome ASC
+        `);
 
     if (Array.isArray(rows) && rows.length > 0) {
       return rows.map((row) => ({
@@ -237,7 +250,7 @@ async function loadChargeRowById(chargeId, connection = null) {
   if (connection) {
     const [rows] = await connection.execute(
       `
-        SELECT *
+        SELECT ${CHARGE_COLUMNS}
         FROM j12_financeiro_cobrancas
         WHERE id = ?
         LIMIT 1
@@ -250,7 +263,7 @@ async function loadChargeRowById(chargeId, connection = null) {
 
   const rows = await query(
     `
-      SELECT *
+      SELECT ${CHARGE_COLUMNS}
       FROM j12_financeiro_cobrancas
       WHERE id = ?
       LIMIT 1
@@ -424,7 +437,7 @@ async function syncChargeCompatibility(chargeOrId, connection = null) {
 async function syncAllChargeCompatibilityTables() {
   const rows = await query(
     `
-      SELECT *
+      SELECT ${CHARGE_COLUMNS}
       FROM j12_financeiro_cobrancas
       ORDER BY created_at ASC, id ASC
     `,
@@ -463,7 +476,7 @@ async function listCharges(options = {}) {
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query(
     `
-      SELECT *
+      SELECT ${CHARGE_COLUMNS}
       FROM j12_financeiro_cobrancas
       ${whereClause}
       ORDER BY vencimento DESC, updated_at DESC
@@ -474,7 +487,11 @@ async function listCharges(options = {}) {
   return (Array.isArray(rows) ? rows : []).map(mapChargeRow);
 }
 
-async function loadStudentFinanceRows({ studentId = null, onlyActive = false } = {}) {
+async function loadStudentFinanceRows({
+  connection = null,
+  studentId = null,
+  onlyActive = false,
+} = {}) {
   const params = [];
   const conditions = [];
 
@@ -488,25 +505,29 @@ async function loadStudentFinanceRows({ studentId = null, onlyActive = false } =
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  return query(
-    `
-      SELECT
-        aluno.*,
-        resp.nome_completo AS responsavel_nome,
-        resp.cpf AS responsavel_cpf,
-        resp.whatsapp AS responsavel_whatsapp,
-        resp.email AS responsavel_email,
-        esporte.unidades_json,
-        esporte.modalidades_json,
-        esporte.turmas_json
-      FROM j12_alunos aluno
-      LEFT JOIN j12_alunos_responsaveis resp ON resp.aluno_id = aluno.id
-      LEFT JOIN j12_alunos_esportes esporte ON esporte.aluno_id = aluno.id
-      ${whereClause}
-      ORDER BY aluno.nome_completo ASC
-    `,
-    params,
-  );
+  const sql = `
+    SELECT
+      aluno.*,
+      resp.nome_completo AS responsavel_nome,
+      resp.cpf AS responsavel_cpf,
+      resp.whatsapp AS responsavel_whatsapp,
+      resp.email AS responsavel_email,
+      esporte.unidades_json,
+      esporte.modalidades_json,
+      esporte.turmas_json
+    FROM j12_alunos aluno
+    LEFT JOIN j12_alunos_responsaveis resp ON resp.aluno_id = aluno.id
+    LEFT JOIN j12_alunos_esportes esporte ON esporte.aluno_id = aluno.id
+    ${whereClause}
+    ORDER BY aluno.nome_completo ASC
+  `;
+
+  if (connection) {
+    const [rows] = await connection.execute(sql, params);
+    return rows;
+  }
+
+  return query(sql, params);
 }
 
 async function ensureStudentMonthlyCharge(connection, student, options = {}) {
@@ -543,11 +564,14 @@ async function ensureStudentMonthlyCharge(connection, student, options = {}) {
   );
 
   if (Array.isArray(existingRows) && existingRows.length > 0) {
+    const chargeId = String(existingRows[0].id);
+    const compatibility = await syncChargeCompatibility(chargeId, connection);
     return {
-      created: false,
-      skippedReason: "duplicate",
+      chargeId,
       competencia,
-      chargeId: String(existingRows[0].id),
+      created: false,
+      installmentId: compatibility?.mensalidadeId ?? null,
+      skippedReason: "duplicate",
     };
   }
 
@@ -606,14 +630,51 @@ async function ensureStudentMonthlyCharge(connection, student, options = {}) {
     ],
   );
 
-  await syncChargeCompatibility(chargeId, connection);
+  const compatibility = await syncChargeCompatibility(chargeId, connection);
 
   return {
-    created: true,
-    skippedReason: null,
-    competencia,
     chargeId,
+    competencia,
+    created: true,
+    installmentId: compatibility?.mensalidadeId ?? null,
+    skippedReason: null,
   };
+}
+
+// Canonical Enrollment billing uses the explicit legacy id and the existing generator only.
+async function materializeEnrollmentCharge(connection, input = {}) {
+  if (!connection || typeof connection.execute !== "function") {
+    throw new TypeError("Canonical financial materialization requires connection.execute().");
+  }
+
+  const legacyStudentId = text(input.legacyStudentId, 64);
+  if (!legacyStudentId) {
+    const error = new Error("Canonical financial materialization requires legacyStudentId.");
+    error.code = "CANONICAL_LEGACY_STUDENT_ID_REQUIRED";
+    throw error;
+  }
+
+  const students = await loadStudentFinanceRows({ connection, studentId: legacyStudentId });
+  if (!Array.isArray(students) || students.length !== 1) {
+    const error = new Error("Explicit legacy student was not found for financial materialization.");
+    error.code = "CANONICAL_LEGACY_STUDENT_NOT_FOUND";
+    throw error;
+  }
+
+  const planCatalog = await getPlanCatalog(connection);
+  return ensureStudentMonthlyCharge(connection, students[0], {
+    actorName: input.createdBy,
+    planCatalog,
+    referenceCompetencia: input.referenceCompetencia,
+  });
+}
+
+async function connectionTableExists(connection, tableName) {
+  const [rows] = await connection.execute(
+    "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1",
+    [text(tableName, 64)],
+  );
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function generateMonthlyChargeForStudent(studentId, options = {}) {
@@ -694,6 +755,7 @@ module.exports = {
   generateMonthlyChargeForStudent,
   generateMonthlyCharges,
   markOverdueCharges,
+  materializeEnrollmentCharge,
   syncChargeCompatibility,
   syncAllChargeCompatibilityTables,
   removeChargeCompatibility,

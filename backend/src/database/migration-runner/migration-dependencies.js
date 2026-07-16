@@ -31,6 +31,8 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260713101500_reconcile_enrollment_class_links_indexes": Object.freeze([
     "20260701103000_add_enrollment_class_links_table",
   ]),
+  "20260715143000_create_enrollment_financial_bridges_table": Object.freeze([
+    "20260702120000_create_enrollment_financial_obligations_table",
+  ]),
 });
-
 module.exports = { MIGRATION_DEPENDENCIES };

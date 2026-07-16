@@ -5,6 +5,8 @@ const {
 } = require("../../application/history/index.js");
 
 const TABLE_NAME = "financial_automation_execution_history";
+const HISTORY_COLUMNS =
+  "id, execution_id, automation_name, workflow_name, trigger_type, status, started_at, finished_at, duration_ms, attempt, correlation_id, input_json, output_json, error_json, metadata_json, created_at";
 const SORT_COLUMNS = Object.freeze({
   durationMs: "duration_ms",
   finishedAt: "finished_at",
@@ -20,13 +22,13 @@ const INSERT_HISTORY_SQL = `
 `;
 
 const SELECT_BY_ID_SQL = `
-  SELECT * FROM ${TABLE_NAME}
+  SELECT ${HISTORY_COLUMNS} FROM ${TABLE_NAME}
   WHERE id = ?
   LIMIT 1
 `;
 
 const SELECT_BY_EXECUTION_ID_SQL = `
-  SELECT * FROM ${TABLE_NAME}
+  SELECT ${HISTORY_COLUMNS} FROM ${TABLE_NAME}
   WHERE execution_id = ?
   ORDER BY started_at DESC, created_at DESC, id DESC
   LIMIT 1
@@ -82,7 +84,7 @@ class MySqlAutomationExecutionHistoryRepository extends AutomationExecutionHisto
     const { params, where } = buildWhere(filters);
     const sortColumn = SORT_COLUMNS[filters.sortBy];
     const sql = `
-      SELECT * FROM ${TABLE_NAME}
+      SELECT ${HISTORY_COLUMNS} FROM ${TABLE_NAME}
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
       ORDER BY ${sortColumn} ${filters.sortDirection.toUpperCase()}, id DESC
       LIMIT ${filters.limit} OFFSET ${filters.offset}

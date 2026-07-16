@@ -59,6 +59,7 @@ class MySqlChampionshipRoundRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_j12_campeonato_rodadas_camp (championship_id),
         INDEX idx_j12_campeonato_rodadas_fase (championship_id, phase),
+        INDEX idx_championship_rounds_order (championship_id, round_number, created_at),
         UNIQUE KEY uniq_j12_campeonato_rodadas_numero (championship_id, phase, round_number)
       )
     `);
@@ -88,6 +89,7 @@ class MySqlChampionshipRoundRepository {
         INDEX idx_j12_campeonato_jogos_grupo (group_id),
         INDEX idx_j12_campeonato_jogos_fase (championship_id, phase),
         INDEX idx_j12_campeonato_jogos_status (status),
+        INDEX idx_championship_matches_status_created (championship_id, status, created_at),
         INDEX idx_j12_campeonato_jogos_data (match_date, start_time, court),
         INDEX idx_j12_campeonato_jogos_equipes (
           championship_id,

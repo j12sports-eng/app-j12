@@ -28,6 +28,9 @@ const PUBLIC_CHAMPIONSHIP_SORT_COLUMNS = Object.freeze({
   startDate: "start_date",
 });
 
+const CHAMPIONSHIP_COLUMNS =
+  "id, name, category, modality, start_date, end_date, status, description, metadata_json, created_by, updated_by, published_at, archived_at, deleted_at, created_at, updated_at";
+
 class MySqlChampionshipPublicRepository {
   constructor(options = {}) {
     this.query = options.queryRunner || options.query || query;
@@ -95,7 +98,7 @@ class MySqlChampionshipPublicRepository {
     const orderDirection = filters.sortDirection === "ASC" ? "ASC" : "DESC";
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${CHAMPIONSHIP_COLUMNS}
         FROM ${CHAMPIONSHIP_TABLE_NAME}
         WHERE ${where.join(" AND ")}
         ORDER BY ${orderColumn} ${orderDirection}, start_date DESC, name ASC
@@ -115,7 +118,7 @@ class MySqlChampionshipPublicRepository {
     await this.ensureSchema();
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${CHAMPIONSHIP_COLUMNS}
         FROM ${CHAMPIONSHIP_TABLE_NAME}
         WHERE id = ?
           AND status = ?

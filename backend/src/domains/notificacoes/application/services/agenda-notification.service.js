@@ -3,6 +3,7 @@ const {
   AgendaNotificationDeliveryStatus,
   prepareAgendaNotificationEvent,
 } = require("../contracts/agenda-notification.contract.js");
+const { observeAsyncOperation } = require("../../../../observability/async-observability.js");
 
 const AGENDA_NOTIFICATION_REPOSITORY_REQUIRED_CODE = "AGENDA_NOTIFICATION_REPOSITORY_REQUIRED";
 const AGENDA_NOTIFICATION_NOT_FOUND_CODE = "AGENDA_NOTIFICATION_NOT_FOUND";
@@ -15,7 +16,12 @@ class AgendaNotificationService {
    * @param {Record<string, Function>} [options.adapters]
    * @param {() => Date} [options.clock]
    */
-  constructor({ adapters = {}, clock = () => new Date(), notificationRepository = null, repository = null } = {}) {
+  constructor({
+    adapters = {},
+    clock = () => new Date(),
+    notificationRepository = null,
+    repository = null,
+  } = {}) {
     this.notificationRepository = notificationRepository || repository;
     this.adapters = adapters;
     this.clock = clock;
@@ -119,7 +125,11 @@ class AgendaNotificationService {
 
     for (const job of Array.isArray(jobs) ? jobs : []) {
       try {
-        const delivery = await this.dispatchJob(job);
+        const delivery = await observeAsyncOperation(
+          "agenda.notification.dispatch",
+          () => this.dispatchJob(job),
+          { channel: job.channel || null, jobId: job.id || null },
+        );
         const completedJob = await repository.completeNotificationJob({
           delivery,
           jobId: job.id,
@@ -214,10 +224,7 @@ class AgendaNotificationService {
     const notification = await repository.markNotificationRead(input);
 
     if (!notification) {
-      throw controlledError(
-        "Notificacao nao encontrada.",
-        AGENDA_NOTIFICATION_NOT_FOUND_CODE,
-      );
+      throw controlledError("Notificacao nao encontrada.", AGENDA_NOTIFICATION_NOT_FOUND_CODE);
     }
 
     return notification;

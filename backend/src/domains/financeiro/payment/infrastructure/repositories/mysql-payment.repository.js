@@ -14,6 +14,8 @@ const {
 } = require("../../entities/payment.entity.js");
 
 const PAYMENT_CHARGES_TABLE = "financial_gateway_charges";
+const PAYMENT_CHARGE_COLUMNS =
+  "id, legacy_charge_id, mensalidade_id, student_id, responsible_id, provider, status, amount, currency, description, due_date, payment_method, external_id, checkout_url, provider_payload, metadata_json, created_by, updated_by, cancelled_by, cancellation_reason, cancelled_at, created_at, updated_at";
 
 const CREATE_PAYMENT_CHARGES_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS ${PAYMENT_CHARGES_TABLE} (
@@ -72,7 +74,7 @@ const INSERT_PAYMENT_CHARGE_SQL = `
 `;
 
 const SELECT_PAYMENT_CHARGE_BY_ID_SQL = `
-  SELECT *
+  SELECT ${PAYMENT_CHARGE_COLUMNS}
   FROM ${PAYMENT_CHARGES_TABLE}
   WHERE id = ?
   LIMIT 1
@@ -156,7 +158,7 @@ class MySqlPaymentRepository {
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${PAYMENT_CHARGE_COLUMNS}
         FROM ${PAYMENT_CHARGES_TABLE}
         ${where}
         ORDER BY due_date ASC, created_at DESC, id DESC

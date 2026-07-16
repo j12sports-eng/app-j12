@@ -7,6 +7,8 @@ const {
 } = require("../../entities/financial-automation-event.entity.js");
 
 const FINANCIAL_AUTOMATION_EVENTS_TABLE = "financial_automation_events";
+const AUTOMATION_EVENT_COLUMNS =
+  "id, event_key, event_type, target_type, target_id, status, channel, provider, process_run_id, reference_date, days_offset, occurred_at, completed_at, error_message, payload_json, created_by, created_at, updated_at";
 
 const CREATE_FINANCIAL_AUTOMATION_EVENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS ${FINANCIAL_AUTOMATION_EVENTS_TABLE} (
@@ -36,14 +38,14 @@ const CREATE_FINANCIAL_AUTOMATION_EVENTS_TABLE_SQL = `
 `;
 
 const SELECT_AUTOMATION_EVENT_BY_KEY_SQL = `
-  SELECT *
+  SELECT ${AUTOMATION_EVENT_COLUMNS}
   FROM ${FINANCIAL_AUTOMATION_EVENTS_TABLE}
   WHERE event_key = ?
   LIMIT 1
 `;
 
 const SELECT_AUTOMATION_EVENT_BY_ID_SQL = `
-  SELECT *
+  SELECT ${AUTOMATION_EVENT_COLUMNS}
   FROM ${FINANCIAL_AUTOMATION_EVENTS_TABLE}
   WHERE id = ?
   LIMIT 1
@@ -234,7 +236,7 @@ class MySqlFinancialAutomationRepository {
     await this.ensureSchema();
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${AUTOMATION_EVENT_COLUMNS}
         FROM ${FINANCIAL_AUTOMATION_EVENTS_TABLE}
         WHERE event_key IN (${uniqueKeys.map(() => "?").join(", ")})
       `,

@@ -1,3 +1,5 @@
+const { logHttpError } = require("../observability/http-observability.middleware.js");
+
 module.exports = (error, req, res, _next) => {
   const timestamp = new Date().toISOString();
   const status = Number(error?.statusCode || error?.status || 500);
@@ -9,18 +11,11 @@ module.exports = (error, req, res, _next) => {
       ? "Erro interno do servidor. Consulte os logs para mais detalhes."
       : error?.message || "Erro interno do servidor.";
 
-  console.error("[GLOBAL_ERROR]", {
-    requestId,
+  logHttpError(error, req, {
     endpoint,
-    method: req?.method,
-    status,
-    code,
-    message: error?.message,
-    timestamp,
     environment: process.env.NODE_ENV || "development",
+    timestamp,
   });
-  console.error(error);
-  console.error(error?.stack);
 
   return res.status(status).json({
     success: false,

@@ -3,6 +3,7 @@ const path = require("node:path");
 const dotenv = require("dotenv");
 const { createDatabaseConnectivity } = require("./database-connectivity.js");
 const { createNoopDdlResult, createRuntimeDdlPolicy } = require("./runtime-ddl-policy.js");
+const { logger } = require("../observability/structured-logger.js");
 
 dotenv.config({
   path: [path.resolve(__dirname, "../../../.env"), path.resolve(__dirname, "../../.env")],
@@ -752,17 +753,24 @@ const testConnection = databaseConnectivity.testConnection;
 
 async function query(sql, params = []) {
   let connection = null;
+  const startedAt = process.hrtime.bigint();
   try {
     connection = await pool.getConnection();
     const [rows] = await connection.execute(sql, params);
+    logger.info("database.query.completed", {
+      durationMs: elapsedMilliseconds(startedAt),
+      operation: sqlOperation(sql),
+      sql: sqlPreview(sql),
+    });
     return rows;
   } catch (error) {
-    console.error("[ERROR] Falha na query SQL", {
+    logger.error("database.query.failed", {
       code: error?.code,
+      durationMs: elapsedMilliseconds(startedAt),
+      error,
+      operation: sqlOperation(sql),
+      sql: sqlPreview(sql),
       errno: error?.errno,
-      message: error?.message,
-      sql: sql.substring(0, 100),
-      timestamp: new Date().toISOString(),
     });
 
     // Reconectar em caso de erro de conexÃ£o perdida
@@ -772,7 +780,7 @@ async function query(sql, params = []) {
       error?.code === "ER_QUERY_INTERRUPTED" ||
       error?.errno === 1041
     ) {
-      console.warn("[DB] Reconectando ao banco apÃ³s erro de conexÃ£o...");
+      logger.warn("database.connection.reconnect", { code: error?.code, errno: error?.errno });
       if (pool && typeof pool.clearOldest === "function") {
         pool.clearOldest?.();
       }
@@ -784,10 +792,30 @@ async function query(sql, params = []) {
       try {
         connection.release();
       } catch (releaseError) {
-        console.warn("[DB] Erro ao liberar conexÃ£o:", releaseError?.message);
+        logger.warn("database.connection.release_failed", { error: releaseError });
       }
     }
   }
+}
+
+function elapsedMilliseconds(startedAt) {
+  return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+}
+
+function sqlOperation(sql) {
+  return (
+    String(sql || "")
+      .trim()
+      .split(/\s+/, 1)[0]
+      ?.toUpperCase() || "UNKNOWN"
+  );
+}
+
+function sqlPreview(sql) {
+  return String(sql || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
 }
 
 async function tableExists(tableName) {

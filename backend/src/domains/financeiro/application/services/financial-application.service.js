@@ -17,6 +17,57 @@ const FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION_CODE =
   "FINANCIAL_OBLIGATION_INVALID_STATUS_TRANSITION";
 const FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED_CODE =
   "FINANCIAL_STUDENT_SCOPE_SEARCH_INPUT_REQUIRED";
+const CanonicalFinancialState = Object.freeze({
+  CANCELLED: "CANCELLED",
+  FAILED: "FAILED",
+  OVERDUE: "OVERDUE",
+  PAID: "PAID",
+  PENDING: "PENDING",
+});
+
+function normalizeCanonicalFinancialState(value) {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  if (["PAGO", "PAID", "CONCLUIDO", "CONCLUIDA", "RECEBIDO"].includes(normalized)) {
+    return CanonicalFinancialState.PAID;
+  }
+  if (
+    ["CANCELADO", "CANCELADA", "CANCELED", "CANCELLED", "DEVOLVIDO", "REFUNDED"].includes(
+      normalized,
+    )
+  ) {
+    return CanonicalFinancialState.CANCELLED;
+  }
+  if (["ATRASADO", "OVERDUE", "VENCIDO", "EXPIRADO", "EXPIRED"].includes(normalized)) {
+    return CanonicalFinancialState.OVERDUE;
+  }
+  if (["FAILED", "FALHOU", "ERRO", "REJEITADO", "REJECTED"].includes(normalized)) {
+    return CanonicalFinancialState.FAILED;
+  }
+  return CanonicalFinancialState.PENDING;
+}
+function assertCanonicalSettlementAllowed(input = {}) {
+  const obligationStatus = normalizeCanonicalFinancialState(input.obligationStatus);
+  if (obligationStatus === CanonicalFinancialState.CANCELLED) {
+    throw controlledError(
+      "Cancelled financial obligation cannot be settled.",
+      "CANONICAL_FINANCIAL_OBLIGATION_CANCELLED",
+    );
+  }
+
+  const expectedCents = Math.round(Number(input.expectedAmount || 0) * 100);
+  const paidCents = Math.round(Number(input.paidAmount || 0) * 100);
+  if (expectedCents <= 0 || paidCents !== expectedCents) {
+    throw controlledError(
+      "Partial payment cannot settle a canonical financial obligation.",
+      "CANONICAL_PARTIAL_PAYMENT_REJECTED",
+      { expectedAmount: expectedCents / 100, paidAmount: paidCents / 100 },
+    );
+  }
+
+  return true;
+}
 const FinancialObligationStatus = Object.freeze({
   CANCELLED: "CANCELLED",
   OVERDUE: "OVERDUE",
@@ -51,12 +102,18 @@ class FinancialApplicationService {
   constructor({
     enrollmentReader = null,
     billingSourceReader = null,
+    canonicalIdentityService = null,
+    financialBridgeRepositoryFactory = null,
     financialObligationRepository = null,
+    studentFinanceMaterializer = null,
     studentScopeReader = null,
   } = {}) {
     this.enrollmentReader = enrollmentReader;
     this.billingSourceReader = billingSourceReader;
+    this.canonicalIdentityService = canonicalIdentityService;
+    this.financialBridgeRepositoryFactory = financialBridgeRepositoryFactory;
     this.financialObligationRepository = financialObligationRepository;
+    this.studentFinanceMaterializer = studentFinanceMaterializer;
     this.studentScopeReader = studentScopeReader;
   }
 
@@ -192,23 +249,42 @@ class FinancialApplicationService {
     const blockedByBillingContract = billingContractBlockers.length > 0;
 
     if (!blockedByBillingContract && this.hasFinancialObligationRepository()) {
-      const repositoryResult =
-        await this.getFinancialObligationRepository().createEnrollmentFinancialObligationRecord({
-          amount: billingContract.amount,
-          createdBy: billingContract.requestedBy,
-          currency: billingContract.currency,
-          dueDate: billingContract.firstDueDate,
-          enrollmentId: billingContract.enrollmentId,
-          metadata: buildInitialObligationMetadata(billingContract),
-          obligationType: INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
-          planId: billingContract.planId,
-          source: "ENROLLMENT",
-          status: "PREPARED",
-        });
+      const obligationInput = {
+        amount: billingContract.amount,
+        createdBy: billingContract.requestedBy,
+        currency: billingContract.currency,
+        dueDate: billingContract.firstDueDate,
+        enrollmentId: billingContract.enrollmentId,
+        metadata: buildInitialObligationMetadata(billingContract),
+        obligationType: INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
+        planId: billingContract.planId,
+        source: "ENROLLMENT",
+        status: "PREPARED",
+      };
+      const repository = this.getFinancialObligationRepository();
+      const materialization =
+        typeof repository.runInTransaction === "function"
+          ? await this.materializeInitialEnrollmentFinancialObligation({
+              billingContract,
+              input,
+              obligationInput,
+              repository,
+            })
+          : {
+              bridge: null,
+              chargeId: null,
+              installmentId: null,
+              repositoryResult:
+                await repository.createEnrollmentFinancialObligationRecord(obligationInput),
+            };
+      const repositoryResult = materialization.repositoryResult;
       const obligation = readObject(repositoryResult.obligation);
       const obligationId = nullableText(obligation.id, 64);
       const created = repositoryResult.created === true;
       const reused = repositoryResult.reused === true;
+      const chargeId = nullableText(materialization.chargeId, 64);
+      const installmentId = nullableText(materialization.installmentId, 64);
+      const legacyStudentId = nullableText(materialization.legacyStudentId, 64);
 
       return {
         amount: readProperty(obligation, "amount") ?? billingContract.amount,
@@ -220,7 +296,11 @@ class FinancialApplicationService {
         blockedBySchemaOrRuleGap: false,
         blockers: [],
         canCreateInitialObligation: true,
-        chargeCreated: false,
+        bridgeId: materialization.bridge ? obligationId : null,
+        bridge_id: materialization.bridge ? obligationId : null,
+        chargeCreated: Boolean(chargeId),
+        chargeId,
+        charge_id: chargeId,
         classId: billingContract.classId,
         created,
         currency: readProperty(obligation, "currency") ?? billingContract.currency,
@@ -239,12 +319,16 @@ class FinancialApplicationService {
         },
         initialFinancialObligationPersistenceEnabled: true,
         initialFinancialObligationPrepared: true,
-        installmentCreated: false,
-        noChargeCreated: true,
+        installmentCreated: Boolean(installmentId),
+        installmentId,
+        installment_id: installmentId,
+        legacyStudentId,
+        legacy_student_id: legacyStudentId,
+        noChargeCreated: !chargeId,
         noClassSideEffects: true,
         noFinancialEntryCreated: true,
         noGatewayIntegration: true,
-        noInstallmentCreated: true,
+        noInstallmentCreated: !installmentId,
         noNotificationSideEffects: true,
         noPaymentCreated: true,
         noScheduleSideEffects: true,
@@ -252,6 +336,7 @@ class FinancialApplicationService {
         obligation,
         obligationCreated: created,
         obligationId,
+        obligation_id: obligationId,
         obligationType:
           nullableText(readProperty(obligation, "obligationType"), 64) ||
           INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
@@ -324,6 +409,65 @@ class FinancialApplicationService {
     };
   }
 
+  /**
+   * Materializes obligation, charge, installment and bridge atomically.
+   */
+  async materializeInitialEnrollmentFinancialObligation({
+    billingContract,
+    input,
+    obligationInput,
+    repository,
+  }) {
+    return repository.runInTransaction(async ({ connection, queryRunner, repository: scoped }) => {
+      const enrollment = await this.findEnrollmentById(billingContract.enrollmentId);
+      const identityService =
+        this.canonicalIdentityService || createDefaultCanonicalIdentityService(queryRunner);
+      const identity = await identityService.resolve({
+        ...readObject(enrollment),
+        legacyStudentId:
+          input.legacyStudentId ??
+          input.legacy_student_id ??
+          readProperty(enrollment, "legacyStudentId") ??
+          readProperty(enrollment, "legacy_student_id"),
+      });
+      const repositoryResult =
+        await scoped.createEnrollmentFinancialObligationRecord(obligationInput);
+      const obligationId = requiredInputText(
+        readProperty(repositoryResult.obligation, "id"),
+        "obligationId",
+        64,
+      );
+      const bridgeRepository = this.financialBridgeRepositoryFactory
+        ? this.financialBridgeRepositoryFactory({ connection, queryRunner })
+        : createDefaultFinancialBridgeRepository(connection);
+      const existingBridge = await bridgeRepository.findByObligationId(obligationId);
+
+      if (existingBridge) {
+        return bridgeMaterializationResult(repositoryResult, existingBridge);
+      }
+
+      const materializer =
+        this.studentFinanceMaterializer || getDefaultStudentFinanceMaterializer();
+      const charge = await materializer(connection, {
+        createdBy: billingContract.requestedBy,
+        legacyStudentId: identity.legacy_student_id,
+        referenceCompetencia: String(billingContract.firstDueDate || "").slice(0, 7),
+      });
+      const chargeId = requiredInputText(charge?.chargeId, "chargeId", 64);
+      const installmentId = requiredInputText(charge?.installmentId, "installmentId", 64);
+      const bridgeResult = await bridgeRepository.createBridge({
+        chargeId,
+        createdBy: billingContract.requestedBy,
+        enrollmentId: billingContract.enrollmentId,
+        installmentId,
+        legacyStudentId: identity.legacy_student_id,
+        obligationId,
+        status: "LINKED",
+      });
+
+      return bridgeMaterializationResult(repositoryResult, bridgeResult.bridge);
+    });
+  }
   /**
    * @param {{ enrollmentId?: string|null, obligationType?: string|null }} input
    * @returns {Promise<Record<string, unknown>|null>}
@@ -1078,6 +1222,40 @@ function nullableText(value, max = 65535) {
   return normalized || null;
 }
 
+function createDefaultCanonicalIdentityService(queryRunner) {
+  const {
+    EnrollmentLegacyStudentIdentityService,
+  } = require("../../../enrollments/application/services/enrollment-legacy-student-identity.service.js");
+  const {
+    MySqlEnrollmentLegacyStudentIdentityRepository,
+  } = require("../../../enrollments/infrastructure/repositories/mysql-enrollment-legacy-student-identity.repository.js");
+  return new EnrollmentLegacyStudentIdentityService({
+    identityReader: new MySqlEnrollmentLegacyStudentIdentityRepository({ queryRunner }),
+  });
+}
+
+function createDefaultFinancialBridgeRepository(connection) {
+  const {
+    MySqlEnrollmentFinancialBridgeRepository,
+  } = require("../../infrastructure/repositories/mysql-enrollment-financial-bridge.repository.js");
+  return new MySqlEnrollmentFinancialBridgeRepository({
+    transactionRunner: async (work) => work(connection),
+  });
+}
+
+function getDefaultStudentFinanceMaterializer() {
+  return require("../../../../../services/student-finance.js").materializeEnrollmentCharge;
+}
+
+function bridgeMaterializationResult(repositoryResult, bridge) {
+  return {
+    bridge,
+    chargeId: readProperty(bridge, "chargeId"),
+    installmentId: readProperty(bridge, "installmentId"),
+    legacyStudentId: readProperty(bridge, "legacyStudentId"),
+    repositoryResult,
+  };
+}
 /**
  * @param {string} message
  * @param {string} code
@@ -1096,6 +1274,8 @@ function controlledError(message, code, details = {}) {
 }
 
 module.exports = {
+  assertCanonicalSettlementAllowed,
+  CanonicalFinancialState,
   FINANCIAL_BILLING_CONTRACT_ENROLLMENT_NOT_FOUND_CODE,
   FINANCIAL_BILLING_CONTRACT_STUDENT_MISMATCH_CODE,
   FINANCIAL_BILLING_SOURCE_READER_INVALID_CODE,
@@ -1107,4 +1287,5 @@ module.exports = {
   FinancialObligationStatus,
   FinancialApplicationService,
   INITIAL_ENROLLMENT_FINANCIAL_OBLIGATION_TYPE,
+  normalizeCanonicalFinancialState,
 };

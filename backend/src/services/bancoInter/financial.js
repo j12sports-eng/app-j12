@@ -1,12 +1,18 @@
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
+
+const {
+  reconcileCanonicalPaymentState,
+} = require("../../domains/financeiro/inter/infrastructure/repositories/mysql-inter.repository.js");
+
+const {
+  assertCanonicalSettlementAllowed,
+} = require("../../domains/financeiro/application/services/financial-application.service.js");
 
 const { canManageSystem } = require("../../../auth.js");
 const { query, tableExists, transaction } = require("../../config/db.js");
-const { syncChargeCompatibility } = require("../../../services/student-finance.js");
 const { FINANCIAL_STATUSES, normalizeFinancialStatus } = require("./types.js");
 const {
   dateOnly,
-  logInter,
   nowMysql,
   nullableText,
   parseJson,
@@ -505,119 +511,144 @@ async function refreshStudentAccess(studentId) {
   };
 }
 
+async function settleCanonicalPayment(input = {}, dependencies = {}) {
+  const transactionRunner = dependencies.transactionRunner || transaction;
+  const reconcilePayment = dependencies.reconcilePayment || reconcileCanonicalPaymentState;
+
+  return transactionRunner(async (connection) => {
+    const payment = input.manual
+      ? await prepareManualCanonicalPayment(connection, input)
+      : input.payment;
+
+    return reconcilePayment(connection, {
+      e2eid: input.e2eid,
+      interTransactionId: input.interTransactionId,
+      paidAt: input.paidAt,
+      payment,
+      receivedAmount: input.paidAmount ?? payment.amount,
+      status: FINANCIAL_STATUSES.PAID,
+      webhookPayload: input.webhookPayload,
+    });
+  });
+}
+
+async function markManualPaymentAsPaid(input = {}, dependencies = {}) {
+  return settleCanonicalPayment({ ...input, manual: true }, dependencies);
+}
+
+async function prepareManualCanonicalPayment(connection, input) {
+  const installmentId = text(input.installmentId ?? input.mensalidadeId ?? input.id, 64);
+  if (!installmentId) {
+    const error = new Error("Baixa manual canonica requer mensalidadeId.");
+    error.code = "CANONICAL_INSTALLMENT_ID_REQUIRED";
+    throw error;
+  }
+
+  const [rows] = await connection.execute(
+    `
+      SELECT
+        bridge.obligation_id,
+        bridge.charge_id,
+        bridge.installment_id,
+        bridge.legacy_student_id,
+        obligation.status AS obligation_status,
+        obligation.amount AS obligation_amount,
+        installment.valor AS installment_amount,
+        installment.data_vencimento,
+        payment.id AS financial_payment_id,
+        payment.txid AS financial_payment_txid,
+        payment.amount AS financial_payment_amount
+      FROM enrollment_financial_bridges bridge
+      INNER JOIN enrollment_financial_obligations obligation
+        ON obligation.id = bridge.obligation_id
+      INNER JOIN j12_mensalidades installment
+        ON installment.id = bridge.installment_id
+      LEFT JOIN financial_payments payment
+        ON payment.charge_id = bridge.charge_id
+        OR payment.mensalidade_id = bridge.installment_id
+      WHERE bridge.installment_id = ? OR bridge.charge_id = ?
+      ORDER BY payment.created_at DESC
+      LIMIT 1
+      FOR UPDATE
+    `,
+    [installmentId, installmentId],
+  );
+  const context = Array.isArray(rows) ? rows[0] : null;
+  if (!context) {
+    const error = new Error("Bridge financeira nao encontrada para baixa manual canonica.");
+    error.code = "CANONICAL_FINANCIAL_BRIDGE_NOT_FOUND";
+    throw error;
+  }
+
+  const expectedAmount = Number(
+    context.obligation_amount ??
+      context.installment_amount ??
+      context.financial_payment_amount ??
+      0,
+  );
+  const paidAmount = Number(
+    input.paidAmount ?? input.valorPago ?? input.valor_pago ?? expectedAmount,
+  );
+  assertCanonicalSettlementAllowed({
+    expectedAmount,
+    obligationStatus: context.obligation_status,
+    paidAmount,
+  });
+
+  const digest = createHash("sha256").update(String(context.obligation_id)).digest("hex");
+  const paymentId = context.financial_payment_id || `manual-${digest.slice(0, 24)}`;
+  const txid = context.financial_payment_txid || `MANUAL${digest.slice(0, 29)}`;
+
+  if (!context.financial_payment_id) {
+    await connection.execute(
+      `
+        INSERT INTO financial_payments (
+          id, student_id, mensalidade_id, charge_id, txid, amount,
+          status, due_date, payment_method
+        ) VALUES (?, ?, ?, ?, ?, ?, 'PENDENTE', ?, ?)
+        ON DUPLICATE KEY UPDATE
+          student_id = VALUES(student_id),
+          mensalidade_id = VALUES(mensalidade_id),
+          charge_id = VALUES(charge_id),
+          amount = VALUES(amount),
+          due_date = VALUES(due_date),
+          payment_method = VALUES(payment_method),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        paymentId,
+        context.legacy_student_id,
+        context.installment_id,
+        context.charge_id,
+        txid,
+        expectedAmount,
+        context.data_vencimento,
+        text(input.paymentMethod ?? input.formaPagamento ?? input.forma_pagamento, 50) || "manual",
+      ],
+    );
+  }
+
+  return {
+    amount: expectedAmount,
+    chargeId: context.charge_id,
+    id: paymentId,
+    mensalidadeId: context.installment_id,
+    studentId: context.legacy_student_id,
+    txid,
+  };
+}
 async function markPaymentAsPaid({ payment, webhookPayload, e2eid, interTransactionId, paidAt }) {
   await ensureInterFinancialSchema();
   const paidDateTime = paidAt ? nowMysqlFromValue(paidAt) : nowMysql();
-  const paidDate = paidDateTime.slice(0, 10);
 
-  const updatedPayment = await transaction(async (connection) => {
-    await connection.execute(
-      `
-        UPDATE financial_payments
-        SET
-          status = 'PAGO',
-          paid_at = ?,
-          payment_method = 'pix',
-          e2eid = COALESCE(?, e2eid),
-          inter_transaction_id = COALESCE(?, inter_transaction_id),
-          webhook_payload = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE txid = ?
-      `,
-      [
-        paidDateTime,
-        nullableText(e2eid, 191),
-        nullableText(interTransactionId, 191),
-        safeJsonStringify(webhookPayload),
-        payment.txid,
-      ],
-    );
-
-    if (payment.chargeId) {
-      await connection.execute(
-        `
-          UPDATE j12_financeiro_cobrancas
-          SET
-            status = 'pago',
-            pago_em = ?,
-            data_pagamento = ?,
-            forma_pagamento = 'pix',
-            observacao = COALESCE(NULLIF(observacao, ''), 'Baixa automatica Banco Inter'),
-            alterado_em = NOW(),
-            alterado_por = 'Banco Inter'
-          WHERE id = ?
-        `,
-        [paidDate, paidDate, payment.chargeId],
-      );
-    }
-
-    if (payment.mensalidadeId || payment.chargeId) {
-      await connection.execute(
-        `
-          UPDATE j12_mensalidades
-          SET
-            status = 'pago',
-            data_pagamento = ?,
-            forma_pagamento = 'pix',
-            observacao = COALESCE(NULLIF(observacao, ''), 'Baixa automatica Banco Inter'),
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? OR cobranca_id = ?
-        `,
-        [paidDate, payment.mensalidadeId || "", payment.chargeId || ""],
-      );
-    }
-
-    if (payment.mensalidadeId || payment.chargeId) {
-      await connection.execute(
-        `
-          INSERT INTO j12_pagamentos (
-            id,
-            mensalidade_id,
-            cobranca_id,
-            aluno_id,
-            valor,
-            forma_pagamento,
-            data_pagamento,
-            observacao
-          ) VALUES (?, ?, ?, ?, ?, 'pix', ?, ?)
-          ON DUPLICATE KEY UPDATE
-            aluno_id = VALUES(aluno_id),
-            valor = VALUES(valor),
-            forma_pagamento = VALUES(forma_pagamento),
-            data_pagamento = VALUES(data_pagamento),
-            observacao = VALUES(observacao),
-            updated_at = CURRENT_TIMESTAMP
-        `,
-        [
-          text(`pag-${payment.chargeId || payment.mensalidadeId}`, 64),
-          text(payment.mensalidadeId || payment.chargeId, 64),
-          text(payment.chargeId || payment.mensalidadeId, 64),
-          text(payment.studentId, 64),
-          payment.amount,
-          paidDate,
-          text(`Baixa automatica Banco Inter${e2eid ? ` - E2E ${e2eid}` : ""}`, 65535),
-        ],
-      );
-    }
-
-    const [rows] = await connection.execute(
-      "SELECT * FROM financial_payments WHERE txid = ? LIMIT 1",
-      [payment.txid],
-    );
-
-    return mapPaymentRow(Array.isArray(rows) ? rows[0] : null);
+  const updatedPayment = await settleCanonicalPayment({
+    e2eid,
+    interTransactionId,
+    paidAt: paidDateTime,
+    payment,
+    paidAmount: payment.amount,
+    webhookPayload,
   });
-
-  if (payment.chargeId) {
-    try {
-      await syncChargeCompatibility(payment.chargeId);
-    } catch (error) {
-      logInter("baixa", "Falha ao sincronizar tabelas de compatibilidade apos baixa.", {
-        chargeId: payment.chargeId,
-        error: error.message,
-      });
-    }
-  }
 
   const access = await refreshStudentAccess(payment.studentId);
 
@@ -651,10 +682,12 @@ module.exports = {
   findPaymentByTxid,
   findReusablePendingPayment,
   loadChargeForPix,
+  markManualPaymentAsPaid,
   markPaymentAsPaid,
   markWebhookEventProcessed,
   recordWebhookEvent,
   refreshStudentAccess,
   savePixPayment,
+  settleCanonicalPayment,
   userCanAccessStudent,
 };

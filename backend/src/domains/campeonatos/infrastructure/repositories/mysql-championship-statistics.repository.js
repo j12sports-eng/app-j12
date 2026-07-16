@@ -28,6 +28,13 @@ const {
   MySqlChampionshipMatchReportRepository,
 } = require("./mysql-championship-match-report.repository.js");
 
+const STATISTICS_COLUMNS =
+  "id, championship_id, matches_played, finished_matches, goals_scored, goals_average, yellow_cards, red_cards, walkovers, calculated_at, updated_at";
+const TEAM_STATISTICS_COLUMNS =
+  "id, championship_id, registration_id, team_id, team_name, team_acronym, matches_played, wins, draws, losses, goals_for, goals_against, goal_difference, points, performance, result_streak_json, yellow_cards, red_cards, walkovers, calculated_at, updated_at";
+const PLAYER_STATISTICS_COLUMNS =
+  "id, championship_id, registration_id, team_id, team_name, team_acronym, player_id, player_name, shirt_number, matches_played, goals, yellow_cards, red_cards, calculated_at, updated_at";
+
 class MySqlChampionshipStatisticsRepository {
   constructor(options = {}) {
     this.query = options.queryRunner || options.query || query;
@@ -200,7 +207,7 @@ class MySqlChampionshipStatisticsRepository {
     const campId = requiredText(championshipId, "championshipId", 64);
     const championshipRows = await this.query(
       `
-        SELECT *
+        SELECT ${STATISTICS_COLUMNS}
         FROM ${CHAMPIONSHIP_STATISTICS_TABLE_NAME}
         WHERE championship_id = ?
         LIMIT 1
@@ -213,7 +220,7 @@ class MySqlChampionshipStatisticsRepository {
 
     const teamRows = await this.query(
       `
-        SELECT *
+        SELECT ${TEAM_STATISTICS_COLUMNS}
         FROM ${CHAMPIONSHIP_TEAM_STATISTICS_TABLE_NAME}
         WHERE championship_id = ?
         ORDER BY team_name ASC, registration_id ASC
@@ -222,7 +229,7 @@ class MySqlChampionshipStatisticsRepository {
     );
     const playerRows = await this.query(
       `
-        SELECT *
+        SELECT ${PLAYER_STATISTICS_COLUMNS}
         FROM ${CHAMPIONSHIP_PLAYER_STATISTICS_TABLE_NAME}
         WHERE championship_id = ?
         ORDER BY goals DESC, player_name ASC, player_id ASC

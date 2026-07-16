@@ -38,6 +38,21 @@ test("financial repository prevents duplicate value sources by reading charges o
   assert.doesNotMatch(sql, /pix_payload|pix_copy_paste|qr_code|e2eid|inter_transaction_id/);
 });
 
+test("financial repository uses indexed generated columns for normalized filters", () => {
+  const sql = `${FINANCIAL_KPIS_SQL} ${FINANCIAL_EVOLUTION_SQL} ${FINANCIAL_BREAKDOWNS_SQL}`;
+  assert.match(sql, /c\.status_normalized/);
+  assert.match(sql, /c\.type_normalized/);
+  assert.match(sql, /c\.payment_effective_date/);
+  assert.doesNotMatch(sql, /LOWER\(c\.(?:status|tipo)\)/);
+  assert.doesNotMatch(sql, /COALESCE\(c\.data_pagamento\s*,\s*c\.pago_em\)/);
+});
+
+test("financial breakdowns reuse one filtered charge set", () => {
+  assert.match(FINANCIAL_BREAKDOWNS_SQL, /WITH filtered_charges AS/);
+  assert.equal((FINANCIAL_BREAKDOWNS_SQL.match(/FROM j12_financeiro_cobrancas/g) || []).length, 1);
+  assert.equal((FINANCIAL_BREAKDOWNS_SQL.match(/FROM filtered_charges/g) || []).length, 4);
+});
+
 test("financial repository maps decimals, NULL and every analytical dimension", async () => {
   let call = 0;
   const repository = new MySqlBiFinancialRepository({

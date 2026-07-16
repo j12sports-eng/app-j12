@@ -52,6 +52,7 @@ class MySqlChampionshipGroupRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_j12_campeonato_grupos_camp (championship_id),
         INDEX idx_j12_campeonato_grupos_ordem (championship_id, display_order),
+        INDEX idx_championship_groups_order (championship_id, display_order, created_at),
         UNIQUE KEY uniq_j12_campeonato_grupos_nome (championship_id, name)
       )
     `);

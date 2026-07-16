@@ -1,4 +1,5 @@
 const { pool } = require("../config/db.js");
+const { markManualPaymentAsPaid } = require("../services/bancoInter/financial.js");
 
 function isAdmin(user) {
   return user?.perfil === "admin";
@@ -352,55 +353,33 @@ async function pagarMensalidade(req, res) {
 
     const { id } = req.params;
     const { valor_pago, forma_pagamento = "pix", data_pagamento, observacao } = req.body;
-
-    const [[mensalidade]] = await pool.query(`SELECT * FROM j12_mensalidades WHERE id = ?`, [id]);
-
-    if (!mensalidade) {
-      return res.status(404).json({ message: "Mensalidade não encontrada." });
-    }
-
-    const valorPago = Number(valor_pago || mensalidade.valor_atualizado || 0);
-    const valorAtualizado = Number(mensalidade.valor_atualizado || 0);
-    const novoStatus = valorPago >= valorAtualizado ? "pago" : "parcial";
-    const dataPagamento = data_pagamento || new Date().toISOString().slice(0, 10);
-
-    await pool.query(
-      `
-      INSERT INTO j12_pagamentos
-      (
-        mensalidade_id,
-        aluno_id,
-        valor_pago,
-        forma_pagamento,
-        data_pagamento,
-        observacao
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-      `,
-      [id, mensalidade.aluno_id, valorPago, forma_pagamento, dataPagamento, observacao || null],
-    );
-
-    await pool.query(
-      `
-      UPDATE j12_mensalidades
-      SET
-        status = ?,
-        forma_pagamento = ?,
-        data_pagamento = ?,
-        observacao = ?
-      WHERE id = ?
-      `,
-      [novoStatus, forma_pagamento, dataPagamento, observacao || mensalidade.observacao, id],
-    );
+    const payment = await markManualPaymentAsPaid({
+      installmentId: id,
+      paidAmount: valor_pago,
+      paidAt: data_pagamento,
+      paymentMethod: forma_pagamento,
+      webhookPayload: {
+        actorId: user?.id ?? null,
+        actorName: user?.nome ?? user?.email ?? "admin",
+        note: observacao ?? null,
+        source: "MANUAL",
+      },
+    });
 
     return res.json({
-      message:
-        novoStatus === "pago" ? "Mensalidade paga com sucesso." : "Pagamento parcial registrado.",
-      status: novoStatus,
+      message: "Mensalidade paga com sucesso.",
+      payment,
+      status: "pago",
     });
   } catch (error) {
     console.error("Erro em pagarMensalidade:", error);
-    return res.status(500).json({
+    const controlledStatus = {
+      CANONICAL_FINANCIAL_BRIDGE_NOT_FOUND: 404,
+      CANONICAL_FINANCIAL_OBLIGATION_CANCELLED: 409,
+      CANONICAL_INSTALLMENT_ID_REQUIRED: 400,
+      CANONICAL_PARTIAL_PAYMENT_REJECTED: 400,
+    }[error.code];
+    return res.status(controlledStatus || 500).json({
       message: "Erro ao registrar pagamento.",
       error: error.message,
     });

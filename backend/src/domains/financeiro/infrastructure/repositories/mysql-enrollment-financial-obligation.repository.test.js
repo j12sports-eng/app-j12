@@ -46,7 +46,7 @@ test("MySqlEnrollmentFinancialObligationRepository creates and maps an obligatio
       return { affectedRows: 1 };
     }
 
-    assert.match(sql, /SELECT \*/);
+    assert.match(sql, /SELECT[\s\S]+FROM enrollment_financial_obligations/);
     return [rows.get(params[0])].filter(Boolean);
   };
 

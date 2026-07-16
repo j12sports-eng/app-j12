@@ -29,6 +29,9 @@ const AVAILABLE_TEAM_SORT_COLUMNS = Object.freeze({
   status: "team.status",
 });
 
+const CHAMPIONSHIP_TEAM_COLUMNS =
+  "id, name, name_key, acronym, category, modality, city, state, responsible, coach, assistant_coach, technical_commission_json, primary_uniform, secondary_uniform, primary_color, secondary_color, observations, status, shield_json, metadata_json, created_by, updated_by, activated_at, inactivated_at, disqualified_at, deleted_at, created_at, updated_at";
+
 class MySqlChampionshipRegistrationRepository {
   constructor(options = {}) {
     this.query = options.queryRunner || options.query || query;
@@ -56,7 +59,8 @@ class MySqlChampionshipRegistrationRepository {
         INDEX idx_j12_campeonato_inscricoes_team (team_id),
         INDEX idx_j12_campeonato_inscricoes_status (status),
         INDEX idx_j12_campeonato_inscricoes_deleted (deleted_at),
-        INDEX idx_j12_campeonato_inscricoes_lookup (championship_id, team_id, deleted_at)
+        INDEX idx_j12_campeonato_inscricoes_lookup (championship_id, team_id, deleted_at),
+        INDEX idx_championship_registrations_status_created (championship_id, status, created_at)
       )
     `);
   }
@@ -307,7 +311,7 @@ class MySqlChampionshipRegistrationRepository {
     await this.ensureSchema();
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${CHAMPIONSHIP_TEAM_COLUMNS}
         FROM ${CHAMPIONSHIP_TEAM_TABLE_NAME}
         WHERE id = ?
           AND deleted_at IS NULL

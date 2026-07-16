@@ -64,7 +64,7 @@ test("MySqlPaymentRepository creates, updates and cancels gateway charges locall
         return { affectedRows: 1 };
       }
 
-      if (/SELECT \*/i.test(sql)) {
+      if (/SELECT[\s\S]+FROM financial_gateway_charges/i.test(sql)) {
         return row ? [row] : [];
       }
 

@@ -3,6 +3,15 @@ const { randomUUID } = require("node:crypto");
 const { canManageSystem } = require("../../../../../auth.js");
 const { query, tableExists } = require("../../../../config/db.js");
 
+const COURT_COLUMNS =
+  "id, nome, tipo, descricao, fotos_json, dimensoes_json, capacidade, coberta, iluminacao, status, unidade, funcionamento_json, preco_base, preco_noturno, preco_fim_semana, tempo_minimo_minutos, tempo_maximo_minutos, observacoes, created_by, updated_by, created_at, updated_at";
+const PRICE_RULE_COLUMNS =
+  "id, quadra_id, weekday, start_time, end_time, price_per_hour, currency, priority, active, created_by, updated_by, created_at, updated_at";
+const RENTER_COLUMNS =
+  "id, nome, email, telefone, documento, status, observacoes, created_by, updated_by, created_at, updated_at";
+const COURT_AUDIT_COLUMNS =
+  "id, action, entity_id, actor_id, actor_role, metadata_json, created_at";
+
 const COURT_STATUSES = new Set(["ativa", "manutencao", "indisponivel"]);
 const RESERVATION_STATUSES = new Set([
   "pending",
@@ -79,7 +88,7 @@ class CourtRentalService {
 
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${COURT_COLUMNS}
         FROM j12_quadras quadra
         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
         ORDER BY quadra.nome ASC
@@ -93,7 +102,9 @@ class CourtRentalService {
   async getCourtById(courtId) {
     await this.ensureSchema();
     const id = requiredText(courtId, "quadraId", 64);
-    const rows = await this.query("SELECT * FROM j12_quadras WHERE id = ? LIMIT 1", [id]);
+    const rows = await this.query(`SELECT ${COURT_COLUMNS} FROM j12_quadras WHERE id = ? LIMIT 1`, [
+      id,
+    ]);
     const court = readRows(rows)[0];
 
     if (!court) {
@@ -223,7 +234,7 @@ class CourtRentalService {
     const id = requiredText(courtId, "quadraId", 64);
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${PRICE_RULE_COLUMNS}
         FROM j12_quadra_price_rules
         WHERE quadra_id = ?
         ORDER BY priority DESC, weekday ASC, start_time ASC
@@ -282,9 +293,10 @@ class CourtRentalService {
     );
 
     await this.audit("price_rule.upserted", id, { courtId: court.id }, authUser);
-    const rows = await this.query("SELECT * FROM j12_quadra_price_rules WHERE id = ? LIMIT 1", [
-      id,
-    ]);
+    const rows = await this.query(
+      `SELECT ${PRICE_RULE_COLUMNS} FROM j12_quadra_price_rules WHERE id = ? LIMIT 1`,
+      [id],
+    );
     return mapPriceRuleRow(readRows(rows)[0]);
   }
 
@@ -301,7 +313,7 @@ class CourtRentalService {
 
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${RENTER_COLUMNS}
         FROM j12_locatarios
         ${where}
         ORDER BY nome ASC
@@ -316,7 +328,10 @@ class CourtRentalService {
   async getRenterById(renterId) {
     await this.ensureSchema();
     const id = requiredText(renterId, "locatarioId", 64);
-    const rows = await this.query("SELECT * FROM j12_locatarios WHERE id = ? LIMIT 1", [id]);
+    const rows = await this.query(
+      `SELECT ${RENTER_COLUMNS} FROM j12_locatarios WHERE id = ? LIMIT 1`,
+      [id],
+    );
     const renter = readRows(rows)[0];
 
     if (!renter) {
@@ -1380,7 +1395,7 @@ class CourtRentalService {
     const limit = normalizeLimit(filters.limit, 120);
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${COURT_AUDIT_COLUMNS}
         FROM j12_quadra_audit_logs
         ORDER BY created_at DESC
         -- MySQL 8.4 rejects LIMIT markers in some prepared statements; limit is a clamped integer.

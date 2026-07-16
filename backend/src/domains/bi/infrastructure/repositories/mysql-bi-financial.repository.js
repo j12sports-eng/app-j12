@@ -3,7 +3,7 @@ const {
   InterPaymentStatus,
 } = require("../../../financeiro/inter/entities/inter-payment.entity.js");
 
-const FINANCIAL_KPIS_SQL = `
+const FINANCIAL_KPIS_SQL = sargable(`
   SELECT
     COALESCE(SUM(CASE WHEN LOWER(c.status) = ? AND COALESCE(c.data_pagamento, c.pago_em) BETWEEN ? AND ? AND LOWER(c.tipo) NOT IN ('despesa','expense') THEN COALESCE(c.valor_final,c.valor,0) ELSE 0 END),0) received_revenue,
     COALESCE(SUM(CASE WHEN c.vencimento BETWEEN ? AND ? AND LOWER(c.status) <> ? AND LOWER(c.tipo) NOT IN ('despesa','expense') THEN COALESCE(c.valor_final,c.valor,0) ELSE 0 END),0) expected_revenue,
@@ -19,9 +19,9 @@ const FINANCIAL_KPIS_SQL = `
     COUNT(DISTINCT CASE WHEN LOWER(c.status) = ? AND COALESCE(c.data_pagamento, c.pago_em) BETWEEN ? AND ? AND LOWER(c.tipo) NOT IN ('despesa','expense') THEN c.aluno_id END) previous_paying_students
   FROM j12_financeiro_cobrancas c
   WHERE c.ativo = 1 AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci) = (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci) = (CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci) = (CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci))))
-`;
+`);
 
-const FINANCIAL_EVOLUTION_SQL = `
+const FINANCIAL_EVOLUTION_SQL = sargable(`
   SELECT DATE_FORMAT(COALESCE(c.data_pagamento,c.pago_em),'%Y-%m') period,
     COALESCE(SUM(COALESCE(c.valor_final,c.valor,0)),0) received_revenue
   FROM j12_financeiro_cobrancas c
@@ -29,19 +29,34 @@ const FINANCIAL_EVOLUTION_SQL = `
     AND COALESCE(c.data_pagamento,c.pago_em) BETWEEN ? AND ?
     AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci) = (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci) = (CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci) = (CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci))))
   GROUP BY period ORDER BY period
-`;
+`);
 
-const FINANCIAL_BREAKDOWNS_SQL = `
-  SELECT 'category' dimension, COALESCE(NULLIF(c.tipo,''),'nao_informado') dimension_key, COUNT(*) quantity, SUM(COALESCE(c.valor_final,c.valor,0)) value
-  FROM j12_financeiro_cobrancas c WHERE c.ativo=1 AND LOWER(c.status)=? AND LOWER(c.tipo) NOT IN ('despesa','expense') AND COALESCE(c.data_pagamento,c.pago_em) BETWEEN ? AND ? AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci)))) GROUP BY COALESCE(NULLIF(c.tipo,''),'nao_informado')
+const FINANCIAL_BREAKDOWNS_SQL = sargable(`
+  WITH filtered_charges AS (
+    SELECT c.tipo, c.modalidade, c.unidade, c.forma_pagamento, COALESCE(c.valor_final,c.valor,0) value
+    FROM j12_financeiro_cobrancas c
+    WHERE c.ativo=1 AND LOWER(c.status)=? AND LOWER(c.tipo) NOT IN ('despesa','expense')
+      AND COALESCE(c.data_pagamento,c.pago_em) BETWEEN ? AND ?
+      AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci))))
+  )
+  SELECT 'category' dimension, COALESCE(NULLIF(tipo,''),'nao_informado') dimension_key, COUNT(*) quantity, SUM(value) value FROM filtered_charges GROUP BY COALESCE(NULLIF(tipo,''),'nao_informado')
   UNION ALL
-  SELECT 'modality',COALESCE(NULLIF(c.modalidade,''),'nao_informado'),COUNT(*),SUM(COALESCE(c.valor_final,c.valor,0)) FROM j12_financeiro_cobrancas c WHERE c.ativo=1 AND LOWER(c.status)=? AND LOWER(c.tipo) NOT IN ('despesa','expense') AND COALESCE(c.data_pagamento,c.pago_em) BETWEEN ? AND ? AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci)))) GROUP BY c.modalidade
+  SELECT 'modality',COALESCE(NULLIF(modalidade,''),'nao_informado'),COUNT(*),SUM(value) FROM filtered_charges GROUP BY modalidade
   UNION ALL
-  SELECT 'unit',COALESCE(NULLIF(c.unidade,''),'nao_informado'),COUNT(*),SUM(COALESCE(c.valor_final,c.valor,0)) FROM j12_financeiro_cobrancas c WHERE c.ativo=1 AND LOWER(c.status)=? AND LOWER(c.tipo) NOT IN ('despesa','expense') AND COALESCE(c.data_pagamento,c.pago_em) BETWEEN ? AND ? AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci)))) GROUP BY c.unidade
+  SELECT 'unit',COALESCE(NULLIF(unidade,''),'nao_informado'),COUNT(*),SUM(value) FROM filtered_charges GROUP BY unidade
   UNION ALL
-  SELECT 'paymentMethod',COALESCE(NULLIF(LOWER(c.forma_pagamento),''),'nao_informado'),COUNT(*),SUM(COALESCE(c.valor_final,c.valor,0)) FROM j12_financeiro_cobrancas c WHERE c.ativo=1 AND LOWER(c.status)=? AND LOWER(c.tipo) NOT IN ('despesa','expense') AND COALESCE(c.data_pagamento,c.pago_em) BETWEEN ? AND ? AND (CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci IS NULL OR EXISTS (SELECT 1 FROM j12_unidades u WHERE (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND ((CONVERT(u.nome USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci) OR (CONVERT(CAST(u.id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci)=(CONVERT(c.unidade USING utf8mb4) COLLATE utf8mb4_unicode_ci)))) GROUP BY LOWER(c.forma_pagamento), COALESCE(NULLIF(LOWER(c.forma_pagamento),''),'nao_informado')
+  SELECT 'paymentMethod',COALESCE(NULLIF(LOWER(forma_pagamento),''),'nao_informado'),COUNT(*),SUM(value) FROM filtered_charges GROUP BY LOWER(forma_pagamento), COALESCE(NULLIF(LOWER(forma_pagamento),''),'nao_informado')
   ORDER BY dimension,value DESC
-`;
+`);
+
+// Generated columns preserve legacy normalization while allowing index range scans.
+function sargable(sql) {
+  return sql
+    .replaceAll("LOWER(c.status)", "c.status_normalized")
+    .replaceAll("LOWER(c.tipo)", "c.type_normalized")
+    .replaceAll("COALESCE(c.data_pagamento, c.pago_em)", "c.payment_effective_date")
+    .replaceAll("COALESCE(c.data_pagamento,c.pago_em)", "c.payment_effective_date");
+}
 
 class MySqlBiFinancialRepository extends BiReadRepositoryContract {
   constructor(options = {}) {
@@ -122,7 +137,7 @@ function evolutionParams(period) {
   ];
 }
 function breakdownParams(period) {
-  return Array.from({ length: 4 }, () => evolutionParams(period)).flat();
+  return evolutionParams(period);
 }
 function mapKpis(row, prefix) {
   return {

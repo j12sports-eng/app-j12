@@ -14,6 +14,9 @@ const {
   text,
 } = require("../../shared/utils/index.js");
 
+const CHAMPIONSHIP_COLUMNS =
+  "id, name, category, modality, start_date, end_date, status, description, metadata_json, created_by, updated_by, published_at, archived_at, deleted_at, created_at, updated_at";
+
 class MySqlChampionshipRepository {
   constructor(options = {}) {
     this.query = options.queryRunner || options.query || query;
@@ -145,7 +148,7 @@ class MySqlChampionshipRepository {
     const id = requiredText(championshipId, "championshipId", 64);
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${CHAMPIONSHIP_COLUMNS}
         FROM ${CHAMPIONSHIP_TABLE_NAME}
         WHERE id = ?
           ${options.includeRemoved ? "" : "AND deleted_at IS NULL"}
@@ -177,7 +180,7 @@ class MySqlChampionshipRepository {
 
     const rows = await this.query(
       `
-        SELECT *
+        SELECT ${CHAMPIONSHIP_COLUMNS}
         FROM ${CHAMPIONSHIP_TABLE_NAME}
         WHERE ${where.join(" AND ")}
         ORDER BY start_date DESC, created_at DESC

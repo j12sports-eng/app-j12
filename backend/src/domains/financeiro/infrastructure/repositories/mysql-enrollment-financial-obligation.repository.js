@@ -4,6 +4,8 @@ const MYSQL_DUPLICATE_ENTRY_CODE = "ER_DUP_ENTRY";
 const MYSQL_DUPLICATE_ENTRY_ERRNO = 1062;
 
 const TABLE_NAME = "enrollment_financial_obligations";
+const OBLIGATION_COLUMNS =
+  "id, enrollment_id, obligation_type, status, amount, currency, plan_id, due_date, source, created_by, created_at, updated_at, cancelled_at, cancelled_by, metadata_json";
 const ENROLLMENT_OBLIGATION_UNIQUE_INDEX = "ux_enrollment_financial_obligations_enrollment_type";
 
 const INSERT_ENROLLMENT_FINANCIAL_OBLIGATION_SQL = `
@@ -24,14 +26,14 @@ const INSERT_ENROLLMENT_FINANCIAL_OBLIGATION_SQL = `
 `;
 
 const SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ID_SQL = `
-  SELECT *
+  SELECT ${OBLIGATION_COLUMNS}
   FROM ${TABLE_NAME}
   WHERE id = ?
   LIMIT 1
 `;
 
 const SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ENROLLMENT_AND_TYPE_SQL = `
-  SELECT *
+  SELECT ${OBLIGATION_COLUMNS}
   FROM ${TABLE_NAME}
   WHERE enrollment_id = ?
     AND obligation_type = ?
@@ -39,7 +41,7 @@ const SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ENROLLMENT_AND_TYPE_SQL = `
 `;
 
 const SELECT_ENROLLMENT_FINANCIAL_OBLIGATIONS_BY_ENROLLMENT_SQL = `
-  SELECT *
+  SELECT ${OBLIGATION_COLUMNS}
   FROM ${TABLE_NAME}
   WHERE enrollment_id = ?
   ORDER BY created_at DESC, id DESC
@@ -81,8 +83,29 @@ class MySqlEnrollmentFinancialObligationRepository {
    * @param {Object} [options]
    * @param {(sql: string, params?: unknown[]) => Promise<unknown>} [options.queryRunner]
    */
-  constructor({ queryRunner = null } = {}) {
+  constructor({ queryRunner = null, transactionRunner = null } = {}) {
     this.query = queryRunner || getDefaultQueryRunner();
+    this.transactionRunner = transactionRunner;
+  }
+
+  /**
+   * Runs canonical obligation materialization on one MySQL connection.
+   * The scoped repository prevents any write from escaping the transaction.
+   */
+  async runInTransaction(work) {
+    const transactionRunner = this.transactionRunner || getDefaultTransactionRunner();
+    if (typeof work !== "function" || typeof transactionRunner !== "function") {
+      throw new TypeError("Financial obligation transaction requires a work function.");
+    }
+
+    return transactionRunner(async (connection) => {
+      const queryRunner = createConnectionQueryRunner(connection);
+      const repository = new MySqlEnrollmentFinancialObligationRepository({
+        queryRunner,
+        transactionRunner: async (nestedWork) => nestedWork(connection),
+      });
+      return work({ connection, queryRunner, repository });
+    });
   }
 
   /**
@@ -378,6 +401,21 @@ function getDefaultQueryRunner() {
   return require("../../../../config/db.js").query;
 }
 
+function getDefaultTransactionRunner() {
+  return require("../../../../config/db.js").transaction;
+}
+
+function createConnectionQueryRunner(connection) {
+  if (!connection || typeof connection.execute !== "function") {
+    throw new TypeError("Financial obligation transaction requires connection.execute().");
+  }
+
+  return async (sql, params = []) => {
+    const [rows] = await connection.execute(sql, params);
+    return rows;
+  };
+}
+
 /**
  * @param {unknown} value
  * @returns {number|null}
@@ -500,6 +538,7 @@ module.exports = {
   SELECT_ENROLLMENT_FINANCIAL_OBLIGATION_BY_ID_SQL,
   TABLE_NAME,
   UPDATE_ENROLLMENT_FINANCIAL_OBLIGATION_STATUS_SQL,
+  createConnectionQueryRunner,
   isEnrollmentFinancialObligationDuplicateEntryError,
   readFirstRow,
   readRows,

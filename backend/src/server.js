@@ -4,8 +4,16 @@ require("dotenv").config();
 
 const express = require("express");
 const http = require("http");
-const { randomUUID } = require("node:crypto");
 const cors = require("cors");
+const {
+  createRequestObservabilityMiddleware,
+  logHttpError,
+} = require("./observability/http-observability.middleware.js");
+const {
+  createSecurityAuditMiddleware,
+  createSecurityHeadersMiddleware,
+  createSlidingWindowRateLimiter,
+} = require("./security/security-hardening.js");
 
 let SocketIOServer = null;
 try {
@@ -348,9 +356,17 @@ const corsOptions = {
 
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
-  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+    "X-Request-Id",
+    "X-Correlation-Id",
+  ],
 
-  exposedHeaders: ["Content-Length", "Content-Type"],
+  exposedHeaders: ["Content-Length", "Content-Type", "X-Request-Id", "X-Correlation-Id"],
 
   optionsSuccessStatus: 204,
 };
@@ -375,14 +391,7 @@ if (SocketIOServer) {
 app.use(corsAuditLogger);
 app.use(cors(corsOptions));
 
-app.use((req, res, next) => {
-  req.id =
-    typeof req.headers["x-request-id"] === "string" && req.headers["x-request-id"].trim()
-      ? req.headers["x-request-id"].trim()
-      : randomUUID();
-  res.setHeader("X-Request-Id", req.id);
-  next();
-});
+app.use(createRequestObservabilityMiddleware());
 
 app.use((req, res, next) => {
   const allowedOrigin = resolveAllowedOrigin(req.headers.origin);
@@ -399,7 +408,7 @@ app.use((req, res, next) => {
 
   res.header(
     "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-Id, X-Correlation-Id",
   );
 
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -417,79 +426,11 @@ app.use((req, res, next) => {
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
-const rateLimitWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
-const rateLimitMax = Number(process.env.RATE_LIMIT_MAX || 240);
-const requestBuckets = new Map();
-
-function clientKey(req) {
-  return `${req.ip || req.socket?.remoteAddress || "unknown"}:${req.path}`;
-}
-
-function securityHeaders(_req, res, next) {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  next();
-}
-
-function rateLimit(req, res, next) {
-  if (req.method === "OPTIONS" || ["/health", "/live", "/ready"].includes(req.path)) {
-    next();
-    return;
-  }
-
-  const now = Date.now();
-  const key = clientKey(req);
-  const bucket = requestBuckets.get(key) || {
-    count: 0,
-    resetAt: now + rateLimitWindowMs,
-  };
-
-  if (bucket.resetAt <= now) {
-    bucket.count = 0;
-    bucket.resetAt = now + rateLimitWindowMs;
-  }
-
-  bucket.count += 1;
-  requestBuckets.set(key, bucket);
-
-  if (requestBuckets.size > 5000) {
-    for (const [bucketKey, value] of requestBuckets.entries()) {
-      if (value.resetAt <= now) requestBuckets.delete(bucketKey);
-    }
-  }
-
-  if (bucket.count > rateLimitMax) {
-    res.status(429).json({
-      success: false,
-      error: "Muitas requisicoes em pouco tempo. Tente novamente em instantes.",
-    });
-    return;
-  }
-
-  next();
-}
-
-function requestLogger(req, res, next) {
-  const startedAt = Date.now();
-  res.on("finish", () => {
-    const duration = Date.now() - startedAt;
-    const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info";
-    const message = `[api] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`;
-
-    if (level === "error") console.error(message);
-    else if (level === "warn") console.warn(message);
-    else if (process.env.NODE_ENV !== "test") console.log(message);
-  });
-  next();
-}
-
-app.use(securityHeaders);
-app.use(rateLimit);
+app.use(createSecurityHeadersMiddleware());
+app.use(createSecurityAuditMiddleware());
+app.use(createSlidingWindowRateLimiter());
 app.use(express.json({ limit: REQUEST_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_LIMIT }));
-app.use(requestLogger);
 
 function mount(paths, router) {
   for (const path of paths) {
@@ -618,19 +559,12 @@ app.use((error, req, res, _next) => {
   const requestId = req?.id || req?.headers?.["x-request-id"] || null;
   const message = details.publicMessage;
 
-  console.error("[GLOBAL_ERROR]", {
-    requestId,
-    endpoint: req?.originalUrl || req?.url || "/",
-    method: req?.method,
-    statusCode,
-    code,
-    message: error?.message,
+  logHttpError(error, req, {
     databaseError: details.databaseError,
-    timestamp,
     environment: process.env.NODE_ENV || "development",
+    publicMessage: message,
+    timestamp,
   });
-  console.error(error);
-  console.error(error?.stack);
 
   res.status(statusCode).json({
     success: false,

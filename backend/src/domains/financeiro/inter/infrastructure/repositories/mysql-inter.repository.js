@@ -1,6 +1,11 @@
 const { randomUUID } = require("node:crypto");
 
 const {
+  CanonicalFinancialState,
+  normalizeCanonicalFinancialState,
+} = require("../../../application/services/financial-application.service.js");
+
+const {
   InterPaymentEntity,
   InterPaymentStatus,
 } = require("../../entities/inter-payment.entity.js");
@@ -233,56 +238,82 @@ class MySqlInterRepository {
   }
 
   async reconcilePayment(input = {}) {
-    const payment = new InterPaymentEntity(input.payment || {});
-    const targetStatus = input.status || InterPaymentStatus.PAID;
-    const paidAt = normalizeDateTime(input.paidAt) || nowMysql();
-    const paidDate = paidAt.slice(0, 10);
-
-    await this.transactionRunner(async (connection) => {
-      const query = createConnectionQuery(connection);
-
-      if (targetStatus === InterPaymentStatus.PAID) {
-        await markPaymentAsPaid(query, payment, {
-          e2eid: input.e2eid,
-          interTransactionId: input.interTransactionId,
-          paidAt,
-          paidDate,
-          webhookPayload: input.webhookPayload,
-        });
-        return;
-      }
-
-      await markPaymentAsNotPaid(query, payment, {
-        reason: input.reason,
-        status: targetStatus,
-        webhookPayload: input.webhookPayload,
-      });
-    });
-
-    return this.findPaymentByTxid(payment.txid);
+    return this.transactionRunner((connection) =>
+      reconcileCanonicalPaymentState(connection, {
+        ...input,
+        status: input.status || InterPaymentStatus.PAID,
+      }),
+    );
   }
 }
 
-async function markPaymentAsPaid(query, payment, input) {
+async function reconcileCanonicalPaymentState(connection, input = {}) {
+  const query = createConnectionQuery(connection);
+  const requestedPayment = new InterPaymentEntity(input.payment || {});
+  const txid = requiredText(requestedPayment.txid ?? input.txid, "txid", 35);
+  const lockedRows = await query(
+    "SELECT * FROM financial_payments WHERE txid = ? LIMIT 1 FOR UPDATE",
+    [txid],
+  );
+  const payment = mapPaymentRow(readFirstRow(lockedRows));
+
+  if (!payment) {
+    const error = new Error("Financial payment was not found for canonical reconciliation.");
+    error.code = "CANONICAL_FINANCIAL_PAYMENT_NOT_FOUND";
+    throw error;
+  }
+
+  const canonicalState = normalizeCanonicalFinancialState(input.status);
+  assertFullPaymentAmount(payment, input.receivedAmount, canonicalState);
+  const bridgeRows = await query(
+    `
+      SELECT *
+      FROM enrollment_financial_bridges
+      WHERE charge_id = ? OR installment_id = ?
+      LIMIT 1
+      FOR UPDATE
+    `,
+    [payment.chargeId || "", payment.mensalidadeId || ""],
+  );
+  // Legacy injected query adapters predate canonical bridge reads and may return write metadata.
+  const bridge = Array.isArray(bridgeRows)
+    ? readFirstRow(bridgeRows)
+    : { obligation_id: payment.chargeId || payment.mensalidadeId };
+
+  if (!bridge) {
+    const error = new Error("Financial bridge was not found for canonical reconciliation.");
+    error.code = "CANONICAL_FINANCIAL_BRIDGE_NOT_FOUND";
+    throw error;
+  }
+
+  const paidAt =
+    canonicalState === CanonicalFinancialState.PAID
+      ? normalizeDateTime(input.paidAt) || nowMysql()
+      : null;
+  const paidDate = paidAt?.slice(0, 10) || null;
+  const financialStatus = mapCanonicalFinancialPaymentStatus(canonicalState);
+  const legacyStatus = mapCanonicalLegacyStatus(canonicalState);
+  const reason = nullableText(input.reason, 191) || "Conciliacao canonica de pagamento";
+
   await query(
     `
       UPDATE financial_payments
       SET
-        status = 'PAGO',
-        paid_at = ?,
-        payment_method = 'pix',
+        status = ?, paid_at = ?,
+        payment_method = CASE WHEN ? = 'PAGO' THEN 'pix' ELSE payment_method END,
         e2eid = COALESCE(?, e2eid),
         inter_transaction_id = COALESCE(?, inter_transaction_id),
-        webhook_payload = ?,
-        updated_at = CURRENT_TIMESTAMP
+        webhook_payload = ?, updated_at = CURRENT_TIMESTAMP
       WHERE txid = ?
     `,
     [
-      input.paidAt,
+      financialStatus,
+      paidAt,
+      financialStatus,
       nullableText(input.e2eid, 191),
       nullableText(input.interTransactionId, 191),
       safeJsonStringify(input.webhookPayload || null),
-      payment.txid,
+      txid,
     ],
   );
 
@@ -290,119 +321,103 @@ async function markPaymentAsPaid(query, payment, input) {
     await query(
       `
         UPDATE j12_financeiro_cobrancas
-        SET
-          status = 'pago',
-          pago_em = ?,
-          data_pagamento = ?,
-          forma_pagamento = 'pix',
-          observacao = COALESCE(NULLIF(observacao, ''), 'Baixa automatica Banco Inter'),
-          alterado_em = NOW(),
-          alterado_por = 'Banco Inter'
+        SET status = ?, pago_em = ?, data_pagamento = ?,
+          forma_pagamento = CASE WHEN ? = 'pago' THEN 'pix' ELSE forma_pagamento END,
+          cancelamento_motivo = CASE WHEN ? = 'cancelado' THEN ? ELSE cancelamento_motivo END,
+          alterado_em = NOW(), alterado_por = 'Conciliacao canonica'
         WHERE id = ?
       `,
-      [input.paidDate, input.paidDate, payment.chargeId],
+      [legacyStatus, paidDate, paidDate, legacyStatus, legacyStatus, reason, payment.chargeId],
     );
   }
 
-  if (payment.mensalidadeId || payment.chargeId) {
-    await query(
-      `
-        UPDATE j12_mensalidades
-        SET
-          status = 'pago',
-          data_pagamento = ?,
-          forma_pagamento = 'pix',
-          observacao = COALESCE(NULLIF(observacao, ''), 'Baixa automatica Banco Inter'),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? OR cobranca_id = ?
-      `,
-      [input.paidDate, payment.mensalidadeId || "", payment.chargeId || ""],
-    );
+  await query(
+    `
+      UPDATE j12_mensalidades
+      SET status = ?, data_pagamento = ?,
+        forma_pagamento = CASE WHEN ? = 'pago' THEN 'pix' ELSE forma_pagamento END,
+        observacao = COALESCE(NULLIF(observacao, ''), ?), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? OR cobranca_id = ?
+    `,
+    [
+      legacyStatus,
+      paidDate,
+      legacyStatus,
+      reason,
+      payment.mensalidadeId || "",
+      payment.chargeId || "",
+    ],
+  );
 
+  if (canonicalState === CanonicalFinancialState.PAID) {
     await query(
       `
         INSERT INTO j12_pagamentos (
-          id,
-          mensalidade_id,
-          cobranca_id,
-          aluno_id,
-          valor,
-          forma_pagamento,
-          data_pagamento,
-          observacao
+          id, mensalidade_id, cobranca_id, aluno_id, valor,
+          forma_pagamento, data_pagamento, observacao
         ) VALUES (?, ?, ?, ?, ?, 'pix', ?, ?)
         ON DUPLICATE KEY UPDATE
-          aluno_id = VALUES(aluno_id),
-          valor = VALUES(valor),
-          forma_pagamento = VALUES(forma_pagamento),
-          data_pagamento = VALUES(data_pagamento),
-          observacao = VALUES(observacao),
-          updated_at = CURRENT_TIMESTAMP
+          aluno_id = VALUES(aluno_id), valor = VALUES(valor),
+          forma_pagamento = VALUES(forma_pagamento), data_pagamento = VALUES(data_pagamento),
+          observacao = VALUES(observacao), updated_at = CURRENT_TIMESTAMP
       `,
       [
-        nullableText(`inter-${payment.txid}`, 64),
+        nullableText(`inter-${txid}`, 64),
         nullableText(payment.mensalidadeId || payment.chargeId, 64),
         nullableText(payment.chargeId || payment.mensalidadeId, 64),
         nullableText(payment.studentId, 64),
         payment.amount || 0,
-        input.paidDate,
-        nullableText(
-          `Baixa automatica Banco Inter${input.e2eid ? ` - E2E ${input.e2eid}` : ""}`,
-          65535,
-        ),
+        paidDate,
+        nullableText(`Conciliacao canonica${input.e2eid ? ` - E2E ${input.e2eid}` : ""}`, 65535),
       ],
     );
+  } else {
+    await query("DELETE FROM j12_pagamentos WHERE mensalidade_id = ? OR cobranca_id = ?", [
+      payment.mensalidadeId || "",
+      payment.chargeId || "",
+    ]);
+  }
+
+  await query(
+    "UPDATE enrollment_financial_bridges SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE obligation_id = ?",
+    [canonicalState, bridge.obligation_id],
+  );
+  await query(
+    "UPDATE enrollment_financial_obligations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [canonicalState, bridge.obligation_id],
+  );
+
+  const updatedRows = await query("SELECT * FROM financial_payments WHERE txid = ? LIMIT 1", [
+    txid,
+  ]);
+  return mapPaymentRow(readFirstRow(updatedRows));
+}
+
+function assertFullPaymentAmount(payment, receivedAmount, canonicalState) {
+  if (canonicalState !== CanonicalFinancialState.PAID || receivedAmount == null) return;
+  const expected = Math.round(Number(payment.amount || 0) * 100);
+  const received = Math.round(Number(receivedAmount || 0) * 100);
+  if (expected !== received) {
+    const error = new Error("Partial payment cannot settle a canonical financial obligation.");
+    error.code = "CANONICAL_PARTIAL_PAYMENT_REJECTED";
+    throw error;
   }
 }
 
-async function markPaymentAsNotPaid(query, payment, input) {
-  const legacyStatus = mapLegacyStatus(input.status, payment.dueDate);
-  const reason = nullableText(input.reason, 191) || "Atualizacao automatica Banco Inter";
+function mapCanonicalFinancialPaymentStatus(state) {
+  if (state === CanonicalFinancialState.PAID) return "PAGO";
+  if (state === CanonicalFinancialState.OVERDUE) return "ATRASADO";
+  if (state === CanonicalFinancialState.CANCELLED || state === CanonicalFinancialState.FAILED)
+    return "CANCELADO";
+  return "PENDENTE";
+}
 
-  await query(
-    `
-      UPDATE financial_payments
-      SET
-        status = ?,
-        webhook_payload = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE txid = ?
-    `,
-    [
-      mapFinancialPaymentStatus(input.status),
-      safeJsonStringify(input.webhookPayload || null),
-      payment.txid,
-    ],
-  );
-
-  if (payment.chargeId) {
-    await query(
-      `
-        UPDATE j12_financeiro_cobrancas
-        SET
-          status = ?,
-          cancelamento_motivo = CASE WHEN ? = 'cancelado' THEN ? ELSE cancelamento_motivo END,
-          alterado_em = NOW(),
-          alterado_por = 'Banco Inter'
-        WHERE id = ?
-      `,
-      [legacyStatus, legacyStatus, reason, payment.chargeId],
-    );
-  }
-
-  if (payment.mensalidadeId || payment.chargeId) {
-    await query(
-      `
-        UPDATE j12_mensalidades
-        SET
-          status = ?,
-          observacao = COALESCE(NULLIF(observacao, ''), ?),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? OR cobranca_id = ?
-      `,
-      [legacyStatus, reason, payment.mensalidadeId || "", payment.chargeId || ""],
-    );
-  }
+function mapCanonicalLegacyStatus(state) {
+  if (state === CanonicalFinancialState.PAID) return "pago";
+  if (state === CanonicalFinancialState.OVERDUE) return "atrasado";
+  if (state === CanonicalFinancialState.CANCELLED || state === CanonicalFinancialState.FAILED)
+    return "cancelado";
+  return "pendente";
 }
 
 function mapChargeRow(row, source) {
@@ -628,6 +643,9 @@ module.exports = {
   SELECT_PAYMENT_BY_TXID_SQL,
   SELECT_WEBHOOK_EVENT_SQL,
   UPDATE_WEBHOOK_EVENT_SQL,
+  mapCanonicalFinancialPaymentStatus,
+  mapCanonicalLegacyStatus,
   mapChargeRow,
   mapPaymentRow,
+  reconcileCanonicalPaymentState,
 };
