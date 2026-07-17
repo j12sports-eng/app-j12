@@ -1,7 +1,9 @@
 export { CommandCenterPreview } from "./CommandCenterPreview";
 export * from "./components";
+export { EnrollmentCommandCenterPreview } from "./EnrollmentCommandCenterPreview";
 export { ENABLE_COMMAND_CENTER_PREVIEW } from "./config";
 export { createPreviewQueryOptions } from "./query-options";
 export { commandCenterPreviewRegistry } from "./registered-previews";
 export { createCommandCenterPreviewRegistry } from "./registry";
+export { StudentsCommandCenterPreview } from "./StudentsCommandCenterPreview";
 export type { CommandCenterPreviewDefinition, PreviewReloadHandler } from "./types";
