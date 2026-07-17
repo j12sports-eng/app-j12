@@ -172,8 +172,9 @@ function withStatisticsQuery(
   params?: ChampionshipStatisticsFilters | ChampionshipRankingFilters,
 ) {
   const search = new URLSearchParams();
+  const rankingFilters = params && "type" in params ? params : undefined;
 
-  if ("type" in (params || {}) && params?.type) search.set("type", params.type);
+  if (rankingFilters?.type) search.set("type", rankingFilters.type);
   if (params?.limit && params.limit > 0) search.set("limit", String(Math.trunc(params.limit)));
 
   return search.size > 0 ? `${endpoint}?${search.toString()}` : endpoint;

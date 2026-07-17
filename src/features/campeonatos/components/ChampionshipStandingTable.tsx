@@ -85,7 +85,7 @@ export function ChampionshipStandingTable({
                   {group.total} equipe(s)
                 </span>
               </div>
-              <StandingTableRows items={group.items} mode="group" />
+              <StandingTableRows items={group.items} mode="groups" />
             </section>
           ))}
         </div>

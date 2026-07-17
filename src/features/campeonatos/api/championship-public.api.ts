@@ -22,23 +22,33 @@ const PUBLIC_API_OPTIONS = {
 
 type QueryValue = number | string | null | undefined;
 
+function isPublicChampionshipListFilters(
+  params: PublicChampionshipListFilters | PublicPaginationFilters | undefined,
+): params is PublicChampionshipListFilters {
+  return Boolean(
+    params &&
+      ("category" in params ||
+        "modality" in params ||
+        "search" in params ||
+        "sortBy" in params ||
+        "sortDirection" in params),
+  );
+}
+
 function withPublicQuery(
   endpoint: string,
   params?: PublicChampionshipListFilters | PublicPaginationFilters,
 ) {
   const search = new URLSearchParams();
+  const listFilters = isPublicChampionshipListFilters(params) ? params : undefined;
 
-  appendQueryValue(search, "category", "category" in (params || {}) ? params?.category : undefined);
+  appendQueryValue(search, "category", listFilters?.category);
   appendQueryValue(search, "limit", params?.limit);
-  appendQueryValue(search, "modality", "modality" in (params || {}) ? params?.modality : undefined);
+  appendQueryValue(search, "modality", listFilters?.modality);
   appendQueryValue(search, "page", params?.page);
-  appendQueryValue(search, "search", "search" in (params || {}) ? params?.search : undefined);
-  appendQueryValue(search, "sortBy", "sortBy" in (params || {}) ? params?.sortBy : undefined);
-  appendQueryValue(
-    search,
-    "sortDirection",
-    "sortDirection" in (params || {}) ? params?.sortDirection : undefined,
-  );
+  appendQueryValue(search, "search", listFilters?.search);
+  appendQueryValue(search, "sortBy", listFilters?.sortBy);
+  appendQueryValue(search, "sortDirection", listFilters?.sortDirection);
 
   return search.size > 0 ? `${endpoint}?${search.toString()}` : endpoint;
 }
