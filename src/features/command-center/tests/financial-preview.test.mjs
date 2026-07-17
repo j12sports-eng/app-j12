@@ -59,11 +59,12 @@ test("formats valid timestamps and gives safe fallbacks for absent or invalid da
 });
 
 test("preview integration remains GET-only and exposes deterministic UI states", async () => {
-  const [api, component, hook, provider] = await Promise.all([
+  const [api, component, hook, provider, reloadButton] = await Promise.all([
     readFile(path.join(feature, "..", "bi", "api", "bi-financial.api.ts"), "utf8"),
     readFile(path.join(feature, "preview", "FinancialCommandCenterPreview.tsx"), "utf8"),
     readFile(path.join(feature, "hooks", "shared", "hook.ts"), "utf8"),
     readFile(path.join(feature, "preview", "financial-preview-provider.ts"), "utf8"),
+    readFile(path.join(feature, "preview", "components", "PreviewReloadButton.tsx"), "utf8"),
   ]);
 
   assert.match(api, /api\.get<BiFinancialContract>/);
@@ -77,7 +78,7 @@ test("preview integration remains GET-only and exposes deterministic UI states",
   ]) {
     assert.match(component, new RegExp(state));
   }
-  assert.match(component, /onClick=\{\(\) => void onReload\(\)\}/);
+  assert.match(reloadButton, /onClick=\{\(\) => void onReload\(\)\}/);
   assert.match(hook, /fetching: query\.isFetching/);
   assert.doesNotMatch(component, /error\?\.message|error\.message/);
 });
