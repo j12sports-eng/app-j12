@@ -13,6 +13,7 @@ export interface BIHookOptions {
 export interface BIHookResult<TContract> {
   contract: TContract | undefined;
   error: Error | null;
+  fetching: boolean;
   lastUpdate: string | null;
   loading: boolean;
   refetch: () => Promise<QueryObserverResult<TContract, Error>>;
@@ -35,6 +36,7 @@ export function useBIContract<TContract extends { generatedAt: string }>(
   return {
     contract: query.data,
     error: query.error,
+    fetching: query.isFetching,
     lastUpdate: query.data?.generatedAt ?? null,
     loading: query.isPending,
     refetch: query.refetch,
