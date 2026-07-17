@@ -1,0 +1,1 @@
+export { useClassesBI } from "./hook";

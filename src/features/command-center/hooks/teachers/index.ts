@@ -1,0 +1,1 @@
+export { useProfessorsBI } from "./hook";

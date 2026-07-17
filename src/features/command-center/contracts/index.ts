@@ -1,0 +1,11 @@
+export * as ArenaContracts from "./arena";
+export * as AthletePortalContracts from "./athlete-portal";
+export * as ChampionshipsContracts from "./championships";
+export * as ClassesContracts from "./classes";
+export * as CommunicationContracts from "./communication";
+export * as FinancialContracts from "./financial";
+export * as GuardianPortalContracts from "./guardian-portal";
+export * as LibraryContracts from "./library";
+export * as StudentsContracts from "./students";
+export * as TeachersContracts from "./teachers";
+export * from "./shared";

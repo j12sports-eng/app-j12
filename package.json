@@ -28,6 +28,10 @@
     "preview": "node scripts/serve-ssr.mjs --host 127.0.0.1 --port 4173",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "lint:command-center": "eslint src/features/command-center",
+    "format:command-center": "prettier --write src/features/command-center",
+    "validate:command-center": "npm run lint:command-center && npm run typecheck",
     "ci:lint:baseline": "node scripts/ci/eslint-baseline.cjs",
     "ci:test:contracts": "node --test scripts/ci/*.test.cjs deploy/almalinux/atomic-deploy.contract.test.cjs",
     "ci:test:security": "node scripts/ci/test-suites.cjs security",
@@ -123,4 +127,5 @@
     "typescript-eslint": "^8.56.1",
     "vite": "^7.3.1"
   }
+  
 }

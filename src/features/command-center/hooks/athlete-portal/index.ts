@@ -1,0 +1,1 @@
+export { useStudentPortalBI } from "./hook";

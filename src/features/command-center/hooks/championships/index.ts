@@ -1,0 +1,1 @@
+export { useChampionshipsBI } from "./hook";
