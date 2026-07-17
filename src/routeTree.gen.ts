@@ -65,6 +65,7 @@ import { Route as AdminCommandCenterStudentsPreviewRouteImport } from './routes/
 import { Route as AdminCommandCenterPreviewRouteImport } from './routes/admin/command-center-preview'
 import { Route as AdminCommandCenterFinancialPreviewRouteImport } from './routes/admin/command-center-financial-preview'
 import { Route as AdminCommandCenterEnrollmentPreviewRouteImport } from './routes/admin/command-center-enrollment-preview'
+import { Route as AdminCommandCenterClassesPreviewRouteImport } from './routes/admin/command-center-classes-preview'
 import { Route as AdminCampeonatosRouteImport } from './routes/admin/campeonatos'
 import { Route as AdminBiRouteImport } from './routes/admin/bi'
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
@@ -380,6 +381,12 @@ const AdminCommandCenterEnrollmentPreviewRoute =
     path: '/admin/command-center-enrollment-preview',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminCommandCenterClassesPreviewRoute =
+  AdminCommandCenterClassesPreviewRouteImport.update({
+    id: '/admin/command-center-classes-preview',
+    path: '/admin/command-center-classes-preview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminCampeonatosRoute = AdminCampeonatosRouteImport.update({
   id: '/admin/campeonatos',
   path: '/admin/campeonatos',
@@ -521,6 +528,7 @@ export interface FileRoutesByFullPath {
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
+  '/admin/command-center-classes-preview': typeof AdminCommandCenterClassesPreviewRoute
   '/admin/command-center-enrollment-preview': typeof AdminCommandCenterEnrollmentPreviewRoute
   '/admin/command-center-financial-preview': typeof AdminCommandCenterFinancialPreviewRoute
   '/admin/command-center-preview': typeof AdminCommandCenterPreviewRoute
@@ -600,6 +608,7 @@ export interface FileRoutesByTo {
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
+  '/admin/command-center-classes-preview': typeof AdminCommandCenterClassesPreviewRoute
   '/admin/command-center-enrollment-preview': typeof AdminCommandCenterEnrollmentPreviewRoute
   '/admin/command-center-financial-preview': typeof AdminCommandCenterFinancialPreviewRoute
   '/admin/command-center-preview': typeof AdminCommandCenterPreviewRoute
@@ -680,6 +689,7 @@ export interface FileRoutesById {
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
+  '/admin/command-center-classes-preview': typeof AdminCommandCenterClassesPreviewRoute
   '/admin/command-center-enrollment-preview': typeof AdminCommandCenterEnrollmentPreviewRoute
   '/admin/command-center-financial-preview': typeof AdminCommandCenterFinancialPreviewRoute
   '/admin/command-center-preview': typeof AdminCommandCenterPreviewRoute
@@ -761,6 +771,7 @@ export interface FileRouteTypes {
     | '/admin/agenda'
     | '/admin/bi'
     | '/admin/campeonatos'
+    | '/admin/command-center-classes-preview'
     | '/admin/command-center-enrollment-preview'
     | '/admin/command-center-financial-preview'
     | '/admin/command-center-preview'
@@ -840,6 +851,7 @@ export interface FileRouteTypes {
     | '/admin/agenda'
     | '/admin/bi'
     | '/admin/campeonatos'
+    | '/admin/command-center-classes-preview'
     | '/admin/command-center-enrollment-preview'
     | '/admin/command-center-financial-preview'
     | '/admin/command-center-preview'
@@ -919,6 +931,7 @@ export interface FileRouteTypes {
     | '/admin/agenda'
     | '/admin/bi'
     | '/admin/campeonatos'
+    | '/admin/command-center-classes-preview'
     | '/admin/command-center-enrollment-preview'
     | '/admin/command-center-financial-preview'
     | '/admin/command-center-preview'
@@ -999,6 +1012,7 @@ export interface RootRouteChildren {
   AdminAgendaRoute: typeof AdminAgendaRoute
   AdminBiRoute: typeof AdminBiRouteWithChildren
   AdminCampeonatosRoute: typeof AdminCampeonatosRouteWithChildren
+  AdminCommandCenterClassesPreviewRoute: typeof AdminCommandCenterClassesPreviewRoute
   AdminCommandCenterEnrollmentPreviewRoute: typeof AdminCommandCenterEnrollmentPreviewRoute
   AdminCommandCenterFinancialPreviewRoute: typeof AdminCommandCenterFinancialPreviewRoute
   AdminCommandCenterPreviewRoute: typeof AdminCommandCenterPreviewRoute
@@ -1428,6 +1442,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCommandCenterEnrollmentPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/command-center-classes-preview': {
+      id: '/admin/command-center-classes-preview'
+      path: '/admin/command-center-classes-preview'
+      fullPath: '/admin/command-center-classes-preview'
+      preLoaderRoute: typeof AdminCommandCenterClassesPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/campeonatos': {
       id: '/admin/campeonatos'
       path: '/admin/campeonatos'
@@ -1710,6 +1731,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAgendaRoute: AdminAgendaRoute,
   AdminBiRoute: AdminBiRouteWithChildren,
   AdminCampeonatosRoute: AdminCampeonatosRouteWithChildren,
+  AdminCommandCenterClassesPreviewRoute: AdminCommandCenterClassesPreviewRoute,
   AdminCommandCenterEnrollmentPreviewRoute:
     AdminCommandCenterEnrollmentPreviewRoute,
   AdminCommandCenterFinancialPreviewRoute:
