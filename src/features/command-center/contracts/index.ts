@@ -1,3 +1,4 @@
+export * as AgendaContracts from "./agenda";
 export * as ArenaContracts from "./arena";
 export * as AthletePortalContracts from "./athlete-portal";
 export * as ChampionshipsContracts from "./championships";

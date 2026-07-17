@@ -1,3 +1,4 @@
+export { AgendaCommandCenterPreview } from "./AgendaCommandCenterPreview";
 export { CommandCenterPreview } from "./CommandCenterPreview";
 export { ClassesCommandCenterPreview } from "./ClassesCommandCenterPreview";
 export * from "./components";

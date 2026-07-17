@@ -1,3 +1,4 @@
+export * as AgendaBIHooks from "./agenda";
 export * as ArenaBIHooks from "./arena";
 export * as AthletePortalBIHooks from "./athlete-portal";
 export * as ChampionshipsBIHooks from "./championships";

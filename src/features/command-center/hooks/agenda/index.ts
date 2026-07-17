@@ -1,0 +1,1 @@
+export { useAgendaBI } from "./hook";
