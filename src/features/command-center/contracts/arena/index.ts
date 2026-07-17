@@ -1,2 +1,2 @@
 export type { BiCourtsContract } from "./contract";
-export type { CourtAvailabilitySlot, CourtsContractData, CourtsKPIId, CourtsKPIs } from "./types";
+export type { CourtsContractData, CourtsKPIId, CourtsKPIs } from "./types";

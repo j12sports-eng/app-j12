@@ -1,4 +1,5 @@
 export { adaptAgendaContract } from "./agenda";
+export { adaptCourtsContract } from "./arena";
 export { adaptChampionshipsContract } from "./championships.adapter";
 export { adaptClassesContract } from "./classes.adapter";
 export { adaptExecutiveContract, adaptMetric } from "./executive.adapter";

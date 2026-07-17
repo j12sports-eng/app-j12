@@ -1,6 +1,7 @@
 export { AgendaCommandCenterPreview } from "./AgendaCommandCenterPreview";
 export { CommandCenterPreview } from "./CommandCenterPreview";
 export { ClassesCommandCenterPreview } from "./ClassesCommandCenterPreview";
+export { CourtsCommandCenterPreview } from "./CourtsCommandCenterPreview";
 export * from "./components";
 export { EnrollmentCommandCenterPreview } from "./EnrollmentCommandCenterPreview";
 export { ENABLE_COMMAND_CENTER_PREVIEW } from "./config";

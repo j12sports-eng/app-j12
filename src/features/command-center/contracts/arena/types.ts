@@ -3,21 +3,15 @@ import type { KPIDefinition } from "../shared";
 export type CourtsKPIId =
   | "availableHours"
   | "cancellations"
-  | "conflicts"
   | "occupancyRate"
   | "rentalRevenue"
-  | "reservedHours";
+  | "reservedHours"
+  | "ticketAverage";
 
-export type CourtsKPIs = Record<CourtsKPIId, KPIDefinition>;
+export type CourtsKPIs = Record<
+  CourtsKPIId,
+  KPIDefinition<"count" | "currency" | "hours" | "percentage">
+>;
 
-export interface CourtAvailabilitySlot {
-  courtId: string;
-  endAt: string;
-  occupied: boolean;
-  startAt: string;
-  unitId: string;
-}
-
-export interface CourtsContractData {
-  availability: readonly CourtAvailabilitySlot[];
-}
+/** The 21.7 preview intentionally exposes no court, reservation or ranking rows. */
+export type CourtsContractData = Readonly<Record<string, never>>;

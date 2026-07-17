@@ -110,12 +110,12 @@ const professorsData: ProfessorsContractData = { allocations: [] };
 const courtsKPIs: CourtsKPIs = {
   availableHours: unavailable("hours"),
   cancellations: unavailable("count"),
-  conflicts: unavailable("count"),
   occupancyRate: unavailable("percentage"),
   rentalRevenue: unavailable("currency"),
   reservedHours: unavailable("hours"),
+  ticketAverage: unavailable("currency"),
 };
-const courtsData: CourtsContractData = { availability: [] };
+const courtsData: CourtsContractData = {};
 
 const championshipsKPIs: ChampionshipsKPIs = {
   activeChampionships: unavailable("count"),

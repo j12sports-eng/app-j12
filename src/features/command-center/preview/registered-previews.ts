@@ -1,5 +1,6 @@
 import { AgendaCommandCenterPreview } from "./AgendaCommandCenterPreview";
 import { ClassesCommandCenterPreview } from "./ClassesCommandCenterPreview";
+import { CourtsCommandCenterPreview } from "./CourtsCommandCenterPreview";
 import { EnrollmentCommandCenterPreview } from "./EnrollmentCommandCenterPreview";
 import { FinancialCommandCenterPreview } from "./FinancialCommandCenterPreview";
 import { createCommandCenterPreviewRegistry } from "./registry";
@@ -31,5 +32,10 @@ export const commandCenterPreviewRegistry = createCommandCenterPreviewRegistry([
     component: AgendaCommandCenterPreview,
     id: "agenda",
     title: "Preview BI Agenda",
+  },
+  {
+    component: CourtsCommandCenterPreview,
+    id: "courts",
+    title: "Preview BI Quadras",
   },
 ] as const);
