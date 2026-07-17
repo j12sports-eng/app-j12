@@ -2,6 +2,7 @@ export * as AgendaBIHooks from "./agenda";
 export * as ArenaBIHooks from "./arena";
 export * as AthletePortalBIHooks from "./athlete-portal";
 export * as ChampionshipsBIHooks from "./championships";
+export * as EventsBIHooks from "./events";
 export * as ClassesBIHooks from "./classes";
 export * as CommunicationBIHooks from "./communication";
 export * as FinancialBIHooks from "./financial";

@@ -2,6 +2,7 @@ import { AgendaCommandCenterPreview } from "./AgendaCommandCenterPreview";
 import { ClassesCommandCenterPreview } from "./ClassesCommandCenterPreview";
 import { CourtsCommandCenterPreview } from "./CourtsCommandCenterPreview";
 import { ChampionshipsCommandCenterPreview } from "./ChampionshipsCommandCenterPreview";
+import { EventsCommandCenterPreview } from "./EventsCommandCenterPreview";
 import { EnrollmentCommandCenterPreview } from "./EnrollmentCommandCenterPreview";
 import { FinancialCommandCenterPreview } from "./FinancialCommandCenterPreview";
 import { createCommandCenterPreviewRegistry } from "./registry";
@@ -43,5 +44,10 @@ export const commandCenterPreviewRegistry = createCommandCenterPreviewRegistry([
     component: ChampionshipsCommandCenterPreview,
     id: "championships",
     title: "Preview BI Campeonatos",
+  },
+  {
+    component: EventsCommandCenterPreview,
+    id: "events",
+    title: "Preview BI Eventos",
   },
 ] as const);

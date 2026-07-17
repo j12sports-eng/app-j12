@@ -1,0 +1,1 @@
+export { useEventsBI } from "./hook";

@@ -3,6 +3,7 @@ export { CommandCenterPreview } from "./CommandCenterPreview";
 export { ClassesCommandCenterPreview } from "./ClassesCommandCenterPreview";
 export { CourtsCommandCenterPreview } from "./CourtsCommandCenterPreview";
 export { ChampionshipsCommandCenterPreview } from "./ChampionshipsCommandCenterPreview";
+export { EventsCommandCenterPreview } from "./EventsCommandCenterPreview";
 export * from "./components";
 export { EnrollmentCommandCenterPreview } from "./EnrollmentCommandCenterPreview";
 export { ENABLE_COMMAND_CENTER_PREVIEW } from "./config";

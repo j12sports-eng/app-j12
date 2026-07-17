@@ -2,6 +2,7 @@ export * as AgendaContracts from "./agenda";
 export * as ArenaContracts from "./arena";
 export * as AthletePortalContracts from "./athlete-portal";
 export * as ChampionshipsContracts from "./championships";
+export * as EventsContracts from "./events";
 export * as ClassesContracts from "./classes";
 export * as CommunicationContracts from "./communication";
 export * as FinancialContracts from "./financial";

@@ -2,6 +2,7 @@ export * as AgendaBIProvider from "./agenda";
 export * as ArenaBIProvider from "./arena";
 export * as AthletePortalBIProvider from "./athlete-portal";
 export * as ChampionshipsBIProvider from "./championships";
+export * as EventsBIProvider from "./events";
 export * as ClassesBIProvider from "./classes";
 export * as CommunicationBIProvider from "./communication";
 export * as FinancialBIProvider from "./financial";
