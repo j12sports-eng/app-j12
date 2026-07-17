@@ -1,6 +1,6 @@
 export type { BiChampionshipsContract } from "./contract";
 export type {
-  ChampionshipRankingItem,
+  ChampionshipAggregateGroup,
   ChampionshipsContractData,
   ChampionshipsKPIId,
   ChampionshipsKPIs,

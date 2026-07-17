@@ -2,6 +2,7 @@ import type { KPIDefinition } from "../shared";
 
 export type ChampionshipsKPIId =
   | "activeChampionships"
+  | "averageTeams"
   | "completedChampionships"
   | "finishedMatches"
   | "participants"
@@ -10,17 +11,18 @@ export type ChampionshipsKPIId =
   | "registrations"
   | "teams";
 
-export type ChampionshipsKPIs = Record<ChampionshipsKPIId, KPIDefinition>;
+export type ChampionshipsKPIs = Record<
+  ChampionshipsKPIId,
+  KPIDefinition<"average" | "count" | "currency">
+>;
 
-export interface ChampionshipRankingItem {
-  championshipId: string;
-  championshipName: string;
-  participants: number | null;
-  registrations: number;
-  status: string;
-  teams: number;
+export interface ChampionshipAggregateGroup {
+  key: string;
+  value: number;
 }
 
 export interface ChampionshipsContractData {
-  rankings: readonly ChampionshipRankingItem[];
+  categories: readonly ChampionshipAggregateGroup[];
+  registrationEvolution: readonly ChampionshipAggregateGroup[];
+  statuses: readonly ChampionshipAggregateGroup[];
 }

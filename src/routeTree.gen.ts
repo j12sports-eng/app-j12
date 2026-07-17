@@ -67,6 +67,7 @@ import { Route as AdminCommandCenterFinancialPreviewRouteImport } from './routes
 import { Route as AdminCommandCenterEnrollmentPreviewRouteImport } from './routes/admin/command-center-enrollment-preview'
 import { Route as AdminCommandCenterCourtsPreviewRouteImport } from './routes/admin/command-center-courts-preview'
 import { Route as AdminCommandCenterClassesPreviewRouteImport } from './routes/admin/command-center-classes-preview'
+import { Route as AdminCommandCenterChampionshipsPreviewRouteImport } from './routes/admin/command-center-championships-preview'
 import { Route as AdminCommandCenterAgendaPreviewRouteImport } from './routes/admin/command-center-agenda-preview'
 import { Route as AdminCampeonatosRouteImport } from './routes/admin/campeonatos'
 import { Route as AdminBiRouteImport } from './routes/admin/bi'
@@ -395,6 +396,12 @@ const AdminCommandCenterClassesPreviewRoute =
     path: '/admin/command-center-classes-preview',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminCommandCenterChampionshipsPreviewRoute =
+  AdminCommandCenterChampionshipsPreviewRouteImport.update({
+    id: '/admin/command-center-championships-preview',
+    path: '/admin/command-center-championships-preview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminCommandCenterAgendaPreviewRoute =
   AdminCommandCenterAgendaPreviewRouteImport.update({
     id: '/admin/command-center-agenda-preview',
@@ -543,6 +550,7 @@ export interface FileRoutesByFullPath {
   '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/command-center-agenda-preview': typeof AdminCommandCenterAgendaPreviewRoute
+  '/admin/command-center-championships-preview': typeof AdminCommandCenterChampionshipsPreviewRoute
   '/admin/command-center-classes-preview': typeof AdminCommandCenterClassesPreviewRoute
   '/admin/command-center-courts-preview': typeof AdminCommandCenterCourtsPreviewRoute
   '/admin/command-center-enrollment-preview': typeof AdminCommandCenterEnrollmentPreviewRoute
@@ -625,6 +633,7 @@ export interface FileRoutesByTo {
   '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/command-center-agenda-preview': typeof AdminCommandCenterAgendaPreviewRoute
+  '/admin/command-center-championships-preview': typeof AdminCommandCenterChampionshipsPreviewRoute
   '/admin/command-center-classes-preview': typeof AdminCommandCenterClassesPreviewRoute
   '/admin/command-center-courts-preview': typeof AdminCommandCenterCourtsPreviewRoute
   '/admin/command-center-enrollment-preview': typeof AdminCommandCenterEnrollmentPreviewRoute
@@ -708,6 +717,7 @@ export interface FileRoutesById {
   '/admin/bi': typeof AdminBiRouteWithChildren
   '/admin/campeonatos': typeof AdminCampeonatosRouteWithChildren
   '/admin/command-center-agenda-preview': typeof AdminCommandCenterAgendaPreviewRoute
+  '/admin/command-center-championships-preview': typeof AdminCommandCenterChampionshipsPreviewRoute
   '/admin/command-center-classes-preview': typeof AdminCommandCenterClassesPreviewRoute
   '/admin/command-center-courts-preview': typeof AdminCommandCenterCourtsPreviewRoute
   '/admin/command-center-enrollment-preview': typeof AdminCommandCenterEnrollmentPreviewRoute
@@ -792,6 +802,7 @@ export interface FileRouteTypes {
     | '/admin/bi'
     | '/admin/campeonatos'
     | '/admin/command-center-agenda-preview'
+    | '/admin/command-center-championships-preview'
     | '/admin/command-center-classes-preview'
     | '/admin/command-center-courts-preview'
     | '/admin/command-center-enrollment-preview'
@@ -874,6 +885,7 @@ export interface FileRouteTypes {
     | '/admin/bi'
     | '/admin/campeonatos'
     | '/admin/command-center-agenda-preview'
+    | '/admin/command-center-championships-preview'
     | '/admin/command-center-classes-preview'
     | '/admin/command-center-courts-preview'
     | '/admin/command-center-enrollment-preview'
@@ -956,6 +968,7 @@ export interface FileRouteTypes {
     | '/admin/bi'
     | '/admin/campeonatos'
     | '/admin/command-center-agenda-preview'
+    | '/admin/command-center-championships-preview'
     | '/admin/command-center-classes-preview'
     | '/admin/command-center-courts-preview'
     | '/admin/command-center-enrollment-preview'
@@ -1039,6 +1052,7 @@ export interface RootRouteChildren {
   AdminBiRoute: typeof AdminBiRouteWithChildren
   AdminCampeonatosRoute: typeof AdminCampeonatosRouteWithChildren
   AdminCommandCenterAgendaPreviewRoute: typeof AdminCommandCenterAgendaPreviewRoute
+  AdminCommandCenterChampionshipsPreviewRoute: typeof AdminCommandCenterChampionshipsPreviewRoute
   AdminCommandCenterClassesPreviewRoute: typeof AdminCommandCenterClassesPreviewRoute
   AdminCommandCenterCourtsPreviewRoute: typeof AdminCommandCenterCourtsPreviewRoute
   AdminCommandCenterEnrollmentPreviewRoute: typeof AdminCommandCenterEnrollmentPreviewRoute
@@ -1484,6 +1498,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCommandCenterClassesPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/command-center-championships-preview': {
+      id: '/admin/command-center-championships-preview'
+      path: '/admin/command-center-championships-preview'
+      fullPath: '/admin/command-center-championships-preview'
+      preLoaderRoute: typeof AdminCommandCenterChampionshipsPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/command-center-agenda-preview': {
       id: '/admin/command-center-agenda-preview'
       path: '/admin/command-center-agenda-preview'
@@ -1774,6 +1795,8 @@ const rootRouteChildren: RootRouteChildren = {
   AdminBiRoute: AdminBiRouteWithChildren,
   AdminCampeonatosRoute: AdminCampeonatosRouteWithChildren,
   AdminCommandCenterAgendaPreviewRoute: AdminCommandCenterAgendaPreviewRoute,
+  AdminCommandCenterChampionshipsPreviewRoute:
+    AdminCommandCenterChampionshipsPreviewRoute,
   AdminCommandCenterClassesPreviewRoute: AdminCommandCenterClassesPreviewRoute,
   AdminCommandCenterCourtsPreviewRoute: AdminCommandCenterCourtsPreviewRoute,
   AdminCommandCenterEnrollmentPreviewRoute:

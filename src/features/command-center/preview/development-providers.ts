@@ -119,6 +119,7 @@ const courtsData: CourtsContractData = {};
 
 const championshipsKPIs: ChampionshipsKPIs = {
   activeChampionships: unavailable("count"),
+  averageTeams: unavailable("average"),
   completedChampionships: unavailable("count"),
   finishedMatches: unavailable("count"),
   participants: unavailable("count"),
@@ -127,7 +128,11 @@ const championshipsKPIs: ChampionshipsKPIs = {
   registrations: unavailable("count"),
   teams: unavailable("count"),
 };
-const championshipsData: ChampionshipsContractData = { rankings: [] };
+const championshipsData: ChampionshipsContractData = {
+  categories: [],
+  registrationEvolution: [],
+  statuses: [],
+};
 
 const communicationKPIs: CommunicationKPIs = {
   activeCampaigns: unavailable("count"),
