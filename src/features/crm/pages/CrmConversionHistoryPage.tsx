@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, History, Loader2, RefreshCcw, ShieldCheck } from "lucide-react";
+import { ChevronDown, Download, History, Loader2, RefreshCcw, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -12,6 +13,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { formatApiErrorMessage } from "@/lib/api";
 import { CrmConversionHistoryDetailsDialog } from "../components/CrmConversionHistoryDetailsDialog";
 import { useCrmConversionHistory } from "../hooks/use-crm-conversion-history";
+import { useCrmConversionHistoryExport } from "../hooks/use-crm-conversion-history-export";
 import type {
   CrmConversionHistoryFilters,
   CrmConversionHistoryItem,
@@ -29,7 +31,21 @@ function CrmConversionHistoryPage() {
   const [filters, setFilters] = useState<CrmConversionHistoryFilters>({ limit: 50 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const query = useCrmConversionHistory(filters);
+  const exportMutation = useCrmConversionHistoryExport();
   const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
+
+  function handleExport() {
+    exportMutation.mutate(filters, {
+      onSuccess: () => toast.success("Exportação concluída."),
+      onError: (error: unknown) => {
+        if ((error as { code?: string })?.code === "CRM_EXPORT_LIMIT_EXCEEDED") {
+          toast.error("O resultado possui registros demais para exportação. Reduza os filtros.");
+          return;
+        }
+        toast.error("Não foi possível exportar o histórico.");
+      },
+    });
+  }
 
   function setFilter<K extends keyof CrmConversionHistoryFilters>(
     key: K,
@@ -65,6 +81,19 @@ function CrmConversionHistoryPage() {
             </div>
           </div>
 
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button
+              onClick={handleExport}
+              disabled={exportMutation.isPending}
+              aria-label="Exportar histórico"
+            >
+              {exportMutation.isPending ? <Loader2 className="animate-spin" /> : <Download />}
+              Exportar histórico
+            </Button>
+            <span className="sr-only" aria-live="polite">
+              {exportMutation.isPending ? "Exportação em andamento" : ""}
+            </span>
+          </div>
           <div className="mt-6 grid gap-3 border-t border-white/10 pt-5 sm:grid-cols-2 lg:grid-cols-4">
             <HistoryFilter
               id="crm-history-lead"

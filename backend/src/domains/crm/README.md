@@ -88,3 +88,4 @@ correlationId, resoluções, flags de reuso e versão não estão persistidos na
 O frontend protegido está em /admin/crm/conversions, com filtros reais, tabela no desktop, cards em telas menores e diálogo de detalhe. Após uma conversão bem-sucedida, React Query invalida o histórico e as queries de lista/detalhe do Lead.
 
 Nenhuma migration, schema, escrita, conexão MySQL externa ou histórico fictício foi adicionada. O SELECT não contém PII, contato, idempotência, metadata, SQL ou stack. O contrato completo está em docs/SPRINT_27_17H.md.
+- Sprint 27.17I: `GET /internal/crm/conversions/export` (alias `/api/internal/crm/conversions/export`) exporta CSV UTF-8 com BOM do histórico concluído persistido. Aceita somente `leadId`, `unitId`, `convertedBy`, `enrollmentStatus`, `dateFrom` e `dateTo`, com limite de 5.000 registros, sem PII/payload/metadata/idempotência. Reutiliza autenticação, autorização e rate limiter globais; XLSX permanece fora do escopo.

@@ -16,6 +16,32 @@ class MySqlCrmLeadConversionHistoryRepository {
     return rows(await this.query(query.sql, query.params)).map(mapRow);
   }
 
+  async *iterateConversionHistoryForExport(filters = {}, { batchSize = 100, maxRows = 5001 } = {}) {
+    const pageSize = Math.min(Math.max(Number(batchSize) || 100, 1), 100);
+    const rowLimit = Math.max(Number(maxRows) || 5001, 1);
+    let cursor = null;
+    let emitted = 0;
+
+    while (emitted < rowLimit) {
+      const page = await this.listConversionHistory({
+        ...filters,
+        cursor,
+        fetchLimit: Math.min(pageSize + 1, MAX_FETCH_LIMIT),
+      });
+      if (!page.length) return;
+
+      const take = Math.min(page.length, rowLimit - emitted);
+      for (let index = 0; index < take; index += 1) {
+        yield page[index];
+      }
+      emitted += take;
+      if (page.length <= pageSize || take < page.length) return;
+
+      const last = page[pageSize - 1];
+      cursor = { convertedAt: last.convertedAt, id: last.id };
+    }
+  }
+
   async findConversionHistoryById(conversionId) {
     return mapRow(first(await this.query(SELECT_BY_ID, [conversionId, "COMPLETED"])));
   }

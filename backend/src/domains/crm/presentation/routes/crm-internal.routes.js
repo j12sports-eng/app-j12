@@ -14,10 +14,14 @@ function createCrmInternalRouter(options = {}) {
   const queryController = options.queryController || createCrmLeadQueryController(options);
   const conversionHistoryController =
     options.conversionHistoryController || createCrmLeadConversionHistoryController(options);
+  const conversionHistoryExportController =
+    options.conversionHistoryExportController ||
+    createCrmLeadConversionHistoryExportController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
   router.get("/conversions", conversionHistoryController.list);
+  router.get("/conversions/export", conversionHistoryExportController.export);
   router.get("/conversions/:conversionId", conversionHistoryController.getById);
   router.get("/leads", queryController.list);
   router.get("/leads/:leadId", queryController.getById);
@@ -124,6 +128,23 @@ function createCrmLeadConversionHistoryRepository(options = {}) {
   return new MySqlCrmLeadConversionHistoryRepository(options);
 }
 
+function createCrmLeadConversionHistoryExportController(options = {}) {
+  const {
+    CrmLeadConversionHistoryExportController,
+  } = require("../controllers/crm-lead-conversion-history-export.controller.js");
+  const {
+    CrmLeadConversionHistoryExportService,
+  } = require("../../application/crm-lead-conversion-history-export.service.js");
+  const exportService =
+    options.conversionHistoryExportService ||
+    new CrmLeadConversionHistoryExportService({
+      repository:
+        options.conversionHistoryRepository || createCrmLeadConversionHistoryRepository(options),
+      logger: options.logger,
+    });
+  return new CrmLeadConversionHistoryExportController({ exportService });
+}
+
 function createCrmLeadEnrollmentConversionService(options = {}) {
   if (options.conversionService) {
     return options.conversionService;
@@ -220,6 +241,7 @@ module.exports = {
   createCrmLeadEnrollmentConversionAuditService,
   createCrmLeadEnrollmentConversionObservabilityService,
   createCrmLeadConversionHistoryController,
+  createCrmLeadConversionHistoryExportController,
   createCrmLeadConversionHistoryQueryService,
   createCrmLeadConversionHistoryRepository,
   createCrmLeadQueryController,
