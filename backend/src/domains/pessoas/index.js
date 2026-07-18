@@ -7,6 +7,7 @@
 module.exports = Object.freeze({
   domain: "pessoas",
   ...require("./person.entity.js"),
+  ...require("./person-identity-diagnostic.js"),
   ...require("./person-identity-normalizer.js"),
   ...require("./person.mapper.js"),
   ...require("./person.repository.js"),
