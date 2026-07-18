@@ -1,6 +1,7 @@
 const { randomUUID } = require("node:crypto");
 const LeadStatus = Object.freeze({ OPEN: "OPEN", CONVERTED: "CONVERTED", LOST: "LOST", ARCHIVED: "ARCHIVED" });
-const LeadStage = Object.freeze({ NEW: "NEW", CONTACTED: "CONTACTED", QUALIFIED: "QUALIFIED", TRIAL_SCHEDULED: "TRIAL_SCHEDULED", TRIAL_COMPLETED: "TRIAL_COMPLETED", NEGOTIATION: "NEGOTIATION" });
+const { assertLeadStageTransition } = require("./lead-stage-transition-policy.js");
+const LeadStage = Object.freeze({ NEW: "NEW", CONTACTED: "CONTACTED", QUALIFIED: "QUALIFIED", PROPOSAL: "PROPOSAL", NEGOTIATION: "NEGOTIATION", WON: "WON", LOST: "LOST", TRIAL_SCHEDULED: "TRIAL_SCHEDULED", TRIAL_COMPLETED: "TRIAL_COMPLETED" });
 const STAGES = new Set(Object.values(LeadStage));
 class Lead {
   constructor(input = {}) {
@@ -22,6 +23,18 @@ class Lead {
     this.assertOpen(); if (!STAGES.has(stage)) throw domainError("CRM_STAGE_INVALID");
     if (stage === this.stage) return this;
     return this.copy({ stage, qualifiedAt: stage === LeadStage.QUALIFIED ? this.qualifiedAt || at : this.qualifiedAt, updatedAt: at, updatedBy: required(actor, "actor", 191) });
+  }
+  canMoveTo(stage) { try { this.assertOpen(); assertLeadStageTransition(this.stage, stage); return true; } catch { return false; } }
+  isTerminal() { return this.status !== LeadStatus.OPEN || this.stage === LeadStage.WON || this.stage === LeadStage.LOST; }
+  moveTo(stage, { actor, at = new Date().toISOString(), reason = null } = {}) {
+    this.assertOpen(); assertLeadStageTransition(this.stage, stage);
+    if (stage === LeadStage.LOST && !text(reason, 191)) throw domainError("CRM_LOST_REASON_REQUIRED");
+    return this.copy({ stage, status: stage === LeadStage.WON ? LeadStatus.CONVERTED : stage === LeadStage.LOST ? LeadStatus.LOST : this.status,
+      qualifiedAt: stage === LeadStage.QUALIFIED ? this.qualifiedAt || at : this.qualifiedAt,
+      convertedAt: stage === LeadStage.WON ? this.convertedAt || at : this.convertedAt,
+      lostAt: stage === LeadStage.LOST ? this.lostAt || at : this.lostAt,
+      lostReason: stage === LeadStage.LOST ? text(reason, 191) : this.lostReason,
+      updatedAt: at, updatedBy: required(actor, "actor", 191) });
   }
   convert(actor, at = new Date().toISOString()) { if (this.status === LeadStatus.CONVERTED) return this; this.assertOpen(); return this.copy({ status: LeadStatus.CONVERTED, convertedAt: at, updatedAt: at, updatedBy: required(actor, "actor", 191) }); }
   lose(reason, actor, at = new Date().toISOString()) { if (this.status === LeadStatus.LOST) return this; this.assertOpen(); return this.copy({ status: LeadStatus.LOST, lostAt: at, lostReason: required(reason, "lostReason", 191), updatedAt: at, updatedBy: required(actor, "actor", 191) }); }

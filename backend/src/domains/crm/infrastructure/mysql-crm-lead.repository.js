@@ -6,8 +6,22 @@ class MySqlCrmLeadRepository {
   async findById({ id, unitId }) { return first(await this.query(SELECT, [id, unitId])); }
   async findByContactIdentity({ unitId, email, phone }) { if (!email && !phone) return null; return first(await this.query("SELECT * FROM crm_leads WHERE unit_id=? AND deleted_at IS NULL AND ((? IS NOT NULL AND contact_email=?) OR (? IS NOT NULL AND contact_phone=?)) ORDER BY created_at LIMIT 1", [unitId, email, email, phone, phone])); }
   async saveTransition({ current, next, action, actorId }) { return this.transaction(async (connection) => { const run = (sql, params) => connection.query(sql, params); await run("UPDATE crm_leads SET stage=?,status=?,qualified_at=?,converted_at=?,lost_at=?,lost_reason=?,updated_by=?,updated_at=? WHERE id=? AND unit_id=? AND deleted_at IS NULL", [next.stage,next.status,next.qualifiedAt,next.convertedAt,next.lostAt,next.lostReason,next.updatedBy,next.updatedAt,next.id,next.unitId]); await this.appendHistory(run, current, next, action, actorId); const result = await run(SELECT, [next.id, next.unitId]); return first(result); }); }
-  async appendHistory(run, current, next, action, actorId) { await run("INSERT INTO crm_lead_stage_history (id,lead_id,unit_id,previous_stage,new_stage,previous_status,new_status,action,actor_id,reason,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", [randomUUID(),next.id,next.unitId,current?.stage||null,next.stage,current?.status||null,next.status,action,actorId,action==="LOST"?next.lostReason:null,next.updatedAt]); }
+  async saveStageTransition({ leadId, unitId, expectedStage, expectedStatus, next, action, actorId }) {
+    return this.transaction(async (connection) => {
+      const run = (sql, params) => connection.query(sql, params);
+      const current = first(await run(`${SELECT} FOR UPDATE`, [leadId, unitId]));
+      if (!current) throw conflict("CRM_LEAD_NOT_FOUND");
+      if ((expectedStage !== undefined && current.stage !== expectedStage) || (expectedStatus !== undefined && current.status !== expectedStatus)) throw conflict("CRM_STAGE_CONFLICT");
+      const result = await run("UPDATE crm_leads SET stage=?,status=?,qualified_at=?,converted_at=?,lost_at=?,lost_reason=?,updated_by=?,updated_at=? WHERE id=? AND unit_id=? AND stage=? AND status=? AND deleted_at IS NULL", [next.stage,next.status,next.qualifiedAt,next.convertedAt,next.lostAt,next.lostReason,next.updatedBy,next.updatedAt,leadId,unitId,current.stage,current.status]);
+      if (Number(result?.affectedRows) !== 1) throw conflict("CRM_STAGE_CONFLICT");
+      await this.appendHistory(run, current, next, action, actorId);
+      return first(await run(SELECT, [leadId, unitId]));
+    });
+  }
+  async listStageHistory({ leadId, unitId }) { const result = await this.query("SELECT id,lead_id,unit_id,previous_stage,new_stage,previous_status,new_status,action,actor_id,reason,created_at FROM crm_lead_stage_history WHERE lead_id=? AND unit_id=? ORDER BY created_at ASC,id ASC", [leadId, unitId]); return Array.isArray(result?.[0]) ? result[0] : result || []; }
+  async appendHistory(run, current, next, action, actorId) { await run("INSERT INTO crm_lead_stage_history (id,lead_id,unit_id,previous_stage,new_stage,previous_status,new_status,action,actor_id,reason,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", [randomUUID(),next.id,next.unitId,current?.stage||null,next.stage,current?.status||null,next.status,action,actorId,next.status==="LOST"?next.lostReason:null,next.updatedAt]); }
 }
+function conflict(code) { return Object.assign(new Error(code), { code }); }
 function values(l) { return [l.id,l.unitId,l.personId,l.source,l.stage,l.status,l.assignedTo,l.contactName,l.contactEmail,l.contactPhone,l.qualifiedAt,l.convertedAt,l.lostAt,l.lostReason,l.createdBy,l.updatedBy,l.createdAt,l.updatedAt]; }
 function first(result) { const rows = Array.isArray(result?.[0]) ? result[0] : result; return Array.isArray(rows) ? rows[0] || null : null; }
 module.exports = { MySqlCrmLeadRepository, SELECT };
