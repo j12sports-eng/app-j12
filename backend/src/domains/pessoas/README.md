@@ -35,4 +35,6 @@ No modelo moderno, Aluno e representado por Pessoa + perfil `aluno`; nao existe 
 
 A Sprint 27.17A.8 adiciona, no dominio de Matriculas, o primeiro consumidor moderno explicito de `resolveOrCreateStudent()`. O orquestrador reutiliza somente `personId` e `personProfileId`; Pessoas continua sem controlar regras de matricula e nao atualiza automaticamente cadastros encontrados.
 
+A Sprint 27.17A.9 adiciona um consumidor CRM que exige dados do aluno explicitamente separados do contato comercial. O CRM chama apenas `resolveOrCreateStudent()` e registra os IDs resultantes em seu proprio dominio, sem acessar repositories de Pessoas.
+
 Nenhum endpoint, controller, service legado, frontend, migration ou schema foi alterado.

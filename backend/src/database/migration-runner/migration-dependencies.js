@@ -37,5 +37,9 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260717220000_add_people_normalized_identity_columns": Object.freeze([
     "20260712183000_create_people_domain_tables",
   ]),
+  "20260718200000_create_crm_lead_student_conversions": Object.freeze([
+    "20260712183000_create_people_domain_tables",
+    "20260717150000_create_crm_foundation_tables",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };
