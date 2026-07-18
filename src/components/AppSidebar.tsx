@@ -98,6 +98,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "overview",
   },
   {
+    to: "/admin/crm/leads",
+    label: "Leads CRM",
+    icon: Users,
+    roles: ["admin", "coordenador"],
+    section: "operation",
+  },
+  {
     to: "/professores",
     label: "Professores",
     icon: UserCog,
