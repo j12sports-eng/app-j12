@@ -21,19 +21,43 @@ class StudentEnrollmentApplicationService {
       normalizeObject(source.student),
       context,
     );
-    const startDate = nullableText(normalizeObject(source.enrollment).startDate);
-    if (!startDate) {
+    const enrollmentResolution = await this.resolveOrCreateDraftEnrollmentForResolvedStudent(
+      {
+        personId: studentResolution.personId,
+        personProfileId: studentResolution.personProfileId,
+        startDate: normalizeObject(source.enrollment).startDate,
+      },
+      context,
+    );
+
+    return buildResult(studentResolution, enrollmentResolution);
+  }
+
+  /** Creates or reuses a DRAFT after Pessoa and Aluno profile were resolved upstream. */
+  async resolveOrCreateDraftEnrollmentForResolvedStudent(input = {}, _context = {}) {
+    const source = normalizeObject(input);
+    const personId = nullableText(source.personId);
+    const personProfileId = nullableText(source.personProfileId);
+    const startDate = nullableText(source.startDate);
+    const missing = [
+      ["personId", personId],
+      ["personProfileId", personProfileId],
+      ["startDate", startDate],
+    ]
+      .filter(([, value]) => !value)
+      .map(([field]) => field);
+    if (missing.length) {
       throw applicationError(
         "Enrollment data is incomplete.",
         STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE,
         422,
-        { fields: ["startDate"] },
+        { fields: missing },
       );
     }
 
     const scope = {
-      studentPersonId: studentResolution.personId,
-      studentProfileId: studentResolution.personProfileId,
+      studentPersonId: personId,
+      studentProfileId: personProfileId,
     };
     const enrollmentService = this.getEnrollmentApplicationService();
     let summary;
@@ -69,7 +93,7 @@ class StudentEnrollmentApplicationService {
       );
     }
     if (summary.status === "DRAFT")
-      return buildResult(studentResolution, summary.draftEnrollment, false, true);
+      return buildEnrollmentResult(summary.draftEnrollment, false, true);
 
     let creation;
     try {
@@ -90,8 +114,7 @@ class StudentEnrollmentApplicationService {
         500,
       );
     }
-    return buildResult(
-      studentResolution,
+    return buildEnrollmentResult(
       draftEnrollment,
       Boolean(creation.created),
       Boolean(creation.reused),
@@ -121,7 +144,7 @@ class StudentEnrollmentApplicationService {
   }
 }
 
-function buildResult(student, enrollment, created, reused) {
+function buildEnrollmentResult(enrollment, created, reused) {
   const enrollmentId = nullableText(readProperty(enrollment, "id"));
   if (!enrollmentId)
     throw applicationError(
@@ -132,15 +155,24 @@ function buildResult(student, enrollment, created, reused) {
   return Object.freeze({
     enrollmentId,
     enrollmentStatus: "DRAFT",
+    resolution: created ? "CREATED" : "FOUND",
+    reused,
+  });
+}
+
+function buildResult(student, enrollment) {
+  return Object.freeze({
+    enrollmentId: enrollment.enrollmentId,
+    enrollmentStatus: enrollment.enrollmentStatus,
     personId: student.personId,
     personProfileId: student.personProfileId,
     resolutions: Object.freeze({
-      enrollment: created ? "CREATED" : "FOUND",
+      enrollment: enrollment.resolution,
       person: student.personResolution,
       profile: student.profileResolution,
     }),
     reused: Object.freeze({
-      enrollment: reused,
+      enrollment: enrollment.reused,
       person: Boolean(student.reused?.person),
       profile: Boolean(student.reused?.profile),
     }),

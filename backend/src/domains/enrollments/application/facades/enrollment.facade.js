@@ -128,6 +128,14 @@ class EnrollmentFacade {
     );
   }
 
+  /** DRAFT entrypoint for callers that already hold canonical Pessoa/Aluno ids. */
+  resolveOrCreateDraftEnrollmentForResolvedStudent(input = {}, context = {}) {
+    return this.studentEnrollmentApplicationService.resolveOrCreateDraftEnrollmentForResolvedStudent(
+      input,
+      context,
+    );
+  }
+
   /**
    * @param {Object} input
    * @returns {unknown}

@@ -119,11 +119,70 @@ test("retry after write failure is safe and performs no compensation", async () 
   assert.deepEqual(fixture.destructiveCalls, []);
 });
 
+test("resolved-student boundary creates DRAFT without resolving Pessoa/Profile again", async () => {
+  const fixture = createFixture();
+  const result = await fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
+    { personId: "person-1", personProfileId: "profile-1", startDate: "2026-07-18" },
+    fixture.context,
+  );
+  assert.deepEqual(result, {
+    enrollmentId: "draft-1",
+    enrollmentStatus: "DRAFT",
+    resolution: "CREATED",
+    reused: false,
+  });
+  assert.equal(fixture.studentCalls, 0);
+});
+
+test("resolved-student boundary reuses DRAFT and preserves blocking states", async () => {
+  const draft = createFixture();
+  draft.repository.seed("DRAFT", "existing");
+  const reused = await draft.service.resolveOrCreateDraftEnrollmentForResolvedStudent({
+    personId: "person-1",
+    personProfileId: "profile-1",
+    startDate: "2030-01-01",
+  });
+  assert.deepEqual(reused, {
+    enrollmentId: "existing",
+    enrollmentStatus: "DRAFT",
+    resolution: "FOUND",
+    reused: true,
+  });
+  assert.equal(draft.repository.createCalls, 0);
+
+  const active = createFixture();
+  active.repository.seed("ACTIVE", "active");
+  await assert.rejects(
+    active.service.resolveOrCreateDraftEnrollmentForResolvedStudent({
+      personId: "person-1",
+      personProfileId: "profile-1",
+      startDate: "2026-07-18",
+    }),
+    { code: "ENROLLMENT_ACTIVE_EXISTS" },
+  );
+});
+
+test("resolved-student boundary requires only canonical ids and startDate", async () => {
+  const fixture = createFixture();
+  await assert.rejects(
+    fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent({ personId: "person-1" }),
+    (error) =>
+      error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
+      error.details.fields.join(",") === "personProfileId,startDate",
+  );
+  assert.equal(fixture.studentCalls, 0);
+  assert.equal(fixture.repository.readCalls, 0);
+});
+
 test("public exports remain additive", async () => {
   const boundary = require("../../index.js");
   assert.equal(boundary.StudentEnrollmentApplicationService, StudentEnrollmentApplicationService);
   assert.equal(
     typeof boundary.EnrollmentFacade.prototype.resolveStudentAndCreateDraftEnrollment,
+    "function",
+  );
+  assert.equal(
+    typeof boundary.EnrollmentFacade.prototype.resolveOrCreateDraftEnrollmentForResolvedStudent,
     "function",
   );
   assert.equal(typeof boundary.EnrollmentFacade.prototype.confirmDraftEnrollment, "function");
