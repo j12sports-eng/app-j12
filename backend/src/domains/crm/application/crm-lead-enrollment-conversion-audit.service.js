@@ -1,4 +1,4 @@
-const { createHash } = require("node:crypto");
+﻿const { createHash } = require("node:crypto");
 
 const { logger: defaultLogger } = require("../../../observability/structured-logger.js");
 const {
@@ -14,7 +14,16 @@ const EVENTS = Object.freeze({
   SUCCEEDED: "CRM_LEAD_ENROLLMENT_CONVERSION_SUCCEEDED",
   FAILED: "CRM_LEAD_ENROLLMENT_CONVERSION_FAILED",
 });
+const STAGE_EVENTS = Object.freeze({
+  STARTED: "CRM_LEAD_STAGE_TRANSITION_STARTED",
+  SUCCEEDED: "CRM_LEAD_STAGE_TRANSITION_SUCCEEDED",
+  FAILED: "CRM_LEAD_STAGE_TRANSITION_FAILED",
+});
+const STAGE_EVENT_SET = new Set(Object.values(STAGE_EVENTS));
+const STAGE_OPERATION_NAME = "crm.lead.stage_transition";
+const STAGE_ROUTE = "/internal/crm/leads/:leadId/stage";
 const EVENT_SET = new Set(Object.values(EVENTS));
+for (const event of STAGE_EVENT_SET) EVENT_SET.add(event);
 const RESOLUTIONS = new Set(["CREATED", "FOUND"]);
 const ERROR_CODES = new Set([
   "CRM_ACCESS_DENIED",
@@ -35,6 +44,11 @@ const ERROR_CODES = new Set([
   "PERSON_IDENTITY_CONFLICT",
   "STUDENT_DATA_INCOMPLETE",
   "STUDENT_PROFILE_CONFLICT",
+  "CRM_STAGE_CONFLICT",
+  "CRM_STAGE_TRANSITION_INVALID",
+  "CRM_STAGE_TERMINAL",
+  "CRM_STAGE_UNCHANGED",
+  "CRM_LOST_REASON_REQUIRED",
 ]);
 const VALID_CATEGORIES = new Set([
   "VALIDATION",
@@ -68,6 +82,12 @@ const AUDIT_FIELDS = new Set([
   "errorCategory",
   "createdAt",
   "version",
+  "previousStage",
+  "nextStage",
+  "previousStatus",
+  "nextStatus",
+  "reasonProvided",
+  "result",
 ]);
 
 class CrmLeadEnrollmentConversionAuditService {
@@ -115,6 +135,34 @@ class CrmLeadEnrollmentConversionAuditService {
     });
   }
 
+  async recordStageStart(input = {}) {
+    return this.record({
+      ...stageFields(input),
+      eventType: STAGE_EVENTS.STARTED,
+    });
+  }
+
+  async recordStageSuccess(input = {}) {
+    return this.record({
+      ...stageFields(input),
+      durationMs: input.durationMs,
+      eventType: STAGE_EVENTS.SUCCEEDED,
+      result: "SUCCEEDED",
+    });
+  }
+
+  async recordStageFailure(input = {}) {
+    const errorCode = sanitizeErrorCode(input.errorCode);
+    return this.record({
+      ...stageFields(input),
+      durationMs: input.durationMs,
+      errorCategory: sanitizeCategory(input.errorCategory || categorizeErrorCode(errorCode)),
+      errorCode,
+      eventType: STAGE_EVENTS.FAILED,
+      result: "FAILED",
+    });
+  }
+
   async record(event = {}) {
     let normalized;
     try {
@@ -149,6 +197,26 @@ class CrmLeadEnrollmentConversionAuditService {
 
   observeMetrics(record) {
     try {
+      if (STAGE_EVENT_SET.has(record.eventType)) {
+        const labels = {
+          errorCategory: record.errorCategory,
+          errorCode: record.errorCode,
+          fromStage: record.previousStage,
+          result: record.result,
+          source: record.source,
+          toStage: record.nextStage,
+        };
+        if (record.eventType === STAGE_EVENTS.STARTED) {
+          this.metrics?.increment(METRIC_NAMES.STAGE_ATTEMPTS, labels);
+        } else if (record.eventType === STAGE_EVENTS.SUCCEEDED) {
+          this.metrics?.increment(METRIC_NAMES.STAGE_SUCCESS, labels);
+          this.metrics?.observe(METRIC_NAMES.STAGE_DURATION, record.durationMs, labels);
+        } else {
+          this.metrics?.increment(METRIC_NAMES.STAGE_FAILURE, labels);
+          this.metrics?.observe(METRIC_NAMES.STAGE_DURATION, record.durationMs, labels);
+        }
+        return;
+      }
       const labels = { source: record.source };
       if (record.eventType === EVENTS.STARTED) {
         this.metrics?.increment(METRIC_NAMES.ATTEMPTS, labels);
@@ -200,6 +268,22 @@ function commonFields(input = {}) {
   };
 }
 
+function stageFields(input = {}) {
+  return {
+    correlationId: input.correlationId,
+    leadId: input.leadId,
+    nextStage: input.nextStage,
+    nextStatus: input.nextStatus,
+    operationName: STAGE_OPERATION_NAME,
+    previousStage: input.previousStage,
+    previousStatus: input.previousStatus,
+    reasonProvided: input.reasonProvided,
+    route: STAGE_ROUTE,
+    unitId: input.unitId,
+    userId: input.userId,
+  };
+}
+
 function normalizeAuditEvent(input = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const unknownFields = Object.keys(source).filter((key) => !AUDIT_FIELDS.has(key));
@@ -211,11 +295,12 @@ function normalizeAuditEvent(input = {}) {
   const eventType = String(source.eventType || "").trim();
   if (!EVENT_SET.has(eventType)) throw new TypeError("CRM audit event is not allowed.");
 
+  const isStageEvent = STAGE_EVENT_SET.has(eventType);
   const result = {
     eventType,
     source: SOURCE,
-    operationName: OPERATION_NAME,
-    route: ROUTE,
+    operationName: isStageEvent ? STAGE_OPERATION_NAME : OPERATION_NAME,
+    route: isStageEvent ? STAGE_ROUTE : ROUTE,
     version: "1",
   };
   for (const key of [
@@ -244,7 +329,21 @@ function normalizeAuditEvent(input = {}) {
     if (typeof source[key] === "boolean") result[key] = source[key];
   }
   if (source.durationMs !== undefined) result.durationMs = normalizeDuration(source.durationMs);
-  if (eventType === EVENTS.FAILED) {
+  if (isStageEvent) {
+    for (const key of ["previousStage", "nextStage", "previousStatus", "nextStatus"]) {
+      const value = normalizeText(source[key], 64);
+      if (value) result[key] = value;
+    }
+    if (typeof source.reasonProvided === "boolean") result.reasonProvided = source.reasonProvided;
+    result.result = ["STARTED", "SUCCEEDED", "FAILED"].includes(source.result)
+      ? source.result
+      : eventType === STAGE_EVENTS.STARTED
+        ? "STARTED"
+        : eventType === STAGE_EVENTS.SUCCEEDED
+          ? "SUCCEEDED"
+          : "FAILED";
+  }
+  if (eventType === EVENTS.FAILED || eventType === STAGE_EVENTS.FAILED) {
     result.errorCode = sanitizeErrorCode(source.errorCode);
     result.errorCategory = sanitizeCategory(source.errorCategory);
   }
@@ -309,4 +408,7 @@ module.exports = {
   normalizeAuditEvent,
   sanitizeCategory,
   sanitizeErrorCode,
+  STAGE_EVENTS,
+  STAGE_OPERATION_NAME,
+  STAGE_ROUTE,
 };

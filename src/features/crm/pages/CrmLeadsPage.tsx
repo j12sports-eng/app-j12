@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { ChevronDown, Loader2, RefreshCcw, ShieldCheck, UserRoundSearch } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
@@ -11,8 +11,9 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatApiErrorMessage } from "@/lib/api";
 import { PipelineColumn } from "../components/PipelineColumn";
+import { CrmLeadStageTransitionDialog } from "../components/CrmLeadStageTransitionDialog";
 import { PipelineHeader } from "../components/PipelineHeader";
-import { useCrmLeads } from "../hooks/use-crm-leads";
+import { useCrmLead, useCrmLeads } from "../hooks/use-crm-leads";
 import { useCrmPipeline } from "../hooks/use-crm-pipeline";
 import {
   CrmLeadDetailsDialog,
@@ -34,8 +35,10 @@ function CrmLeadsPage() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [conversionOpen, setConversionOpen] = useState(false);
+  const [stageLeadId, setStageLeadId] = useState<string | null>(null);
   const query = useCrmLeads(filters);
   const pipelineQuery = useCrmPipeline();
+  const stageLeadQuery = useCrmLead(stageLeadId);
   const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
   const hasNextPage = query.hasNextPage;
 
@@ -46,13 +49,16 @@ function CrmLeadsPage() {
     setSelectedLeadId(leadId);
     setDetailsOpen(true);
   }
+  function openStage(leadId: string) {
+    setStageLeadId(leadId);
+  }
   function openConversion() {
     setDetailsOpen(false);
     setConversionOpen(true);
   }
 
   return (
-    <AppShell title="CRM · Leads">
+    <AppShell title="CRM Â· Leads">
       <div className="j12-page-enter space-y-6">
         <section className="j12-surface overflow-hidden p-5 md:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -63,14 +69,14 @@ function CrmLeadsPage() {
               </div>
               <h1 className="mt-4 text-3xl font-bold text-white md:text-5xl">Leads</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                Consulte contatos comerciais, elegibilidade e conversões antes de abrir um preview
-                de matrícula DRAFT.
+                Consulte contatos comerciais, elegibilidade e conversÃµes antes de abrir um preview
+                de matrÃ­cula DRAFT.
               </p>
             </div>
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
               <div className="flex items-center gap-2 font-semibold">
                 <ShieldCheck className="h-4 w-4" />
-                Área administrativa protegida
+                Ãrea administrativa protegida
               </div>
               <p className="mt-1 text-xs text-emerald-200/80">Admin e coordenador</p>
             </div>
@@ -87,11 +93,11 @@ function CrmLeadsPage() {
                 ["CONTACTED", "Contatado"],
                 ["QUALIFIED", "Qualificado"],
                 ["PROPOSAL", "Proposta"],
-                ["NEGOTIATION", "Negociação"],
+                ["NEGOTIATION", "NegociaÃ§Ã£o"],
                 ["WON", "WON"],
                 ["LOST", "Perdido"],
                 ["TRIAL_SCHEDULED", "Aula experimental agendada"],
-                ["TRIAL_COMPLETED", "Aula experimental concluída"],
+                ["TRIAL_COMPLETED", "Aula experimental concluÃ­da"],
               ]}
             />
             <FilterSelect
@@ -105,12 +111,12 @@ function CrmLeadsPage() {
                 ["CONVERTED", "Convertido"],
                 ["LOST", "Perdido"],
                 ["TRIAL_SCHEDULED", "Aula experimental agendada"],
-                ["TRIAL_COMPLETED", "Aula experimental concluída"],
+                ["TRIAL_COMPLETED", "Aula experimental concluÃ­da"],
                 ["ARCHIVED", "Arquivado"],
               ]}
             />
             <FilterSelect
-              label="Conversão"
+              label="ConversÃ£o"
               value={filters.conversionStatus || ""}
               onChange={(value) =>
                 setFilter(
@@ -119,9 +125,9 @@ function CrmLeadsPage() {
                 )
               }
               options={[
-                ["NONE", "Sem conversão"],
+                ["NONE", "Sem conversÃ£o"],
                 ["STUDENT_COMPLETED", "Aluno convertido"],
-                ["ENROLLMENT_COMPLETED", "Matrícula convertida"],
+                ["ENROLLMENT_COMPLETED", "MatrÃ­cula convertida"],
               ]}
             />
             <div className="space-y-2">
@@ -139,7 +145,7 @@ function CrmLeadsPage() {
         {query.isLoading || pipelineQuery.isLoading ? <SkeletonTable columns={8} rows={6} /> : null}
         {query.isError ? (
           <ErrorPanel
-            message={formatApiErrorMessage(query.error, "Não foi possível carregar os Leads.")}
+            message={formatApiErrorMessage(query.error, "NÃ£o foi possÃ­vel carregar os Leads.")}
             onRetry={() => void query.refetch()}
           />
         ) : null}
@@ -147,7 +153,7 @@ function CrmLeadsPage() {
           <ErrorPanel
             message={formatApiErrorMessage(
               pipelineQuery.error,
-              "Não foi possível carregar o pipeline comercial.",
+              "NÃ£o foi possÃ­vel carregar o pipeline comercial.",
             )}
             onRetry={() => void pipelineQuery.refetch()}
           />
@@ -157,7 +163,12 @@ function CrmLeadsPage() {
         !query.isError &&
         !pipelineQuery.isError &&
         pipelineQuery.data ? (
-          <PipelineBoard pipeline={pipelineQuery.data} items={items} onSelect={openDetails} />
+          <PipelineBoard
+            pipeline={pipelineQuery.data}
+            items={items}
+            onSelect={openDetails}
+            onChangeStage={openStage}
+          />
         ) : null}
 
         {hasNextPage ? (
@@ -185,6 +196,16 @@ function CrmLeadsPage() {
         open={conversionOpen}
         onOpenChange={setConversionOpen}
       />
+      {stageLeadQuery.data && pipelineQuery.data ? (
+        <CrmLeadStageTransitionDialog
+          lead={stageLeadQuery.data}
+          pipeline={pipelineQuery.data}
+          open={Boolean(stageLeadId)}
+          onOpenChange={(open) => {
+            if (!open) setStageLeadId(null);
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }
@@ -192,10 +213,13 @@ function CrmLeadsPage() {
 function PipelineBoard({
   items,
   onSelect,
+  onChangeStage,
+
   pipeline,
 }: {
   items: CrmLeadListItem[];
   onSelect: (leadId: string) => void;
+  onChangeStage: (leadId: string) => void;
   pipeline: CrmPipeline;
 }) {
   const compatibilityStages = LEGACY_READ_ONLY_STAGES.filter((stage) =>
@@ -226,7 +250,7 @@ const LEGACY_READ_ONLY_STAGES: CrmPipelineStage[] = [
     id: "TRIAL_SCHEDULED",
     order: 8,
     label: "Aula experimental agendada",
-    description: "Estágio legado exibido somente para compatibilidade.",
+    description: "EstÃ¡gio legado exibido somente para compatibilidade.",
     color: "#64748b",
     terminal: false,
     transitions: [],
@@ -234,8 +258,8 @@ const LEGACY_READ_ONLY_STAGES: CrmPipelineStage[] = [
   {
     id: "TRIAL_COMPLETED",
     order: 9,
-    label: "Aula experimental concluída",
-    description: "Estágio legado exibido somente para compatibilidade.",
+    label: "Aula experimental concluÃ­da",
+    description: "EstÃ¡gio legado exibido somente para compatibilidade.",
     color: "#64748b",
     terminal: false,
     transitions: [],
@@ -268,7 +292,7 @@ function LeadList({
                 <th className="px-4 py-3">Unidade</th>
                 <th className="px-4 py-3">Elegibilidade</th>
                 <th className="px-4 py-3">Aluno</th>
-                <th className="px-4 py-3">Matrícula</th>
+                <th className="px-4 py-3">MatrÃ­cula</th>
                 <th className="px-4 py-3">Atualizado</th>
               </tr>
             </thead>
@@ -323,7 +347,8 @@ function LeadList({
                 <span>{formatDate(item.updatedAt)}</span>
               </div>
               <div className="mt-3 text-xs text-slate-400">
-                Aluno: {item.conversions.studentCompleted ? "convertido" : "pendente"} · Matrícula:{" "}
+                Aluno: {item.conversions.studentCompleted ? "convertido" : "pendente"} Â·
+                MatrÃ­cula:{" "}
                 {item.conversions.enrollmentCompleted
                   ? item.conversions.enrollmentStatus || "convertida"
                   : "pendente"}
@@ -369,7 +394,7 @@ function FilterSelect({
 function EligibilityBadge({ item }: { item: CrmLeadListItem }) {
   return (
     <Badge variant={item.eligibility.canConvertToDraftEnrollment ? "default" : "outline"}>
-      {item.eligibility.canConvertToDraftEnrollment ? "Elegível" : "Bloqueado"}
+      {item.eligibility.canConvertToDraftEnrollment ? "ElegÃ­vel" : "Bloqueado"}
     </Badge>
   );
 }

@@ -4,9 +4,21 @@ const METRIC_NAMES = Object.freeze({
   FAILURE: "crm_lead_enrollment_conversion_failure_total",
   DURATION: "crm_lead_enrollment_conversion_duration_ms",
   REUSED: "crm_lead_enrollment_conversion_reused_total",
+  STAGE_ATTEMPTS: "crm_lead_stage_transition_attempts_total",
+  STAGE_SUCCESS: "crm_lead_stage_transition_success_total",
+  STAGE_FAILURE: "crm_lead_stage_transition_failure_total",
+  STAGE_DURATION: "crm_lead_stage_transition_duration_ms",
 });
 
-const ALLOWED_LABELS = new Set(["result", "errorCode", "enrollmentResolution", "source"]);
+const ALLOWED_LABELS = new Set([
+  "result",
+  "errorCode",
+  "enrollmentResolution",
+  "source",
+  "fromStage",
+  "toStage",
+  "errorCategory",
+]);
 const MAX_SERIES = 32;
 
 /**

@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   convertCrmLeadToDraftEnrollment,
   getCrmLeadById,
@@ -6,6 +6,11 @@ import {
 } from "../api/crm-leads.api";
 import { crmLeadQueryKeys } from "../query/crm-lead.query-keys";
 import { crmConversionHistoryQueryKeys } from "../query/crm-conversion-history.query-keys";
+import { crmPipelineQueryKeys } from "../query/crm-pipeline.query-keys";
+import {
+  moveCrmLeadStage,
+  type CrmLeadStageTransitionInput,
+} from "../api/crm-lead-stage-transition.api";
 import type { CrmLeadDraftEnrollmentPayload, CrmLeadFilters } from "../types/crm-lead.types";
 
 export function useCrmLeads(filters: CrmLeadFilters = {}) {
@@ -42,6 +47,20 @@ export function useConvertCrmLeadToDraftEnrollment() {
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
+      void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
+    },
+  });
+}
+
+export function useMoveCrmLeadStage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ leadId, input }: { leadId: string; input: CrmLeadStageTransitionInput }) =>
+      moveCrmLeadStage(leadId, input),
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.all });
+      void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
+      void queryClient.invalidateQueries({ queryKey: crmPipelineQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
     },
   });

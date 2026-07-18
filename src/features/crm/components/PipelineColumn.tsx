@@ -1,4 +1,4 @@
-import type { CrmLeadListItem } from "../types/crm-lead.types";
+﻿import type { CrmLeadListItem } from "../types/crm-lead.types";
 import type { CrmPipelineStage } from "../types/crm-pipeline.types";
 import { PipelineCard } from "./PipelineCard";
 import { PipelineEmptyState } from "./PipelineEmptyState";
@@ -6,10 +6,13 @@ import { PipelineEmptyState } from "./PipelineEmptyState";
 export function PipelineColumn({
   leads,
   onSelect,
+  onChangeStage,
+
   stage,
 }: {
   leads: CrmLeadListItem[];
   onSelect: (leadId: string) => void;
+  onChangeStage?: (leadId: string) => void;
   stage: CrmPipelineStage;
 }) {
   return (
@@ -34,7 +37,12 @@ export function PipelineColumn({
       <div className="space-y-3">
         {leads.length ? (
           leads.map((lead) => (
-            <PipelineCard key={lead.id} lead={lead} onSelect={() => onSelect(lead.id)} />
+            <PipelineCard
+              key={lead.id}
+              lead={lead}
+              onSelect={() => onSelect(lead.id)}
+              onChangeStage={onChangeStage ? () => onChangeStage(lead.id) : undefined}
+            />
           ))
         ) : (
           <PipelineEmptyState />

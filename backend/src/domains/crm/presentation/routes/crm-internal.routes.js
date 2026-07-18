@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const { canManageSystem, requireAuth } = require("../../../../../auth.js");
 const {
   CrmLeadEnrollmentConversionController,
@@ -18,6 +18,8 @@ function createCrmInternalRouter(options = {}) {
     options.conversionHistoryExportController ||
     createCrmLeadConversionHistoryExportController(options);
   const pipelineController = options.pipelineController || createCrmPipelineController(options);
+  const stageTransitionController =
+    options.stageTransitionController || createCrmLeadStageTransitionController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
@@ -27,6 +29,7 @@ function createCrmInternalRouter(options = {}) {
   router.get("/conversions/:conversionId", conversionHistoryController.getById);
   router.get("/leads", queryController.list);
   router.get("/leads/:leadId", queryController.getById);
+  router.patch("/leads/:leadId/stage", stageTransitionController.move);
   router.post("/leads/:leadId/draft-enrollment", controller.convert);
 
   return router;
@@ -36,10 +39,10 @@ function createCrmInternalRouter(options = {}) {
  * Composition root dos adapters concretos.
  *
  * Os imports de infraestrutura permanecem dentro da factory para evitar
- * carregar configuração, pool ou adapters MySQL durante testes que injetam
+ * carregar configuraÃ§Ã£o, pool ou adapters MySQL durante testes que injetam
  * controller ou conversionService.
  *
- * Nenhuma regra de negócio deve ser adicionada nesta função.
+ * Nenhuma regra de negÃ³cio deve ser adicionada nesta funÃ§Ã£o.
  */
 function createCrmLeadEnrollmentConversionController(options = {}) {
   const leadRepository = options.leadRepository || createCrmLeadRepository(options);
@@ -66,6 +69,43 @@ function createCrmLeadEnrollmentConversionController(options = {}) {
   });
 }
 
+function createCrmLeadStageTransitionController(options = {}) {
+  const {
+    CrmLeadStageTransitionController,
+  } = require("../controllers/crm-lead-stage-transition.controller.js");
+  const { CrmLeadService } = require("../../application/crm-lead.service.js");
+  const {
+    CrmLeadStageTransitionObservabilityDecorator,
+  } = require("../../application/crm-lead-stage-transition-observability.decorator.js");
+  const leadRepository = options.leadRepository || createCrmLeadRepository(options);
+  const leadUnitContextService =
+    options.leadUnitContextService ||
+    createCrmLeadUnitContextService({ ...options, leadRepository });
+  const stageTransitionService =
+    options.stageTransitionService ||
+    options.leadService ||
+    new CrmLeadService({
+      repository: leadRepository,
+      authorizeUnit: options.authorizeUnit || ((context, unitId) => context.unitId === unitId),
+      now: options.stageTransitionNow,
+    });
+  const auditService =
+    options.stageTransitionAuditService ||
+    options.conversionAuditService ||
+    createCrmLeadEnrollmentConversionAuditService(options);
+  const observedService =
+    options.stageTransitionObservabilityService ||
+    new CrmLeadStageTransitionObservabilityDecorator({
+      stageTransitionService,
+      auditService,
+      logger: options.logger,
+      now: options.stageTransitionMonotonicClock,
+    });
+  return new CrmLeadStageTransitionController({
+    leadService: observedService,
+    leadUnitContextService,
+  });
+}
 function createCrmLeadEnrollmentConversionAuditService(options = {}) {
   const {
     CrmLeadEnrollmentConversionAuditService,
@@ -248,6 +288,7 @@ module.exports = {
   CRM_INTERNAL_ROUTE_BASE_PATH,
   createCrmInternalRouter,
   createCrmLeadEnrollmentConversionService,
+  createCrmLeadStageTransitionController,
   createCrmLeadEnrollmentConversionAuditService,
   createCrmLeadEnrollmentConversionObservabilityService,
   createCrmLeadConversionHistoryController,
