@@ -353,23 +353,31 @@ function withNormalizedIdentity(values, source = values) {
     ...values,
     celular_normalized: normalizeOrNull(
       normalizePhone,
-      source.celular ?? source.contact?.mobilePhone ?? values.celular,
+      readIdentitySource(source, "celular", source.contact?.mobilePhone, values.celular),
     ),
     cpf_normalized: normalizeOrNull(
       normalizeCpf,
-      source.cpf ??
-        source.documents?.find((document) => document?.type === "cpf")?.value ??
+      readIdentitySource(
+        source,
+        "cpf",
+        source.documents?.find((document) => document?.type === "cpf")?.value,
         values.cpf,
+      ),
     ),
     email_normalized: normalizeOrNull(
       normalizeEmail,
-      source.email ?? source.contact?.email ?? values.email,
+      readIdentitySource(source, "email", source.contact?.email, values.email),
     ),
     telefone_normalized: normalizeOrNull(
       normalizePhone,
-      source.telefone ?? source.contact?.phone ?? values.telefone,
+      readIdentitySource(source, "telefone", source.contact?.phone, values.telefone),
     ),
   };
+}
+
+function readIdentitySource(source, field, nestedValue, mappedValue) {
+  if (Object.prototype.hasOwnProperty.call(source, field)) return source[field];
+  return nestedValue !== undefined ? nestedValue : mappedValue;
 }
 
 function normalizeOrNull(normalizer, value) {

@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 const mysql = require("mysql2/promise");
 
+const {
+  normalizeEmail,
+  normalizePhone,
+} = require("../../backend/src/domains/pessoas/person-identity-normalizer.js");
 const { assertSprint2311Environment } = require("./sprint-23-11-environment.cjs");
 
 const DATA = Object.freeze({
@@ -166,11 +170,23 @@ async function prepareJourneyEnrollment() {
   return withJourneyStudent(async (connection, student) => {
     await connection.beginTransaction();
     try {
+      const emailNormalized = normalizeEmail(student.email_contato);
+      const telefoneNormalized = normalizePhone(student.telefone_contato);
       await connection.execute(
-        `INSERT INTO people (id, nome, email, telefone, ativo)
-         VALUES (?, ?, ?, ?, 1)
-         ON DUPLICATE KEY UPDATE nome = VALUES(nome), email = VALUES(email), ativo = 1`,
-        [student.id, student.nome_completo, student.email_contato, student.telefone_contato],
+        `INSERT INTO people
+           (id, nome, email, telefone, email_normalized, telefone_normalized, ativo)
+         VALUES (?, ?, ?, ?, ?, ?, 1)
+         ON DUPLICATE KEY UPDATE nome = VALUES(nome), email = VALUES(email),
+           telefone = VALUES(telefone), email_normalized = VALUES(email_normalized),
+           telefone_normalized = VALUES(telefone_normalized), ativo = 1`,
+        [
+          student.id,
+          student.nome_completo,
+          student.email_contato,
+          student.telefone_contato,
+          emailNormalized,
+          telefoneNormalized,
+        ],
       );
       await connection.execute(
         `INSERT INTO person_profiles (id, person_id, profile_type, status)

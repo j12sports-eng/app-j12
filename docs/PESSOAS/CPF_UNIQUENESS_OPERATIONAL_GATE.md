@@ -66,11 +66,11 @@ O avaliador não consulta banco e não cria índice. `state=NOT_EXECUTED` repres
 
 - `PersonRepository.create/update`: sincronizado atomicamente para valores aceitos pelo normalizador;
 - `PersonApplicationService` e fluxos modernos: delegam ao repository;
-- fixture `scripts/e2e/sprint-23-11-fixtures.cjs`: SQL direto em `people`, sem normalizados;
+- fixture `scripts/e2e/sprint-23-11-fixtures.cjs`: SQL direto sintético agora sincronizado com o normalizador canônico;
 - cadastros legados `j12_alunos`/`j12_responsaveis`: não escrevem `people`, mas mantêm identidade paralela;
 - importadores e SQL externos: desconhecidos.
 
-O bloqueio crítico é estrutural: as colunas são nullable. Um writer direto pode inserir CPF original com `cpf_normalized=NULL` e contornar um futuro unique. Antes da A.4.2 é necessário migrar/bloquear todos os writers de CPF ou especificar outra garantia física capaz de reproduzir exatamente o contrato. Trigger/generated column não fazem parte desta sprint.
+O inventário A.4.1B encontrou todos os writers controlados conhecidos sincronizados e adicionou proteção contra novo SQL literal não auditado. O blocker `LEGACY_WRITERS_UNSYNCHRONIZED` passou a `PARTIALLY_RESOLVED`: as colunas ainda são nullable e writers manuais/externos não podem ser excluídos. Antes da A.4.2 é necessário bloquear esses caminhos ou especificar outra garantia física capaz de reproduzir exatamente o contrato. Trigger/generated column não fazem parte desta sprint.
 
 ## Roteiro para execução futura
 

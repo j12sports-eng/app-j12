@@ -179,7 +179,7 @@ function validatePersonPayload(payload = {}) {
  * @returns {Record<string, unknown>}
  */
 function mergePerson(current, patch = {}) {
-  return {
+  const merged = {
     ...current,
     ...patch,
     address: {
@@ -195,6 +195,40 @@ function mergePerson(current, patch = {}) {
       ...(patch.name || {}),
     },
   };
+
+  synchronizeIdentityPatch(merged, patch);
+  return merged;
+}
+
+/** Keeps flat persistence fields aligned with explicitly patched architecture fields. */
+function synchronizeIdentityPatch(merged, patch) {
+  if (
+    !Object.prototype.hasOwnProperty.call(patch, "email") &&
+    patch.contact &&
+    Object.prototype.hasOwnProperty.call(patch.contact, "email")
+  ) {
+    merged.email = patch.contact.email;
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(patch, "telefone") &&
+    patch.contact &&
+    Object.prototype.hasOwnProperty.call(patch.contact, "phone")
+  ) {
+    merged.telefone = patch.contact.phone;
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(patch, "celular") &&
+    patch.contact &&
+    Object.prototype.hasOwnProperty.call(patch.contact, "mobilePhone")
+  ) {
+    merged.celular = patch.contact.mobilePhone;
+  }
+  if (!Object.prototype.hasOwnProperty.call(patch, "cpf") && Array.isArray(patch.documents)) {
+    const cpfDocument = patch.documents.find((document) => document?.type === "cpf");
+    if (cpfDocument && Object.prototype.hasOwnProperty.call(cpfDocument, "value")) {
+      merged.cpf = cpfDocument.value;
+    }
+  }
 }
 
 module.exports = {

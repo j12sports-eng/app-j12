@@ -129,13 +129,13 @@ function toPersonRowValues(data = {}) {
   return {
     ativo: active ? 1 : 0,
     bairro: nullableText(data.bairro ?? data.address?.district, 191),
-    celular: nullableText(data.celular ?? data.contact?.mobilePhone, 50),
+    celular: nullableText(readOwnOrFallback(data, "celular", data.contact?.mobilePhone), 50),
     cep: nullableText(data.cep ?? data.address?.zipCode, 20),
     cidade: nullableText(data.cidade ?? data.address?.city, 191),
     complemento: nullableText(data.complemento ?? data.address?.complement, 191),
-    cpf: nullableText(data.cpf ?? cpf, 20),
+    cpf: nullableText(readOwnOrFallback(data, "cpf", cpf), 20),
     data_nascimento: nullableDate(data.dataNascimento ?? data.birthDate),
-    email: nullableText(data.email ?? data.contact?.email, 191),
+    email: nullableText(readOwnOrFallback(data, "email", data.contact?.email), 191),
     estado: nullableText(data.estado ?? data.address?.state, 50),
     id: nullableText(data.id, 64),
     logradouro: nullableText(data.logradouro ?? data.address?.street, 191),
@@ -143,8 +143,13 @@ function toPersonRowValues(data = {}) {
     numero: nullableText(data.numero ?? data.address?.number, 30),
     rg: nullableText(data.rg ?? rg, 30),
     sexo: nullableText(data.sexo, 30),
-    telefone: nullableText(data.telefone ?? data.contact?.phone, 50),
+    telefone: nullableText(readOwnOrFallback(data, "telefone", data.contact?.phone), 50),
   };
+}
+
+/** Preserves the difference between an absent field and an explicit null. */
+function readOwnOrFallback(data, field, fallback) {
+  return Object.prototype.hasOwnProperty.call(data, field) ? data[field] : fallback;
 }
 
 /**
