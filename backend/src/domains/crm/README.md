@@ -31,10 +31,13 @@ Endpoints:
 - `POST /internal/crm/leads/:leadId/draft-enrollment`
 - `POST /api/internal/crm/leads/:leadId/draft-enrollment`
 
-A rota exige autenticação por `requireAuth` e autorização administrativa por `canManageSystem`.
+A rota preserva `requireAuth → ensureCrmInternalAccess → controller`. `canManageSystem` representa a política global atual para administradores e coordenadores; não existe vínculo granular usuário–unidade na sessão.
+
+O body aceita somente `studentData`, `enrollmentData` e `idempotencyKey`. `leadId` vem da URL, `userId` vem da autenticação e `unitId` é derivado de `crm_leads.unit_id` pelo `CrmLeadUnitContextService`. Input e contexto confiável permanecem separados.
 
 A operação:
 
+- rejeita campos extras e contexto controlado pelo cliente;
 - converte somente Leads elegíveis;
 - resolve ou reutiliza Pessoa e Perfil de Aluno;
 - cria ou reutiliza matrícula em estado `DRAFT`;
@@ -44,6 +47,4 @@ A operação:
 - não cria contrato ou notificações;
 - não expõe CPF nem dados cadastrais na resposta.
 
-As migrations contratuais das conversões CRM precisam estar aplicadas no ambiente antes da utilização operacional da rota.
-
-Durante os testes da rota, a configuração do pool MySQL foi carregada pelos imports, mas nenhuma query, migration física ou operação no banco foi executada.
+As migrations contratuais das conversões CRM precisam estar aplicadas no ambiente antes da utilização operacional da rota. Os testes desta correção usam apenas fakes por injeção de dependência e não acessam MySQL externo.

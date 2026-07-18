@@ -9,11 +9,7 @@ const CRM_INTERNAL_ROUTE_BASE_PATH = "/internal/crm";
 function createCrmInternalRouter(options = {}) {
   const router = express.Router();
 
-  const controller =
-    options.controller ||
-    new CrmLeadEnrollmentConversionController({
-      conversionService: createCrmLeadEnrollmentConversionService(options),
-    });
+  const controller = options.controller || createCrmLeadEnrollmentConversionController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
@@ -31,6 +27,17 @@ function createCrmInternalRouter(options = {}) {
  *
  * Nenhuma regra de negócio deve ser adicionada nesta função.
  */
+function createCrmLeadEnrollmentConversionController(options = {}) {
+  const leadRepository = options.leadRepository || createCrmLeadRepository(options);
+  const leadUnitContextService =
+    options.leadUnitContextService ||
+    createCrmLeadUnitContextService({ ...options, leadRepository });
+  return new CrmLeadEnrollmentConversionController({
+    conversionService: createCrmLeadEnrollmentConversionService({ ...options, leadRepository }),
+    leadUnitContextService,
+  });
+}
+
 function createCrmLeadEnrollmentConversionService(options = {}) {
   if (options.conversionService) {
     return options.conversionService;
@@ -51,9 +58,7 @@ function createCrmLeadEnrollmentConversionService(options = {}) {
   const {
     CrmLeadStudentConversionService,
   } = require("../../application/crm-lead-student-conversion.service.js");
-  const {
-    MySqlCrmLeadRepository,
-  } = require("../../infrastructure/mysql-crm-lead.repository.js");
+  const { MySqlCrmLeadRepository } = require("../../infrastructure/mysql-crm-lead.repository.js");
   const {
     MySqlCrmLeadStudentConversionRepository,
   } = require("../../infrastructure/mysql-crm-lead-student-conversion.repository.js");
@@ -61,31 +66,23 @@ function createCrmLeadEnrollmentConversionService(options = {}) {
     MySqlCrmLeadEnrollmentConversionRepository,
   } = require("../../infrastructure/mysql-crm-lead-enrollment-conversion.repository.js");
 
-  const authorizeUnit =
-    options.authorizeUnit ||
-    ((context, unitId) => context.unitId === unitId);
+  const authorizeUnit = options.authorizeUnit || ((context, unitId) => context.unitId === unitId);
 
   const leadStudentConversionService =
     options.leadStudentConversionService ||
     new CrmLeadStudentConversionService({
       authorizeUnit,
       conversionRepository:
-        options.studentConversionRepository ||
-        new MySqlCrmLeadStudentConversionRepository(options),
-      leadRepository:
-options.leadRepository ||
-        new MySqlCrmLeadRepository(options),
+        options.studentConversionRepository || new MySqlCrmLeadStudentConversionRepository(options),
+      leadRepository: options.leadRepository || new MySqlCrmLeadRepository(options),
       studentApplicationService:
-        options.studentApplicationService ||
-        new StudentApplicationService(),
+        options.studentApplicationService || new StudentApplicationService(),
     });
 
   const enrollmentBoundary =
     options.enrollmentBoundary ||
     new EnrollmentFacade({
-      enrollmentRepository:
-        options.enrollmentRepository ||
-        new MySqlEnrollmentRepository(options),
+      enrollmentRepository: options.enrollmentRepository || new MySqlEnrollmentRepository(options),
     });
 
   const enrollmentConversionRepository =
@@ -100,12 +97,31 @@ options.leadRepository ||
   });
 }
 
+function createCrmLeadRepository(options = {}) {
+  const { MySqlCrmLeadRepository } = require("../../infrastructure/mysql-crm-lead.repository.js");
+  return new MySqlCrmLeadRepository(options);
+}
+
+function createCrmLeadUnitContextService(options = {}) {
+  const {
+    CrmLeadUnitContextService,
+  } = require("../../application/crm-lead-unit-context.service.js");
+  return new CrmLeadUnitContextService({ leadRepository: options.leadRepository });
+}
+
 function ensureCrmInternalAccess(req, res, next) {
   if (canManageSystem(req.auth || req.user)) {
+    // Current policy is global; there is no canonical user-unit claim in the session.
+    req.crmAuthorization = Object.freeze({
+      granted: true,
+      policy: "GLOBAL_SYSTEM_MANAGEMENT",
+      scope: "CRM_INTERNAL_MANAGE",
+    });
     return next();
   }
 
   return res.status(403).json({
+    code: "CRM_ACCESS_DENIED",
     success: false,
     error: "Sem permissao para converter Leads.",
   });
@@ -115,5 +131,6 @@ module.exports = {
   CRM_INTERNAL_ROUTE_BASE_PATH,
   createCrmInternalRouter,
   createCrmLeadEnrollmentConversionService,
+  createCrmLeadUnitContextService,
   ensureCrmInternalAccess,
 };
