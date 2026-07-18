@@ -75,6 +75,7 @@ import { Route as AdminBiRouteImport } from './routes/admin/bi'
 import { Route as AdminAgendaRouteImport } from './routes/admin/agenda'
 import { Route as DashboardAlunoIdRouteImport } from './routes/dashboard/aluno.$id'
 import { Route as AdminCrmLeadsRouteImport } from './routes/admin/crm.leads'
+import { Route as AdminCrmConversionsRouteImport } from './routes/admin/crm.conversions'
 import { Route as AdminCampeonatosInscricoesRouteImport } from './routes/admin/campeonatos.inscricoes'
 import { Route as AdminBiTurmasRouteImport } from './routes/admin/bi.turmas'
 import { Route as AdminBiRelatoriosRouteImport } from './routes/admin/bi.relatorios'
@@ -441,6 +442,11 @@ const AdminCrmLeadsRoute = AdminCrmLeadsRouteImport.update({
   path: '/admin/crm/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCrmConversionsRoute = AdminCrmConversionsRouteImport.update({
+  id: '/admin/crm/conversions',
+  path: '/admin/crm/conversions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminCampeonatosInscricoesRoute =
   AdminCampeonatosInscricoesRouteImport.update({
     id: '/inscricoes',
@@ -610,6 +616,7 @@ export interface FileRoutesByFullPath {
   '/admin/bi/relatorios': typeof AdminBiRelatoriosRoute
   '/admin/bi/turmas': typeof AdminBiTurmasRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
+  '/admin/crm/conversions': typeof AdminCrmConversionsRoute
   '/admin/crm/leads': typeof AdminCrmLeadsRoute
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
   '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
@@ -695,6 +702,7 @@ export interface FileRoutesByTo {
   '/admin/bi/relatorios': typeof AdminBiRelatoriosRoute
   '/admin/bi/turmas': typeof AdminBiTurmasRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
+  '/admin/crm/conversions': typeof AdminCrmConversionsRoute
   '/admin/crm/leads': typeof AdminCrmLeadsRoute
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
   '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
@@ -781,6 +789,7 @@ export interface FileRoutesById {
   '/admin/bi/relatorios': typeof AdminBiRelatoriosRoute
   '/admin/bi/turmas': typeof AdminBiTurmasRoute
   '/admin/campeonatos/inscricoes': typeof AdminCampeonatosInscricoesRouteWithChildren
+  '/admin/crm/conversions': typeof AdminCrmConversionsRoute
   '/admin/crm/leads': typeof AdminCrmLeadsRoute
   '/dashboard/aluno/$id': typeof DashboardAlunoIdRoute
   '/admin/campeonatos/$championshipId/classificacao': typeof AdminCampeonatosChampionshipIdClassificacaoRoute
@@ -868,6 +877,7 @@ export interface FileRouteTypes {
     | '/admin/bi/relatorios'
     | '/admin/bi/turmas'
     | '/admin/campeonatos/inscricoes'
+    | '/admin/crm/conversions'
     | '/admin/crm/leads'
     | '/dashboard/aluno/$id'
     | '/admin/campeonatos/$championshipId/classificacao'
@@ -953,6 +963,7 @@ export interface FileRouteTypes {
     | '/admin/bi/relatorios'
     | '/admin/bi/turmas'
     | '/admin/campeonatos/inscricoes'
+    | '/admin/crm/conversions'
     | '/admin/crm/leads'
     | '/dashboard/aluno/$id'
     | '/admin/campeonatos/$championshipId/classificacao'
@@ -1038,6 +1049,7 @@ export interface FileRouteTypes {
     | '/admin/bi/relatorios'
     | '/admin/bi/turmas'
     | '/admin/campeonatos/inscricoes'
+    | '/admin/crm/conversions'
     | '/admin/crm/leads'
     | '/dashboard/aluno/$id'
     | '/admin/campeonatos/$championshipId/classificacao'
@@ -1114,6 +1126,7 @@ export interface RootRouteChildren {
   PortalAlunoIndexRoute: typeof PortalAlunoIndexRoute
   PortalResponsavelIndexRoute: typeof PortalResponsavelIndexRoute
   ProfessorIndexRoute: typeof ProfessorIndexRoute
+  AdminCrmConversionsRoute: typeof AdminCrmConversionsRoute
   AdminCrmLeadsRoute: typeof AdminCrmLeadsRoute
 }
 
@@ -1581,6 +1594,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCrmLeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/crm/conversions': {
+      id: '/admin/crm/conversions'
+      path: '/admin/crm/conversions'
+      fullPath: '/admin/crm/conversions'
+      preLoaderRoute: typeof AdminCrmConversionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/campeonatos/inscricoes': {
       id: '/admin/campeonatos/inscricoes'
       path: '/inscricoes'
@@ -1877,6 +1897,7 @@ const rootRouteChildren: RootRouteChildren = {
   PortalAlunoIndexRoute: PortalAlunoIndexRoute,
   PortalResponsavelIndexRoute: PortalResponsavelIndexRoute,
   ProfessorIndexRoute: ProfessorIndexRoute,
+  AdminCrmConversionsRoute: AdminCrmConversionsRoute,
   AdminCrmLeadsRoute: AdminCrmLeadsRoute,
 }
 export const routeTree = rootRouteImport

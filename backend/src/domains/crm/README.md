@@ -71,3 +71,20 @@ A conversão interna é envolvida por `CrmLeadEnrollmentConversionObservabilityD
 A auditoria aceita somente allowlist de campos, limita strings, usa fingerprint SHA-256 para idempotência e nunca registra PII, body, token, SQL, stack ou mensagens originais. `CrmLeadEnrollmentConversionMetrics` mantém contadores/observações process-local bounded com labels `source`, `result`, `errorCode` e `enrollmentResolution`; IDs não são labels. Falha de auditoria é fail-open e não bloqueia nem altera a conversão principal.
 
 Não foi criada migration, tabela de auditoria, endpoint histórico ou execução MySQL. A Sprint 27.17H poderá substituir o adapter de logs por persistência histórica sem alterar o contrato funcional.
+
+## Histórico visual de conversões — Sprint 27.17H
+
+A fonte canônica do histórico read-only é crm_lead_enrollment_conversions. Ela permite listar e detalhar conversões COMPLETED com IDs de Lead, unidade, Pessoa, perfil e matrícula, além de convertedBy, convertedAt e enrollmentStatus. A projeção não consulta Pessoas ou Matrículas, não faz JOIN/N+1 e não seleciona idempotency_key ou metadata_json.
+
+Endpoints protegidos:
+
+- GET /internal/crm/conversions e alias /api/internal/crm/conversions;
+- GET /internal/crm/conversions/:conversionId e alias /api/internal/crm/conversions/:conversionId.
+
+Filtros aceitos: cursor, limit, leadId, unitId, convertedBy, enrollmentStatus, dateFrom e dateTo. O limite padrão é 50 e o máximo é 100. A paginação usa cursor opaco por converted_at + id, ordenação decrescente determinística, sem OFFSET ou totalCount.
+
+correlationId, resoluções, flags de reuso e versão não estão persistidos na tabela e são retornados como null; não são inferidos de logs ou métricas. O histórico não apresenta tentativas ou falhas: esses eventos permanecem somente nos logs operacionais externos, que não possuem API consultável nem retenção comprovada no repositório.
+
+O frontend protegido está em /admin/crm/conversions, com filtros reais, tabela no desktop, cards em telas menores e diálogo de detalhe. Após uma conversão bem-sucedida, React Query invalida o histórico e as queries de lista/detalhe do Lead.
+
+Nenhuma migration, schema, escrita, conexão MySQL externa ou histórico fictício foi adicionada. O SELECT não contém PII, contato, idempotência, metadata, SQL ou stack. O contrato completo está em docs/SPRINT_27_17H.md.

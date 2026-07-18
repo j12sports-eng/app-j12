@@ -12,9 +12,13 @@ function createCrmInternalRouter(options = {}) {
   const controller = options.controller || createCrmLeadEnrollmentConversionController(options);
 
   const queryController = options.queryController || createCrmLeadQueryController(options);
+  const conversionHistoryController =
+    options.conversionHistoryController || createCrmLeadConversionHistoryController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
+  router.get("/conversions", conversionHistoryController.list);
+  router.get("/conversions/:conversionId", conversionHistoryController.getById);
   router.get("/leads", queryController.list);
   router.get("/leads/:leadId", queryController.getById);
   router.post("/leads/:leadId/draft-enrollment", controller.convert);
@@ -91,6 +95,33 @@ function createCrmLeadQueryService(options = {}) {
     repository:
       options.leadQueryRepository || options.leadRepository || createCrmLeadRepository(options),
   });
+}
+
+function createCrmLeadConversionHistoryController(options = {}) {
+  const {
+    CrmLeadConversionHistoryController,
+  } = require("../controllers/crm-lead-conversion-history.controller.js");
+  return new CrmLeadConversionHistoryController({
+    queryService: createCrmLeadConversionHistoryQueryService(options),
+  });
+}
+
+function createCrmLeadConversionHistoryQueryService(options = {}) {
+  if (options.conversionHistoryQueryService) return options.conversionHistoryQueryService;
+  const {
+    CrmLeadConversionHistoryQueryService,
+  } = require("../../application/crm-lead-conversion-history-query.service.js");
+  return new CrmLeadConversionHistoryQueryService({
+    repository:
+      options.conversionHistoryRepository || createCrmLeadConversionHistoryRepository(options),
+  });
+}
+
+function createCrmLeadConversionHistoryRepository(options = {}) {
+  const {
+    MySqlCrmLeadConversionHistoryRepository,
+  } = require("../../infrastructure/mysql-crm-lead-conversion-history.repository.js");
+  return new MySqlCrmLeadConversionHistoryRepository(options);
 }
 
 function createCrmLeadEnrollmentConversionService(options = {}) {
@@ -188,6 +219,9 @@ module.exports = {
   createCrmLeadEnrollmentConversionService,
   createCrmLeadEnrollmentConversionAuditService,
   createCrmLeadEnrollmentConversionObservabilityService,
+  createCrmLeadConversionHistoryController,
+  createCrmLeadConversionHistoryQueryService,
+  createCrmLeadConversionHistoryRepository,
   createCrmLeadQueryController,
   createCrmLeadQueryService,
   createCrmLeadUnitContextService,

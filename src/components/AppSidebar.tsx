@@ -105,6 +105,13 @@ const ITEMS: AppSidebarNavItem[] = [
     section: "operation",
   },
   {
+    to: "/admin/crm/conversions",
+    label: "Histórico CRM",
+    icon: History,
+    roles: ["admin", "coordenador"],
+    section: "operation",
+  },
+  {
     to: "/professores",
     label: "Professores",
     icon: UserCog,

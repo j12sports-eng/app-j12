@@ -19,6 +19,14 @@ async function request(path, options = {}) {
         return { preserved: true };
       },
     },
+    conversionHistoryQueryService: {
+      async listConversions() {
+        return { items: [], pageInfo: { hasNextPage: false, nextCursor: null } };
+      },
+      async getConversionById() {
+        return null;
+      },
+    },
     leadRepository: options.leadRepository || {
       async findUnitContextById() {
         return { id: "lead-1", unit_id: "unit-1" };

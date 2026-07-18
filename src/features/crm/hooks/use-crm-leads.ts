@@ -5,6 +5,7 @@ import {
   listCrmLeads,
 } from "../api/crm-leads.api";
 import { crmLeadQueryKeys } from "../query/crm-lead.query-keys";
+import { crmConversionHistoryQueryKeys } from "../query/crm-conversion-history.query-keys";
 import type { CrmLeadDraftEnrollmentPayload, CrmLeadFilters } from "../types/crm-lead.types";
 
 export function useCrmLeads(filters: CrmLeadFilters = {}) {
@@ -41,6 +42,7 @@ export function useConvertCrmLeadToDraftEnrollment() {
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
+      void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
     },
   });
 }
