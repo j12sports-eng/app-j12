@@ -1,5 +1,9 @@
 # Política de Identidade de Pessoa e CPF
 
+> Aprovação executiva pendente: consulte
+> [Aprovação Executiva — Identidade de Pessoa e CPF](./PERSON_IDENTITY_AND_CPF_EXECUTIVE_DECISION.md).
+> As recomendações desse formulário não alteram os estados desta política até decisão formal.
+
 ## 1. Status e método
 
 Este documento é a decisão arquitetural da Sprint 27.17A.4.1D. Cada conclusão distingue:
