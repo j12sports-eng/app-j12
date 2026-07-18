@@ -31,4 +31,6 @@ O resolvedor retorna somente `FOUND`, `NOT_FOUND`, `CONFLICT` ou `INSUFFICIENT_D
 
 `createPerson()` e `findByCpf()` permanecem disponiveis somente por compatibilidade. Novos consumidores nao devem usar `findByCpf()` como decisao de identidade, pois ele seleciona uma linha e nao detecta conflito.
 
+No modelo moderno, Aluno e representado por Pessoa + perfil `aluno`; nao existe entidade Student separada. `StudentApplicationService.resolveOrCreateStudent()` usa o boundary canonico de Pessoa e depois `ProfileApplicationService.resolveOrCreateStudentProfile()`. O legado `j12_alunos` permanece paralelo e fora desse fluxo.
+
 Nenhum modulo existente foi migrado. Nenhum endpoint, controller, service legado, frontend, migration ou schema foi alterado.

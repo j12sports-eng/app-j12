@@ -108,6 +108,21 @@ class PersonProfileRepository {
     return toPersonProfileDataFromRow(Array.isArray(rows) ? rows[0] : null);
   }
 
+  /** Returns at most two matching profiles so the application layer can detect conflicts. */
+  async findCandidatesByPersonAndType(personId, profileType) {
+    const rows = await this.query(
+      `
+        SELECT *
+        FROM ${TABLE_NAME}
+        WHERE person_id = ? AND profile_type = ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT 2
+      `,
+      [personId, profileType],
+    );
+    return Array.isArray(rows) ? rows.map(toPersonProfileDataFromRow).filter(Boolean) : [];
+  }
+
   /**
    * Lists Person Profiles with optional filters.
    *

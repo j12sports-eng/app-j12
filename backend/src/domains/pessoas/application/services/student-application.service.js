@@ -1,8 +1,12 @@
 const { PersonApplicationService } = require("./person-application.service.js");
 const { ProfileApplicationService } = require("./profile-application.service.js");
+const { AppError } = require("../../../../errors/app-error.js");
 
 const STUDENT_PERSON_STEP = "createStudentPerson";
 const STUDENT_PROFILE_STEP = "createStudentProfile";
+const STUDENT_APPLICATION_ERROR_CODES = Object.freeze({
+  DATA_INCOMPLETE: "STUDENT_DATA_INCOMPLETE",
+});
 
 /**
  * Application service responsible for safe Aluno Pessoa resolution.
@@ -69,7 +73,9 @@ class StudentApplicationService {
         };
       }
 
-      studentPerson = await this.getPersonApplicationService().createPerson(mapStudentToPersonPayload(normalizedStudent));
+      studentPerson = await this.getPersonApplicationService().createPerson(
+        mapStudentToPersonPayload(normalizedStudent),
+      );
       createdPerson = true;
     }
 
@@ -114,6 +120,67 @@ class StudentApplicationService {
   }
 
   /**
+   * Canonical modern operation. In this model Aluno is the `aluno` profile;
+   * there is no separate modern Student entity or studentId.
+   */
+  async resolveOrCreateStudent(student = {}, context = {}) {
+    const normalizedStudent = normalizeStudent(student);
+    const missingFields = getMissingCanonicalStudentFields(normalizedStudent);
+    if (missingFields.length > 0) {
+      throw new AppError("Student data is incomplete.", {
+        code: STUDENT_APPLICATION_ERROR_CODES.DATA_INCOMPLETE,
+        details: Object.freeze({ fields: missingFields }),
+        expose: true,
+        statusCode: 422,
+      });
+    }
+
+    const personResolution =
+      await this.getCanonicalPersonApplicationService().resolveOrCreatePerson(
+        {
+          ...mapStudentToPersonPayload(normalizedStudent),
+          personId: readStudentPersonId(normalizedStudent),
+        },
+        context,
+      );
+    const profileResolution =
+      await this.getCanonicalProfileApplicationService().resolveOrCreateStudentProfile({
+        personId: personResolution.personId,
+      });
+
+    return Object.freeze({
+      personId: personResolution.personId,
+      personProfileId: profileResolution.personProfileId,
+      personResolution: personResolution.created ? "CREATED" : "FOUND",
+      profileResolution: profileResolution.profileResolution,
+      reused: Object.freeze({
+        person: personResolution.reused,
+        profile: profileResolution.reused,
+      }),
+    });
+  }
+
+  getCanonicalPersonApplicationService() {
+    const service = this.getPersonApplicationService();
+    if (typeof service.resolveOrCreatePerson !== "function") {
+      throw new TypeError(
+        "StudentApplicationService requires a personApplicationService.resolveOrCreatePerson function.",
+      );
+    }
+    return service;
+  }
+
+  getCanonicalProfileApplicationService() {
+    const service = this.getProfileApplicationService();
+    if (typeof service.resolveOrCreateStudentProfile !== "function") {
+      throw new TypeError(
+        "StudentApplicationService requires a profileApplicationService.resolveOrCreateStudentProfile function.",
+      );
+    }
+    return service;
+  }
+
+  /**
    * @returns {PersonApplicationService}
    */
   getPersonApplicationService() {
@@ -122,7 +189,9 @@ class StudentApplicationService {
     }
 
     if (typeof this.personApplicationService?.createPerson !== "function") {
-      throw new TypeError("StudentApplicationService requires a personApplicationService.createPerson function.");
+      throw new TypeError(
+        "StudentApplicationService requires a personApplicationService.createPerson function.",
+      );
     }
 
     return this.personApplicationService;
@@ -137,7 +206,9 @@ class StudentApplicationService {
     }
 
     if (typeof this.profileApplicationService?.createStudentProfile !== "function") {
-      throw new TypeError("StudentApplicationService requires a profileApplicationService.createStudentProfile function.");
+      throw new TypeError(
+        "StudentApplicationService requires a profileApplicationService.createStudentProfile function.",
+      );
     }
 
     return this.profileApplicationService;
@@ -160,7 +231,9 @@ function mapStudentToPersonPayload(student = {}) {
     dataNascimento: nullableText(student.dataNascimento),
     email: nullableText(student.email),
     estado: nullableText(student.estado ?? student.endereco?.estado),
-    logradouro: nullableText(student.logradouro ?? student.endereco?.logradouro ?? student.endereco?.rua),
+    logradouro: nullableText(
+      student.logradouro ?? student.endereco?.logradouro ?? student.endereco?.rua,
+    ),
     nome: text(student.nome ?? student.nomeCompleto),
     numero: nullableText(student.numero ?? student.endereco?.numero),
     rg: nullableText(student.rg),
@@ -179,7 +252,8 @@ function mapStudentToPersonPayload(student = {}) {
  * @returns {string|null}
  */
 function readStudentPersonId(student) {
-  const id = student && typeof student === "object" ? student.personId ?? student.person_id : null;
+  const id =
+    student && typeof student === "object" ? (student.personId ?? student.person_id) : null;
   return nullableText(id);
 }
 
@@ -188,7 +262,10 @@ function readStudentPersonId(student) {
  * @returns {string|null}
  */
 function readPersonId(person) {
-  const id = person && typeof person === "object" ? person.id ?? person.personId ?? person.person_id : null;
+  const id =
+    person && typeof person === "object"
+      ? (person.id ?? person.personId ?? person.person_id)
+      : null;
   return nullableText(id);
 }
 
@@ -228,6 +305,17 @@ function getMissingStudentPersonFields(student = {}) {
   return ["nome", "dataNascimento", "sexo"].filter((field) => !nullableText(student[field]));
 }
 
+function getMissingCanonicalStudentFields(student = {}) {
+  if (readStudentPersonId(student)) return [];
+  return [
+    ["nome", student.nome ?? student.nomeCompleto],
+    ["dataNascimento", student.dataNascimento],
+    ["sexo", student.sexo],
+  ]
+    .filter(([, value]) => !nullableText(value))
+    .map(([field]) => field);
+}
+
 /**
  * @param {unknown} value
  * @returns {string}
@@ -256,11 +344,13 @@ function warning(field, message, code) {
 }
 
 module.exports = {
+  STUDENT_APPLICATION_ERROR_CODES,
   STUDENT_PERSON_STEP,
   STUDENT_PROFILE_STEP,
   StudentApplicationService,
   buildResolvedStudentPerson,
   mapStudentToPersonPayload,
+  getMissingCanonicalStudentFields,
   readPersonId,
   readStudentPersonId,
 };
