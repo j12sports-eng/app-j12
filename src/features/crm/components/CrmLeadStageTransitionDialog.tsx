@@ -22,11 +22,17 @@ export function CrmLeadStageTransitionDialog({
   pipeline,
   open,
   onOpenChange,
+  initialStage,
+  onSucceeded,
+  onFailed,
 }: {
   lead: CrmLeadDetail;
   pipeline: CrmPipeline;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialStage?: string | null;
+  onSucceeded?: () => void;
+  onFailed?: (error: unknown) => void;
 }) {
   const mutation = useMoveCrmLeadStage();
   const [nextStage, setNextStage] = useState("");
@@ -36,11 +42,13 @@ export function CrmLeadStageTransitionDialog({
   const target = options.find((stage) => stage === nextStage);
   useEffect(() => {
     if (open) {
-      setNextStage(options[0] || "");
+      setNextStage(
+        initialStage && options.includes(initialStage as never) ? initialStage : options[0] || "",
+      );
       setReason("");
       mutation.reset();
     }
-  }, [open, lead.id, lead.stage, options]);
+  }, [open, lead.id, lead.stage, options, initialStage]);
   async function submit() {
     if (!target || mutation.isPending) return;
     if (target === "LOST" && !reason.trim()) return;
@@ -55,10 +63,11 @@ export function CrmLeadStageTransitionDialog({
         },
       });
       toast.success("Estágio atualizado.");
+      onSucceeded?.();
       onOpenChange(false);
     } catch (error) {
       // Keep the dialog and reason open so the operator can recover from conflicts.
-      void error;
+      onFailed?.(error);
     }
   }
   const error = mutation.error ? stageError(mutation.error) : null;
@@ -84,6 +93,7 @@ export function CrmLeadStageTransitionDialog({
               className="j12-field h-10 w-full px-3"
               value={nextStage}
               onChange={(event) => setNextStage(event.target.value)}
+              disabled={Boolean(initialStage)}
             >
               <option value="">Selecione</option>
               {options.map((id) => (

@@ -1,5 +1,15 @@
 ﻿import { useMemo, useState } from "react";
 import { ChevronDown, Loader2, RefreshCcw, ShieldCheck, UserRoundSearch } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { toast } from "sonner";
+import { useRef } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +21,13 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatApiErrorMessage } from "@/lib/api";
 import { PipelineColumn } from "../components/PipelineColumn";
+import { PipelineDragOverlay } from "../components/PipelineDragOverlay";
 import { CrmLeadStageTransitionDialog } from "../components/CrmLeadStageTransitionDialog";
 import { PipelineHeader } from "../components/PipelineHeader";
-import { useCrmLead, useCrmLeads } from "../hooks/use-crm-leads";
+import { useCrmLead, useCrmLeads, useMoveCrmLeadStage } from "../hooks/use-crm-leads";
 import { useCrmPipeline } from "../hooks/use-crm-pipeline";
+import { telemetry, useCrmLeadDrag, type CrmLeadDropRequest } from "../hooks/use-crm-lead-drag";
+import { recordCrmLeadDragEvent } from "../observability/crm-lead-drag.observability";
 import {
   CrmLeadDetailsDialog,
   CrmLeadDraftEnrollmentConversionDialog,
@@ -36,6 +49,8 @@ function CrmLeadsPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [conversionOpen, setConversionOpen] = useState(false);
   const [stageLeadId, setStageLeadId] = useState<string | null>(null);
+  const [dragRequest, setDragRequest] = useState<CrmLeadDropRequest | null>(null);
+  const dragSucceeded = useRef(false);
   const query = useCrmLeads(filters);
   const pipelineQuery = useCrmPipeline();
   const stageLeadQuery = useCrmLead(stageLeadId);
@@ -168,6 +183,10 @@ function CrmLeadsPage() {
             items={items}
             onSelect={openDetails}
             onChangeStage={openStage}
+            onDragConfirmation={(request) => {
+              dragSucceeded.current = false;
+              setDragRequest(request);
+            }}
           />
         ) : null}
 
@@ -201,8 +220,22 @@ function CrmLeadsPage() {
           lead={stageLeadQuery.data}
           pipeline={pipelineQuery.data}
           open={Boolean(stageLeadId)}
+          initialStage={dragRequest?.lead.id === stageLeadId ? dragRequest.toStage : null}
+          onSucceeded={() => {
+            dragSucceeded.current = true;
+            if (dragRequest) recordCrmLeadDragEvent("DRAG_SUCCEEDED", telemetry(dragRequest));
+            setDragRequest(null);
+          }}
+          onFailed={() => {
+            if (dragRequest) recordCrmLeadDragEvent("DRAG_FAILED", telemetry(dragRequest));
+          }}
           onOpenChange={(open) => {
-            if (!open) setStageLeadId(null);
+            if (!open) {
+              if (dragRequest && !dragSucceeded.current)
+                recordCrmLeadDragEvent("DRAG_CANCELLED", telemetry(dragRequest));
+              setDragRequest(null);
+              setStageLeadId(null);
+            }
           }}
         />
       ) : null}
@@ -214,34 +247,101 @@ function PipelineBoard({
   items,
   onSelect,
   onChangeStage,
+  onDragConfirmation,
 
   pipeline,
 }: {
   items: CrmLeadListItem[];
   onSelect: (leadId: string) => void;
   onChangeStage: (leadId: string) => void;
+  onDragConfirmation: (request: CrmLeadDropRequest | null) => void;
   pipeline: CrmPipeline;
 }) {
+  const mutation = useMoveCrmLeadStage();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+  const [submittingLeadId, setSubmittingLeadId] = useState<string | null>(null);
+  const drag = useCrmLeadDrag({
+    items,
+    pipeline,
+    onDrop: (request) => {
+      if (request.toStage === "LOST" || request.toStage === "WON") {
+        onDragConfirmation(request);
+        onChangeStage(request.lead.id);
+        return;
+      }
+      setSubmittingLeadId(request.lead.id);
+      void mutation
+        .mutateAsync({
+          leadId: request.lead.id,
+          input: {
+            nextStage: request.toStage,
+            expectedStage: request.lead.stage,
+            expectedStatus: request.lead.status,
+          },
+        })
+        .then(() => {
+          recordCrmLeadDragEvent("DRAG_SUCCEEDED", telemetry(request));
+          toast.success("Estágio atualizado.");
+        })
+        .catch((error) => {
+          recordCrmLeadDragEvent("DRAG_FAILED", telemetry(request));
+          const conflict =
+            (error as { data?: { code?: string } })?.data?.code === "CRM_STAGE_CONFLICT";
+          toast.error(
+            conflict
+              ? "O Lead foi atualizado por outro usuário. Os dados foram recarregados."
+              : "Não foi possível mover o Lead. Ele voltou à coluna original.",
+          );
+        })
+        .finally(() => setSubmittingLeadId(null));
+    },
+  });
   const compatibilityStages = LEGACY_READ_ONLY_STAGES.filter((stage) =>
     items.some((item) => item.stage === stage.id),
   );
   const stages = [...pipeline.stages, ...compatibilityStages];
   return (
-    <section className="j12-surface overflow-hidden">
-      <PipelineHeader leadCount={items.length} stageCount={stages.length} />
-      <div className="overflow-x-auto p-4">
-        <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4">
-          {stages.map((stage) => (
-            <PipelineColumn
-              key={stage.id}
-              stage={stage}
-              leads={items.filter((item) => item.stage === stage.id)}
-              onSelect={onSelect}
-            />
-          ))}
+    <DndContext
+      sensors={sensors}
+      onDragStart={drag.onDragStart}
+      onDragOver={drag.onDragOver}
+      onDragEnd={drag.onDragEnd}
+      onDragCancel={drag.onDragCancel}
+    >
+      <section
+        className="j12-surface overflow-hidden"
+        aria-label="Pipeline comercial com arraste opcional"
+      >
+        <PipelineHeader leadCount={items.length} stageCount={stages.length} />
+        <div className="overflow-x-auto p-4">
+          <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4">
+            {stages.map((stage) => (
+              <PipelineColumn
+                key={stage.id}
+                stage={stage}
+                leads={items.filter((item) => item.stage === stage.id)}
+                onSelect={onSelect}
+                onChangeStage={onChangeStage}
+                submittingLeadId={submittingLeadId}
+                dragState={
+                  !drag.activeLead
+                    ? "idle"
+                    : drag.allowed(drag.activeLead, stage.id)
+                      ? "allowed"
+                      : "invalid"
+                }
+              />
+            ))}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+      <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
+        {drag.activeLead ? <PipelineDragOverlay lead={drag.activeLead} /> : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 

@@ -1,17 +1,44 @@
 ﻿import { Badge } from "@/components/ui/badge";
 import type { CrmLeadListItem } from "../types/crm-lead.types";
+import { useDraggable } from "@dnd-kit/core";
+import { GripVertical, Loader2 } from "lucide-react";
 
 export function PipelineCard({
   lead,
   onSelect,
   onChangeStage,
+  submitting = false,
 }: {
   lead: CrmLeadListItem;
   onSelect: () => void;
   onChangeStage?: () => void;
+  submitting?: boolean;
 }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: lead.id,
+    disabled: submitting,
+  });
   return (
-    <article className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left transition hover:border-primary/35 hover:bg-white/[0.06]">
+    <article
+      ref={setNodeRef}
+      aria-busy={submitting}
+      className={`w-full rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left transition duration-200 hover:border-primary/35 hover:bg-white/[0.06] ${isDragging ? "opacity-25" : "opacity-100"} ${submitting ? "animate-pulse" : ""}`}
+    >
+      <button
+        type="button"
+        aria-label={`Arrastar lead ${lead.id}`}
+        disabled={submitting}
+        {...listeners}
+        {...attributes}
+        className="mb-2 inline-flex cursor-grab items-center gap-1 rounded-md px-1 py-1 text-[11px] text-slate-500 hover:text-primary active:cursor-grabbing disabled:cursor-wait"
+      >
+        {submitting ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <GripVertical className="h-3.5 w-3.5" />
+        )}
+        {submitting ? "Atualizando" : "Arrastar"}
+      </button>
       <button
         type="button"
         onClick={onSelect}

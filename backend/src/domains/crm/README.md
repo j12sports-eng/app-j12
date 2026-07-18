@@ -102,3 +102,9 @@ Não houve migration, schema ou execução MySQL externa. Estágios legados de a
 # Sprint 27.18A
 
 Internal stage transitions reuse the canonical pipeline, trusted unit context, transactional history and compare-and-swap persistence. The allowlisted body accepts nextStage, reason, expectedStage and expectedStatus; LOST requires a sanitized reason.
+
+## Sprint 27.18B — Drag-and-drop seguro
+
+O Kanban administrativo reutiliza `@dnd-kit/core` e aceita somente destinos publicados em `stage.transitions` pelo endpoint do pipeline. O card permanece na coluna original até a confirmação do PATCH canônico; falhas preservam a posição e conflitos invalidam leads, pipeline, detalhe e histórico para recarregar o estado do backend.
+
+LOST reutiliza o diálogo de alteração e exige motivo; WON exige confirmação e nunca converte automaticamente em matrícula. O botão manual e a operação por teclado permanecem disponíveis. A telemetria frontend registra apenas os cinco eventos de drag, estágios, duração, `leadId` e `correlationId`, sem PII. Consulte `docs/SPRINT_27_18B.md`.

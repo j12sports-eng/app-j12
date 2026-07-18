@@ -17,7 +17,7 @@ test("pipeline API, query key and hook use the protected read-only contract", ()
   assert.match(keys, /\["crmPipeline"\]/);
 });
 
-test("Kanban uses reusable columns, cards, header and empty state without drag-and-drop", () => {
+test("Kanban preserves reusable columns, cards, header and empty state with safe drag", () => {
   const page = read("pages/CrmLeadsPage.tsx");
   const column = read("components/PipelineColumn.tsx");
   const card = read("components/PipelineCard.tsx");
@@ -31,7 +31,10 @@ test("Kanban uses reusable columns, cards, header and empty state without drag-a
   assert.match(card, /Origem/);
   assert.match(card, /Responsável/);
   assert.match(card, /Última atualização/);
-  assert.doesNotMatch(page + column + card, /drag|drop|WebSocket/i);
+  assert.match(page, /DndContext/);
+  assert.match(column, /useDroppable/);
+  assert.match(card, /useDraggable/);
+  assert.doesNotMatch(page + column + card, /WebSocket/i);
 });
 
 test("pipeline cards consume only the approved non-PII Lead projection", () => {

@@ -2,23 +2,33 @@
 import type { CrmPipelineStage } from "../types/crm-pipeline.types";
 import { PipelineCard } from "./PipelineCard";
 import { PipelineEmptyState } from "./PipelineEmptyState";
+import { useDroppable } from "@dnd-kit/core";
 
 export function PipelineColumn({
   leads,
   onSelect,
   onChangeStage,
+  dragState,
+  submittingLeadId,
 
   stage,
 }: {
   leads: CrmLeadListItem[];
   onSelect: (leadId: string) => void;
   onChangeStage?: (leadId: string) => void;
+  dragState?: "idle" | "allowed" | "invalid";
+  submittingLeadId?: string | null;
   stage: CrmPipelineStage;
 }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `stage:${stage.id}`,
+    data: { stage: stage.id },
+  });
   return (
     <section
+      ref={setNodeRef}
       aria-labelledby={`pipeline-stage-${stage.id}`}
-      className="min-w-[280px] rounded-3xl border border-white/10 bg-black/20 p-3"
+      className={`min-w-[280px] rounded-3xl border bg-black/20 p-3 transition duration-200 ${isOver && dragState === "allowed" ? "border-primary bg-primary/10 shadow-lg shadow-primary/10" : "border-white/10"} ${isOver && dragState === "invalid" ? "cursor-not-allowed opacity-60" : ""}`}
     >
       <header className="mb-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
         <div className="flex items-center justify-between gap-3">
@@ -42,10 +52,19 @@ export function PipelineColumn({
               lead={lead}
               onSelect={() => onSelect(lead.id)}
               onChangeStage={onChangeStage ? () => onChangeStage(lead.id) : undefined}
+              submitting={submittingLeadId === lead.id}
             />
           ))
         ) : (
-          <PipelineEmptyState />
+          <div
+            className={
+              isOver && dragState === "allowed"
+                ? "rounded-2xl border border-dashed border-primary/60 bg-primary/5"
+                : ""
+            }
+          >
+            <PipelineEmptyState />
+          </div>
         )}
       </div>
     </section>
