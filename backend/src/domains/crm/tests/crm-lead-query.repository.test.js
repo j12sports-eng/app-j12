@@ -23,7 +23,7 @@ test("internal list repository uses one bounded parameterized query with stable 
   assert.equal(calls[0].params.at(-1), 51);
   assert.match(
     calls[0].sql,
-    /SELECT l\.id,l\.unit_id,l\.stage,l\.status,l\.created_at,l\.updated_at/,
+    /SELECT l\.id,l\.unit_id,l\.source,l\.assigned_to,l\.stage,l\.status,l\.created_at,l\.updated_at/,
   );
   assert.match(calls[0].sql, /LEFT JOIN crm_lead_student_conversions/);
   assert.match(calls[0].sql, /LEFT JOIN crm_lead_enrollment_conversions/);

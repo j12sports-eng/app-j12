@@ -17,9 +17,11 @@ function createCrmInternalRouter(options = {}) {
   const conversionHistoryExportController =
     options.conversionHistoryExportController ||
     createCrmLeadConversionHistoryExportController(options);
+  const pipelineController = options.pipelineController || createCrmPipelineController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
+  router.get("/pipeline", pipelineController.get);
   router.get("/conversions", conversionHistoryController.list);
   router.get("/conversions/export", conversionHistoryExportController.export);
   router.get("/conversions/:conversionId", conversionHistoryController.getById);
@@ -145,6 +147,14 @@ function createCrmLeadConversionHistoryExportController(options = {}) {
   return new CrmLeadConversionHistoryExportController({ exportService });
 }
 
+function createCrmPipelineController(options = {}) {
+  const { CrmPipelineController } = require("../controllers/crm-pipeline.controller.js");
+  const { CrmPipelineService } = require("../../application/crm-pipeline.service.js");
+  return new CrmPipelineController({
+    pipelineService: options.pipelineService || new CrmPipelineService(),
+  });
+}
+
 function createCrmLeadEnrollmentConversionService(options = {}) {
   if (options.conversionService) {
     return options.conversionService;
@@ -244,6 +254,7 @@ module.exports = {
   createCrmLeadConversionHistoryExportController,
   createCrmLeadConversionHistoryQueryService,
   createCrmLeadConversionHistoryRepository,
+  createCrmPipelineController,
   createCrmLeadQueryController,
   createCrmLeadQueryService,
   createCrmLeadUnitContextService,

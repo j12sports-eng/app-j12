@@ -89,3 +89,11 @@ O frontend protegido está em /admin/crm/conversions, com filtros reais, tabela 
 
 Nenhuma migration, schema, escrita, conexão MySQL externa ou histórico fictício foi adicionada. O SELECT não contém PII, contato, idempotência, metadata, SQL ou stack. O contrato completo está em docs/SPRINT_27_17H.md.
 - Sprint 27.17I: `GET /internal/crm/conversions/export` (alias `/api/internal/crm/conversions/export`) exporta CSV UTF-8 com BOM do histórico concluído persistido. Aceita somente `leadId`, `unitId`, `convertedBy`, `enrollmentStatus`, `dateFrom` e `dateTo`, com limite de 5.000 registros, sem PII/payload/metadata/idempotência. Reutiliza autenticação, autorização e rate limiter globais; XLSX permanece fora do escopo.
+
+## Pipeline comercial read-only — Sprint 27.18
+
+O contrato canônico reutiliza `NEW → CONTACTED → QUALIFIED → PROPOSAL → NEGOTIATION → WON`, com saída terminal `LOST` nos estágios abertos. A política única permanece em `lead-stage-transition-policy.js`; `CrmPipelineService` apenas valida/simula transições e não recebe repository.
+
+`GET /internal/crm/pipeline` e o alias `/api/internal/crm/pipeline` retornam estágios, ordem, cores, descrições, transições e configuração allowlistada dos cards sob `requireAuth → ensureCrmInternalAccess`. A tela `/admin/crm/leads` apresenta o Kanban sem drag-and-drop ou escrita. Cards mostram somente Lead ID, origem, responsável, status e última atualização. As contagens são dos Leads carregados pela paginação existente; nenhum total global é inferido.
+
+Não houve migration, schema ou execução MySQL externa. Estágios legados de aula experimental continuam visíveis de forma read-only quando presentes, sem serem promovidos à política comercial canônica. Conversão, preview, observabilidade, histórico e exportação permanecem compatíveis.

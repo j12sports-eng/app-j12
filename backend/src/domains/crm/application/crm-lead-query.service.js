@@ -134,9 +134,11 @@ function encodeCursor({ createdAt, id }) {
 function toListItem(row) {
   const eligibility = resolveEligibility(row);
   return Object.freeze({
+    assignedTo: row.assigned_to ?? row.assignedTo ?? null,
     createdAt: iso(row.created_at ?? row.createdAt),
     eligibility,
     id: row.id,
+    source: row.source ?? null,
     stage: row.stage,
     status: row.status,
     unitId: row.unit_id ?? row.unitId,

@@ -2,7 +2,8 @@ const { randomUUID } = require("node:crypto");
 const SELECT =
   "SELECT * FROM crm_leads WHERE id = ? AND unit_id = ? AND deleted_at IS NULL LIMIT 1";
 const SELECT_UNIT_CONTEXT = "SELECT id, unit_id FROM crm_leads WHERE id = ? LIMIT 1";
-const INTERNAL_LEAD_FIELDS = "l.id,l.unit_id,l.stage,l.status,l.created_at,l.updated_at";
+const INTERNAL_LEAD_FIELDS =
+  "l.id,l.unit_id,l.source,l.assigned_to,l.stage,l.status,l.created_at,l.updated_at";
 const INTERNAL_CONVERSION_FIELDS =
   "sc.status AS student_conversion_status,sc.person_id AS student_person_id,sc.person_profile_id AS student_person_profile_id,sc.converted_at AS student_converted_at,ec.status AS enrollment_conversion_status,ec.enrollment_id,ec.enrollment_status,ec.converted_at AS enrollment_converted_at";
 const INTERNAL_CONTACT_FIELDS = "l.contact_name,l.contact_email,l.contact_phone";

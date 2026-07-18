@@ -10,12 +10,16 @@ import { Label } from "@/components/ui/label";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatApiErrorMessage } from "@/lib/api";
+import { PipelineColumn } from "../components/PipelineColumn";
+import { PipelineHeader } from "../components/PipelineHeader";
 import { useCrmLeads } from "../hooks/use-crm-leads";
+import { useCrmPipeline } from "../hooks/use-crm-pipeline";
 import {
   CrmLeadDetailsDialog,
   CrmLeadDraftEnrollmentConversionDialog,
 } from "../components/CrmLeadConversionDialogs";
 import type { CrmLeadFilters, CrmLeadListItem } from "../types/crm-lead.types";
+import type { CrmPipeline, CrmPipelineStage } from "../types/crm-pipeline.types";
 
 export function CrmLeadsRoutePage() {
   return (
@@ -31,6 +35,7 @@ function CrmLeadsPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [conversionOpen, setConversionOpen] = useState(false);
   const query = useCrmLeads(filters);
+  const pipelineQuery = useCrmPipeline();
   const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
   const hasNextPage = query.hasNextPage;
 
@@ -131,16 +136,28 @@ function CrmLeadsPage() {
           </div>
         </section>
 
-        {query.isLoading ? <SkeletonTable columns={8} rows={6} /> : null}
+        {query.isLoading || pipelineQuery.isLoading ? <SkeletonTable columns={8} rows={6} /> : null}
         {query.isError ? (
           <ErrorPanel
             message={formatApiErrorMessage(query.error, "Não foi possível carregar os Leads.")}
             onRetry={() => void query.refetch()}
           />
         ) : null}
-        {!query.isLoading && !query.isError && items.length === 0 ? <EmptyPanel /> : null}
-        {!query.isLoading && !query.isError && items.length > 0 ? (
-          <LeadList items={items} onSelect={openDetails} />
+        {pipelineQuery.isError ? (
+          <ErrorPanel
+            message={formatApiErrorMessage(
+              pipelineQuery.error,
+              "Não foi possível carregar o pipeline comercial.",
+            )}
+            onRetry={() => void pipelineQuery.refetch()}
+          />
+        ) : null}
+        {!query.isLoading &&
+        !pipelineQuery.isLoading &&
+        !query.isError &&
+        !pipelineQuery.isError &&
+        pipelineQuery.data ? (
+          <PipelineBoard pipeline={pipelineQuery.data} items={items} onSelect={openDetails} />
         ) : null}
 
         {hasNextPage ? (
@@ -171,6 +188,59 @@ function CrmLeadsPage() {
     </AppShell>
   );
 }
+
+function PipelineBoard({
+  items,
+  onSelect,
+  pipeline,
+}: {
+  items: CrmLeadListItem[];
+  onSelect: (leadId: string) => void;
+  pipeline: CrmPipeline;
+}) {
+  const compatibilityStages = LEGACY_READ_ONLY_STAGES.filter((stage) =>
+    items.some((item) => item.stage === stage.id),
+  );
+  const stages = [...pipeline.stages, ...compatibilityStages];
+  return (
+    <section className="j12-surface overflow-hidden">
+      <PipelineHeader leadCount={items.length} stageCount={stages.length} />
+      <div className="overflow-x-auto p-4">
+        <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4">
+          {stages.map((stage) => (
+            <PipelineColumn
+              key={stage.id}
+              stage={stage}
+              leads={items.filter((item) => item.stage === stage.id)}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const LEGACY_READ_ONLY_STAGES: CrmPipelineStage[] = [
+  {
+    id: "TRIAL_SCHEDULED",
+    order: 8,
+    label: "Aula experimental agendada",
+    description: "Estágio legado exibido somente para compatibilidade.",
+    color: "#64748b",
+    terminal: false,
+    transitions: [],
+  },
+  {
+    id: "TRIAL_COMPLETED",
+    order: 9,
+    label: "Aula experimental concluída",
+    description: "Estágio legado exibido somente para compatibilidade.",
+    color: "#64748b",
+    terminal: false,
+    transitions: [],
+  },
+];
 
 function LeadList({
   items,

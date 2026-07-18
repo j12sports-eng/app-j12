@@ -27,6 +27,8 @@ export type CrmLeadConversionSummary = {
 export type CrmLeadListItem = {
   id: string;
   unitId: string;
+  source: string | null;
+  assignedTo: string | null;
   stage: CrmLeadStage;
   status: CrmLeadStatus;
   createdAt: string;
