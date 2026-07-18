@@ -9,6 +9,8 @@
 - PII real: desconhecida no alvo remoto, portanto proibido;
 - unique de `cpf_normalized`: não criar.
 
+A Sprint 27.17A.4.1C repetiu o gate zero em 18/07/2026 e classificou a capacidade como `UNAVAILABLE`. Foi preparado um ambiente Docker opcional e fail-closed para execução futura, mas Docker/MySQL continuam ausentes neste host. Nenhuma evidência física foi promovida e o gate permanece `NOT_EXECUTED/BLOCKED`.
+
 ## Gate zero
 
 Em 17/07/2026 foram verificadas somente capacidades locais:

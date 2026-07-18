@@ -1,0 +1,31 @@
+services:
+  mysql-identity-validation:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: j12_identity_validation
+      MYSQL_PASSWORD: ${IDENTITY_MYSQL_PASSWORD:?set IDENTITY_MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${IDENTITY_MYSQL_ROOT_PASSWORD:?set IDENTITY_MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: j12_identity_validator
+    ports:
+      - "127.0.0.1:${IDENTITY_MYSQL_PORT:-33317}:3306"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "127.0.0.1",
+          "-u",
+          "j12_identity_validator",
+          "--password=$$MYSQL_PASSWORD",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    labels:
+      com.j12.purpose: person-identity-validation
+      com.j12.disposable: "true"
+    tmpfs:
+      - /var/lib/mysql
+    restart: "no"
