@@ -72,6 +72,8 @@ class PersonService {
   /**
    * Finds a Pessoa by CPF.
    *
+   * @deprecated Compatibility lookup only; not a canonical identity decision.
+   *
    * @param {string} cpf
    * @returns {Promise<unknown|null>}
    */

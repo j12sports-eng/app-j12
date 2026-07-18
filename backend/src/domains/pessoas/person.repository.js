@@ -187,6 +187,9 @@ class PersonRepository {
   /**
    * Finds a Pessoa by CPF.
    *
+   * @deprecated Compatibility lookup only. New identity flows must use
+   * ResolveIdentityService because this method cannot detect conflicts.
+   *
    * @param {string} cpf
    * @returns {Promise<ReturnType<typeof toPersonDataFromRow>>}
    */

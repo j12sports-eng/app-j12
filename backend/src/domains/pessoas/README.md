@@ -27,4 +27,8 @@ Representar Pessoa como uma base arquitetural futura para perfis como aluno, pro
 
 O resolvedor retorna somente `FOUND`, `NOT_FOUND`, `CONFLICT` ou `INSUFFICIENT_DATA`, nao cria Pessoas e nao usa e-mail ou telefone como identificadores unicos.
 
+`PersonApplicationService.resolveOrCreatePerson(payload, context)` e o ponto canonico para novos fluxos modernos. Ele reutiliza `personId` em `FOUND`, cria explicitamente em `NOT_FOUND`, bloqueia `CONFLICT` e permite criacao basica sem CPF em `INSUFFICIENT_DATA`. Operacoes futuras podem informar `requiresStrongIdentity: true`.
+
+`createPerson()` e `findByCpf()` permanecem disponiveis somente por compatibilidade. Novos consumidores nao devem usar `findByCpf()` como decisao de identidade, pois ele seleciona uma linha e nao detecta conflito.
+
 Nenhum modulo existente foi migrado. Nenhum endpoint, controller, service legado, frontend, migration ou schema foi alterado.
