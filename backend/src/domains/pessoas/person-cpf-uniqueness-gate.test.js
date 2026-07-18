@@ -6,6 +6,7 @@ const {
   CPF_UNIQUENESS_GATE_STATES,
   evaluateCpfUniquenessGate,
 } = require("./person-cpf-uniqueness-gate.js");
+const { decisionStates } = require("./person-identity-policy.js");
 
 test("gate approves only complete operational and business evidence", () => {
   const result = evaluateCpfUniquenessGate(approvedEvidence());
@@ -59,6 +60,23 @@ test("missing business scope and legal entity evidence remain explicit blockers"
   ]);
 });
 
+test("proposed or blocked policy decisions keep the uniqueness gate blocked", () => {
+  const evidence = approvedEvidence();
+  evidence.businessDecisions = decisionStates();
+  const result = evaluateCpfUniquenessGate(evidence);
+  assert.equal(result.decision, "BLOCKED");
+  assert.deepEqual(result.blockers, [
+    "CPF_CHANGE_POLICY_NOT_CONFIRMED",
+    "CPF_OPTIONALITY_NOT_CONFIRMED",
+    "CPF_ROLE_NOT_CONFIRMED",
+    "FOREIGN_PERSON_POLICY_NOT_CONFIRMED",
+    "INACTIVE_PERSON_POLICY_NOT_CONFIRMED",
+    "LEGAL_ENTITY_MODEL_NOT_CONFIRMED",
+    "NULL_NORMALIZED_POLICY_NOT_CONFIRMED",
+  ]);
+  assert.doesNotMatch(JSON.stringify(result), /[0-9]{11}|@|\+55/u);
+});
+
 test("gate rejects missing, truthy or invalid evidence instead of approving partially", () => {
   assert.throws(() => evaluateCpfUniquenessGate(), /evidence object/u);
   assert.throws(
@@ -74,6 +92,9 @@ test("gate rejects missing, truthy or invalid evidence instead of approving part
 function approvedEvidence() {
   return {
     backfillCompleted: true,
+    businessDecisions: Object.fromEntries(
+      Object.keys(decisionStates()).map((field) => [field, "APPROVED"]),
+    ),
     duplicateGroups: 0,
     environmentAvailable: true,
     legitimateDuplicateUseExcluded: true,

@@ -46,6 +46,23 @@ O avaliador `evaluateCpfUniquenessGate()` só aprova quando todas as evidências
 
 O avaliador não consulta banco e não cria índice. `state=NOT_EXECUTED` representa ausência de execução física; `decision=BLOCKED` impede a Sprint A.4.2.
 
+## Decisões de negócio — Sprint 27.17A.4.1D
+
+O gate passou a exigir estados explícitos para oito decisões:
+
+| Decisão                                     | Estado atual |
+| ------------------------------------------- | ------------ |
+| escopo global com perfis/acesso contextuais | `APPROVED`   |
+| papel do CPF                                | `PROPOSED`   |
+| fronteira de Pessoa Jurídica                | `BLOCKED`    |
+| estrangeiros/documentos alternativos        | `BLOCKED`    |
+| obrigatoriedade condicional do CPF          | `PROPOSED`   |
+| alteração autorizada e auditada             | `BLOCKED`    |
+| reserva da identidade inativa               | `PROPOSED`   |
+| CPF preenchido versus normalizado nulo      | `PROPOSED`   |
+
+Qualquer estado diferente de `APPROVED` mantém blocker próprio. A política declarativa está em `person-identity-policy.js`; a fundamentação está em `PERSON_IDENTITY_AND_CPF_POLICY.md`. Nenhum critério anterior foi relaxado.
+
 ## Evidência de negócio no repositório
 
 | Pergunta                                               | Classificação                    | Evidência                                                                     |
