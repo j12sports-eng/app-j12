@@ -1,6 +1,7 @@
 const { randomUUID } = require("node:crypto");
 
 const { toPersonDataFromRow, toPersonRowValues } = require("./person.mapper.js");
+const { normalizeCpf, normalizeEmail, normalizePhone } = require("./person-identity-normalizer.js");
 
 const TABLE_NAME = "people";
 
@@ -22,6 +23,10 @@ const CREATE_PEOPLE_TABLE_SQL = `
     cidade VARCHAR(191) NULL,
     estado VARCHAR(50) NULL,
     complemento VARCHAR(191) NULL,
+    cpf_normalized VARCHAR(11) NULL,
+    email_normalized VARCHAR(191) NULL,
+    telefone_normalized VARCHAR(50) NULL,
+    celular_normalized VARCHAR(50) NULL,
     ativo TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -29,7 +34,11 @@ const CREATE_PEOPLE_TABLE_SQL = `
     INDEX idx_people_nome (nome),
     INDEX idx_people_cpf (cpf),
     INDEX idx_people_email (email),
-    INDEX idx_people_ativo (ativo)
+    INDEX idx_people_ativo (ativo),
+    INDEX idx_people_cpf_normalized (cpf_normalized),
+    INDEX idx_people_email_normalized (email_normalized),
+    INDEX idx_people_telefone_normalized (telefone_normalized),
+    INDEX idx_people_celular_normalized (celular_normalized)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 `;
 
@@ -50,6 +59,10 @@ const UPDATE_COLUMN_MAP = Object.freeze({
   rg: "rg",
   sexo: "sexo",
   telefone: "telefone",
+  telefone_normalized: "telefone_normalized",
+  celular_normalized: "celular_normalized",
+  cpf_normalized: "cpf_normalized",
+  email_normalized: "email_normalized",
 });
 
 /**
@@ -94,7 +107,7 @@ class PersonRepository {
    */
   async create(data) {
     const id = data.id || randomUUID();
-    const values = toPersonRowValues({ ...data, id });
+    const values = withNormalizedIdentity(toPersonRowValues({ ...data, id }), data);
 
     await this.query(
       `
@@ -115,9 +128,13 @@ class PersonRepository {
           cidade,
           estado,
           complemento,
+          cpf_normalized,
+          email_normalized,
+          telefone_normalized,
+          celular_normalized,
           ativo
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -136,6 +153,10 @@ class PersonRepository {
         values.cidade,
         values.estado,
         values.complemento,
+        values.cpf_normalized,
+        values.email_normalized,
+        values.telefone_normalized,
+        values.celular_normalized,
         values.ativo,
       ],
     );
@@ -248,7 +269,7 @@ class PersonRepository {
    * @returns {Promise<ReturnType<typeof toPersonDataFromRow>>}
    */
   async update(id, data) {
-    const values = toPersonRowValues({ ...data, id });
+    const values = withNormalizedIdentity(toPersonRowValues({ ...data, id }), data);
     const assignments = [];
     const params = [];
 
@@ -326,8 +347,42 @@ function normalizeOffset(value) {
   return Math.trunc(parsed);
 }
 
+/** Keeps modern writes compatible: invalid legacy-shaped values remain stored only in original columns. */
+function withNormalizedIdentity(values, source = values) {
+  return {
+    ...values,
+    celular_normalized: normalizeOrNull(
+      normalizePhone,
+      source.celular ?? source.contact?.mobilePhone ?? values.celular,
+    ),
+    cpf_normalized: normalizeOrNull(
+      normalizeCpf,
+      source.cpf ??
+        source.documents?.find((document) => document?.type === "cpf")?.value ??
+        values.cpf,
+    ),
+    email_normalized: normalizeOrNull(
+      normalizeEmail,
+      source.email ?? source.contact?.email ?? values.email,
+    ),
+    telefone_normalized: normalizeOrNull(
+      normalizePhone,
+      source.telefone ?? source.contact?.phone ?? values.telefone,
+    ),
+  };
+}
+
+function normalizeOrNull(normalizer, value) {
+  try {
+    return normalizer(value);
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   CREATE_PEOPLE_TABLE_SQL,
   PEOPLE_TABLE_NAME: TABLE_NAME,
   PersonRepository,
+  withNormalizedIdentity,
 };

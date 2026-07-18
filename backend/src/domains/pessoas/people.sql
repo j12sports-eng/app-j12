@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS people (
   cidade VARCHAR(191) NULL,
   estado VARCHAR(50) NULL,
   complemento VARCHAR(191) NULL,
+  cpf_normalized VARCHAR(11) NULL,
+  email_normalized VARCHAR(191) NULL,
+  telefone_normalized VARCHAR(50) NULL,
+  celular_normalized VARCHAR(50) NULL,
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -22,5 +26,9 @@ CREATE TABLE IF NOT EXISTS people (
   INDEX idx_people_nome (nome),
   INDEX idx_people_cpf (cpf),
   INDEX idx_people_email (email),
-  INDEX idx_people_ativo (ativo)
+  INDEX idx_people_ativo (ativo),
+  INDEX idx_people_cpf_normalized (cpf_normalized),
+  INDEX idx_people_email_normalized (email_normalized),
+  INDEX idx_people_telefone_normalized (telefone_normalized),
+  INDEX idx_people_celular_normalized (celular_normalized)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

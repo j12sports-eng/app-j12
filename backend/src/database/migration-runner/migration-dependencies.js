@@ -34,5 +34,8 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260715143000_create_enrollment_financial_bridges_table": Object.freeze([
     "20260702120000_create_enrollment_financial_obligations_table",
   ]),
+  "20260717220000_add_people_normalized_identity_columns": Object.freeze([
+    "20260712183000_create_people_domain_tables",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };

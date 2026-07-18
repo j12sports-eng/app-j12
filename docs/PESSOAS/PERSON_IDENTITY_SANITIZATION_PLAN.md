@@ -86,3 +86,11 @@ O plano não deve carregar valores originais, valores normalizados, nomes ou con
 - nenhum valor sujeito a truncamento silencioso no backfill;
 - plano de rollout, observabilidade e rollback aprovado;
 - nenhuma unicidade proposta para e-mail ou telefone.
+
+## Resultado estrutural da Sprint 27.17A.4
+
+A Sprint A.4 implementou as colunas nullable `cpf_normalized`, `email_normalized`,
+`telefone_normalized` e `celular_normalized`, com índices comuns e backfill
+JavaScript idempotente. A unicidade de CPF permaneceu bloqueada porque o escopo
+de negócio e os conflitos do banco vivo não foram aprovados. Este plano continua
+obrigatório antes de qualquer unique, merge ou resolvedor concorrente.
