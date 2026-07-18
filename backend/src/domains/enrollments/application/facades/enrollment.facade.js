@@ -4,6 +4,9 @@ const { EnrollmentFinancialService } = require("../services/enrollment-financial
 const { EnrollmentNotificationService } = require("../services/enrollment-notification.service.js");
 const { EnrollmentScheduleService } = require("../services/enrollment-schedule.service.js");
 const {
+  StudentEnrollmentApplicationService,
+} = require("../services/student-enrollment-application.service.js");
+const {
   assertStudentEnrollmentMobileScope,
   prepareEnrollmentOperationalDashboard,
   prepareEnrollmentClassLink,
@@ -56,10 +59,10 @@ class EnrollmentFacade {
    * @param {EnrollmentApplicationService} [options.enrollmentService]
    * @param {EnrollmentApplicationService} [options.enrollmentApplicationService]
    * @param {{ createDraft: (input: Record<string, unknown>) => unknown }} [options.enrollmentFactory]
- * @param {Record<string, unknown>} [options.enrollmentRepository]
- * @param {{ findActiveClassById?: (input: Record<string, unknown>) => Promise<unknown|null>, ensureClassHasAvailableCapacity?: (input: Record<string, unknown>) => Promise<Record<string, unknown>> }} [options.classFacade]
- * @param {(work: (context?: Record<string, unknown>) => Promise<unknown>) => Promise<unknown>} [options.transactionRunner]
- * @param {{ dispatch?: (event: Record<string, unknown>) => Promise<unknown>|unknown, publish?: (event: Record<string, unknown>) => Promise<unknown>|unknown }} [options.eventDispatcher]
+   * @param {Record<string, unknown>} [options.enrollmentRepository]
+   * @param {{ findActiveClassById?: (input: Record<string, unknown>) => Promise<unknown|null>, ensureClassHasAvailableCapacity?: (input: Record<string, unknown>) => Promise<Record<string, unknown>> }} [options.classFacade]
+   * @param {(work: (context?: Record<string, unknown>) => Promise<unknown>) => Promise<unknown>} [options.transactionRunner]
+   * @param {{ dispatch?: (event: Record<string, unknown>) => Promise<unknown>|unknown, publish?: (event: Record<string, unknown>) => Promise<unknown>|unknown }} [options.eventDispatcher]
    * @param {{ prepareEnrollmentFinancialObligation?: (input: Record<string, unknown>) => Promise<Record<string, unknown>> }} [options.enrollmentFinancialService]
    * @param {{ prepareActiveEnrollmentClassLink?: (input: Record<string, unknown>) => Promise<Record<string, unknown>> }} [options.enrollmentClassLinkService]
    * @param {{ prepareEnrollmentNotification?: (input: Record<string, unknown>) => Promise<Record<string, unknown>>, prepareEnrollmentNotificationFromEvent?: (input: Record<string, unknown>) => Promise<Record<string, unknown>> }} [options.enrollmentNotificationService]
@@ -109,6 +112,20 @@ class EnrollmentFacade {
       new EnrollmentInternalEventDispatcher({
         logger: this.eventLogger,
       });
+    this.studentEnrollmentApplicationService =
+      options.studentEnrollmentApplicationService ||
+      new StudentEnrollmentApplicationService({
+        enrollmentApplicationService: this.enrollmentService,
+        studentApplicationService: options.studentApplicationService || null,
+      });
+  }
+
+  /** Canonical modern entrypoint: Pessoa -> Aluno profile -> DRAFT Enrollment. */
+  resolveStudentAndCreateDraftEnrollment(input = {}, context = {}) {
+    return this.studentEnrollmentApplicationService.resolveStudentAndCreateDraftEnrollment(
+      input,
+      context,
+    );
   }
 
   /**
@@ -323,7 +340,9 @@ class EnrollmentFacade {
    * @returns {Promise<Record<string, unknown>>}
    */
   createInitialFinancialObligationForEnrollment(input = {}) {
-    return this.getEnrollmentFinancialService().createInitialFinancialObligationForEnrollment(input);
+    return this.getEnrollmentFinancialService().createInitialFinancialObligationForEnrollment(
+      input,
+    );
   }
 
   /**

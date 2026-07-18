@@ -33,4 +33,6 @@ O resolvedor retorna somente `FOUND`, `NOT_FOUND`, `CONFLICT` ou `INSUFFICIENT_D
 
 No modelo moderno, Aluno e representado por Pessoa + perfil `aluno`; nao existe entidade Student separada. `StudentApplicationService.resolveOrCreateStudent()` usa o boundary canonico de Pessoa e depois `ProfileApplicationService.resolveOrCreateStudentProfile()`. O legado `j12_alunos` permanece paralelo e fora desse fluxo.
 
-Nenhum modulo existente foi migrado. Nenhum endpoint, controller, service legado, frontend, migration ou schema foi alterado.
+A Sprint 27.17A.8 adiciona, no dominio de Matriculas, o primeiro consumidor moderno explicito de `resolveOrCreateStudent()`. O orquestrador reutiliza somente `personId` e `personProfileId`; Pessoas continua sem controlar regras de matricula e nao atualiza automaticamente cadastros encontrados.
+
+Nenhum endpoint, controller, service legado, frontend, migration ou schema foi alterado.
