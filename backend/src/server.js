@@ -100,6 +100,11 @@ const {
   createBiAdminRouter,
 } = require("./domains/bi/presentation/routes/index.js");
 
+const {
+  createCrmInternalRouter,
+  CRM_INTERNAL_ROUTE_BASE_PATH,
+} = require("./domains/crm/presentation/routes/index.js");
+
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
 const REQUEST_LIMIT = process.env.REQUEST_LIMIT || "8mb";
@@ -122,6 +127,7 @@ const championshipAdminRoutes = createChampionshipAdminRouter();
 const championshipPublicRoutes = createChampionshipPublicRouter();
 const notificationRoutes = createNotificationRouter();
 const biAdminRoutes = createBiAdminRouter();
+const crmInternalRoutes = createCrmInternalRouter();
 
 global.io = null;
 
@@ -482,6 +488,9 @@ mount(
   [ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`],
   enrollmentPublicRoutes,
 );
+
+mount([CRM_INTERNAL_ROUTE_BASE_PATH, `/api${CRM_INTERNAL_ROUTE_BASE_PATH}`], crmInternalRoutes);
+
 mount(
   [FINANCIAL_ADMIN_ROUTE_BASE_PATH, `/api${FINANCIAL_ADMIN_ROUTE_BASE_PATH}`],
   financialAdminRoutes,

@@ -21,3 +21,29 @@ Não existe transação compartilhada entre CRM e Pessoas. Se o registro CRM fal
 A tabela complementar `crm_lead_enrollment_conversions` registra apenas os IDs de Lead, Pessoa, perfil e Enrollment, além de estado, unidade, ator, data e chave de idempotência. Um registro completo é consultado antes de qualquer efeito e pode ser retornado diretamente em retries.
 
 Não há transação distribuída. Se a gravação CRM final falhar, a tentativa seguinte reutiliza a conversão de Aluno e o mesmo DRAFT. Estados `ACTIVE` e `CONFLICT` permanecem bloqueios determinísticos de Matrículas. A operação não cria turma, cobrança, contrato, frequência, notificação nem ativa matrícula.
+
+## Conversão interna de Lead em matrícula DRAFT
+
+A Sprint 27.17E expõe o fluxo de conversão da Sprint 27.17D por meio de uma rota interna autenticada e autorizada.
+
+Endpoints:
+
+- `POST /internal/crm/leads/:leadId/draft-enrollment`
+- `POST /api/internal/crm/leads/:leadId/draft-enrollment`
+
+A rota exige autenticação por `requireAuth` e autorização administrativa por `canManageSystem`.
+
+A operação:
+
+- converte somente Leads elegíveis;
+- resolve ou reutiliza Pessoa e Perfil de Aluno;
+- cria ou reutiliza matrícula em estado `DRAFT`;
+- não ativa matrícula;
+- não gera financeiro;
+- não seleciona turma;
+- não cria contrato ou notificações;
+- não expõe CPF nem dados cadastrais na resposta.
+
+As migrations contratuais das conversões CRM precisam estar aplicadas no ambiente antes da utilização operacional da rota.
+
+Durante os testes da rota, a configuração do pool MySQL foi carregada pelos imports, mas nenhuma query, migration física ou operação no banco foi executada.
