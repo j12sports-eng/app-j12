@@ -36,9 +36,46 @@ function createCrmLeadEnrollmentConversionController(options = {}) {
   const leadUnitContextService =
     options.leadUnitContextService ||
     createCrmLeadUnitContextService({ ...options, leadRepository });
+  const conversionService = createCrmLeadEnrollmentConversionService({
+    ...options,
+    leadRepository,
+  });
+  const auditService =
+    options.conversionAuditService || createCrmLeadEnrollmentConversionAuditService(options);
+  const observedConversionService =
+    options.conversionObservabilityService ||
+    createCrmLeadEnrollmentConversionObservabilityService({
+      ...options,
+      auditService,
+      conversionService,
+    });
+
   return new CrmLeadEnrollmentConversionController({
-    conversionService: createCrmLeadEnrollmentConversionService({ ...options, leadRepository }),
+    conversionService: observedConversionService,
     leadUnitContextService,
+  });
+}
+
+function createCrmLeadEnrollmentConversionAuditService(options = {}) {
+  const {
+    CrmLeadEnrollmentConversionAuditService,
+  } = require("../../application/crm-lead-enrollment-conversion-audit.service.js");
+  return new CrmLeadEnrollmentConversionAuditService({
+    adapter: options.conversionAuditAdapter || options.conversionAuditRepository || null,
+    logger: options.logger,
+    metrics: options.conversionMetrics,
+  });
+}
+
+function createCrmLeadEnrollmentConversionObservabilityService(options = {}) {
+  const {
+    CrmLeadEnrollmentConversionObservabilityDecorator,
+  } = require("../../application/crm-lead-enrollment-conversion-observability.decorator.js");
+  return new CrmLeadEnrollmentConversionObservabilityDecorator({
+    auditService: options.auditService,
+    conversionService: options.conversionService,
+    logger: options.logger,
+    now: options.conversionMonotonicClock,
   });
 }
 
@@ -149,6 +186,8 @@ module.exports = {
   CRM_INTERNAL_ROUTE_BASE_PATH,
   createCrmInternalRouter,
   createCrmLeadEnrollmentConversionService,
+  createCrmLeadEnrollmentConversionAuditService,
+  createCrmLeadEnrollmentConversionObservabilityService,
   createCrmLeadQueryController,
   createCrmLeadQueryService,
   createCrmLeadUnitContextService,

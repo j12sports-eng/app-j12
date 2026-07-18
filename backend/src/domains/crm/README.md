@@ -63,3 +63,11 @@ O body não é usado. A listagem aceita somente cursor, limit, stage, status, co
 CrmLeadQueryService calcula a elegibilidade com a mesma regra da conversão (WON + CONVERTED) e consolida os estados de crm_lead_student_conversions e crm_lead_enrollment_conversions. A listagem não retorna contato comercial; o detalhe retorna somente nome, e-mail e telefone do contato, nunca CPF, metadata, payload ou idempotency key.
 
 O repository usa uma única consulta parametrizada com LEFT JOIN, ordenação determinística e sem N+1. Não há totalCount, OFFSET, busca textual, cache, escrita, migration, schema, frontend ou execução de MySQL externo. O contrato está documentado em docs/SPRINT_27_17E_2.md e preparado para a Sprint 27.17F.
+
+## Observabilidade da conversão — Sprint 27.17G
+
+A conversão interna é envolvida por `CrmLeadEnrollmentConversionObservabilityDecorator` na composition root. O decorator registra `CRM_LEAD_ENROLLMENT_CONVERSION_STARTED`, `CRM_LEAD_ENROLLMENT_CONVERSION_SUCCEEDED` e `CRM_LEAD_ENROLLMENT_CONVERSION_FAILED` pelo logger estruturado existente, preservando `correlationId`, duração monotônica, IDs operacionais, resoluções, flags de reuso, resultado `DRAFT` e códigos de erro sanitizados.
+
+A auditoria aceita somente allowlist de campos, limita strings, usa fingerprint SHA-256 para idempotência e nunca registra PII, body, token, SQL, stack ou mensagens originais. `CrmLeadEnrollmentConversionMetrics` mantém contadores/observações process-local bounded com labels `source`, `result`, `errorCode` e `enrollmentResolution`; IDs não são labels. Falha de auditoria é fail-open e não bloqueia nem altera a conversão principal.
+
+Não foi criada migration, tabela de auditoria, endpoint histórico ou execução MySQL. A Sprint 27.17H poderá substituir o adapter de logs por persistência histórica sem alterar o contrato funcional.
