@@ -11,8 +11,12 @@ function createCrmInternalRouter(options = {}) {
 
   const controller = options.controller || createCrmLeadEnrollmentConversionController(options);
 
+  const queryController = options.queryController || createCrmLeadQueryController(options);
+
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
+  router.get("/leads", queryController.list);
+  router.get("/leads/:leadId", queryController.getById);
   router.post("/leads/:leadId/draft-enrollment", controller.convert);
 
   return router;
@@ -35,6 +39,20 @@ function createCrmLeadEnrollmentConversionController(options = {}) {
   return new CrmLeadEnrollmentConversionController({
     conversionService: createCrmLeadEnrollmentConversionService({ ...options, leadRepository }),
     leadUnitContextService,
+  });
+}
+
+function createCrmLeadQueryController(options = {}) {
+  const { CrmLeadQueryController } = require("../controllers/crm-lead-query.controller.js");
+  return new CrmLeadQueryController({ queryService: createCrmLeadQueryService(options) });
+}
+
+function createCrmLeadQueryService(options = {}) {
+  if (options.queryService) return options.queryService;
+  const { CrmLeadQueryService } = require("../../application/crm-lead-query.service.js");
+  return new CrmLeadQueryService({
+    repository:
+      options.leadQueryRepository || options.leadRepository || createCrmLeadRepository(options),
   });
 }
 
@@ -131,6 +149,8 @@ module.exports = {
   CRM_INTERNAL_ROUTE_BASE_PATH,
   createCrmInternalRouter,
   createCrmLeadEnrollmentConversionService,
+  createCrmLeadQueryController,
+  createCrmLeadQueryService,
   createCrmLeadUnitContextService,
   ensureCrmInternalAccess,
 };

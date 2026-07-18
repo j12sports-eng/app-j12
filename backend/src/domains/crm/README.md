@@ -48,3 +48,18 @@ A operação:
 - não expõe CPF nem dados cadastrais na resposta.
 
 As migrations contratuais das conversões CRM precisam estar aplicadas no ambiente antes da utilização operacional da rota. Os testes desta correção usam apenas fakes por injeção de dependência e não acessam MySQL externo.
+
+## Consulta interna de Leads
+
+A Sprint 27.17E.2 adiciona leitura autenticada e somente leitura no router interno:
+
+- GET /internal/crm/leads e GET /api/internal/crm/leads;
+- GET /internal/crm/leads/:leadId e GET /api/internal/crm/leads/:leadId.
+
+As rotas preservam requireAuth → ensureCrmInternalAccess → CrmLeadQueryController. A autorização permanece global para administradores/coordenadores; unitId é apenas filtro administrativo, sem vínculo granular usuário–unidade.
+
+O body não é usado. A listagem aceita somente cursor, limit, stage, status, conversionStatus e unitId; o limite padrão é 50, o máximo é 100 e a paginação é cursor-based por created_at + id. O cursor é opaco, versionado e limitado a 256 caracteres.
+
+CrmLeadQueryService calcula a elegibilidade com a mesma regra da conversão (WON + CONVERTED) e consolida os estados de crm_lead_student_conversions e crm_lead_enrollment_conversions. A listagem não retorna contato comercial; o detalhe retorna somente nome, e-mail e telefone do contato, nunca CPF, metadata, payload ou idempotency key.
+
+O repository usa uma única consulta parametrizada com LEFT JOIN, ordenação determinística e sem N+1. Não há totalCount, OFFSET, busca textual, cache, escrita, migration, schema, frontend ou execução de MySQL externo. O contrato está documentado em docs/SPRINT_27_17E_2.md e preparado para a Sprint 27.17F.

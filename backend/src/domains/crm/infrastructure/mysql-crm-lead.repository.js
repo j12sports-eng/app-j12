@@ -2,6 +2,10 @@ const { randomUUID } = require("node:crypto");
 const SELECT =
   "SELECT * FROM crm_leads WHERE id = ? AND unit_id = ? AND deleted_at IS NULL LIMIT 1";
 const SELECT_UNIT_CONTEXT = "SELECT id, unit_id FROM crm_leads WHERE id = ? LIMIT 1";
+const INTERNAL_LEAD_FIELDS = "l.id,l.unit_id,l.stage,l.status,l.created_at,l.updated_at";
+const INTERNAL_CONVERSION_FIELDS =
+  "sc.status AS student_conversion_status,sc.person_id AS student_person_id,sc.person_profile_id AS student_person_profile_id,sc.converted_at AS student_converted_at,ec.status AS enrollment_conversion_status,ec.enrollment_id,ec.enrollment_status,ec.converted_at AS enrollment_converted_at";
+const INTERNAL_CONTACT_FIELDS = "l.contact_name,l.contact_email,l.contact_phone";
 class MySqlCrmLeadRepository {
   constructor({ queryRunner, transactionRunner } = {}) {
     const db = queryRunner ? null : require("../../../config/db.js");
@@ -22,6 +26,15 @@ class MySqlCrmLeadRepository {
   // Narrow lookup: the HTTP boundary needs only the trusted unit, never Lead PII.
   async findUnitContextById(leadId) {
     return first(await this.query(SELECT_UNIT_CONTEXT, [leadId]));
+  }
+  async listLeadsForInternalQuery(filters = {}) {
+    const query = buildInternalLeadQuery(filters, false);
+    const result = await this.query(query.sql, query.params);
+    return rows(result);
+  }
+  async findLeadDetailForInternalQuery({ leadId, unitId = null } = {}) {
+    const query = buildInternalLeadQuery({ leadId, unitId }, true);
+    return first(await this.query(query.sql, query.params));
   }
   async findByContactIdentity({ unitId, email, phone }) {
     if (!email && !phone) return null;
@@ -120,6 +133,42 @@ class MySqlCrmLeadRepository {
       ],
     );
   }
+}
+function buildInternalLeadQuery(filters = {}, detail = false) {
+  const fields = [INTERNAL_LEAD_FIELDS, INTERNAL_CONVERSION_FIELDS];
+  if (detail) fields.push(INTERNAL_CONTACT_FIELDS);
+  const where = ["l.deleted_at IS NULL"];
+  const params = [];
+  if (filters.leadId) {
+    where.push("l.id = ?");
+    params.push(filters.leadId);
+  }
+  if (filters.unitId) {
+    where.push("l.unit_id = ?");
+    params.push(filters.unitId);
+  }
+  if (filters.stage) {
+    where.push("l.stage = ?");
+    params.push(filters.stage);
+  }
+  if (filters.status) {
+    where.push("l.status = ?");
+    params.push(filters.status);
+  }
+  if (filters.conversionStatus === "NONE") where.push("sc.id IS NULL AND ec.id IS NULL");
+  if (filters.conversionStatus === "STUDENT_COMPLETED") where.push("sc.status = 'COMPLETED'");
+  if (filters.conversionStatus === "ENROLLMENT_COMPLETED") where.push("ec.status = 'COMPLETED'");
+  if (filters.cursor) {
+    where.push("(l.created_at < ? OR (l.created_at = ? AND l.id < ?))");
+    params.push(filters.cursor.createdAt, filters.cursor.createdAt, filters.cursor.id);
+  }
+  const sql = `SELECT ${fields.join(",")} FROM crm_leads l LEFT JOIN crm_lead_student_conversions sc ON sc.lead_id=l.id AND sc.unit_id=l.unit_id LEFT JOIN crm_lead_enrollment_conversions ec ON ec.lead_id=l.id AND ec.unit_id=l.unit_id WHERE ${where.join(" AND ")} ORDER BY l.created_at DESC,l.id DESC${detail ? " LIMIT 1" : " LIMIT ?"}`;
+  if (!detail) params.push(Math.min(Number(filters.fetchLimit) || 51, 101));
+  return { params, sql };
+}
+function rows(result) {
+  const value = Array.isArray(result?.[0]) ? result[0] : result;
+  return Array.isArray(value) ? value : [];
 }
 function conflict(code) {
   return Object.assign(new Error(code), { code });
