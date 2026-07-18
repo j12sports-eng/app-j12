@@ -14,4 +14,5 @@ module.exports = Object.freeze({
   ...require("./person.repository.js"),
   ...require("./person.service.js"),
   ...require("./person.validator.js"),
+  ...require("./application/services/resolve-identity.service.js"),
 });

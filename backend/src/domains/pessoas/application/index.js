@@ -11,5 +11,6 @@ module.exports = Object.freeze({
   ...require("./dtos/index.js"),
   ...require("./events/index.js"),
   ...require("./interfaces/index.js"),
+  ...require("./services/index.js"),
   ...require("./use-cases/index.js"),
 });

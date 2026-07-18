@@ -14,6 +14,7 @@ Representar Pessoa como uma base arquitetural futura para perfis como aluno, pro
 - `person.repository.js`: boundary futuro de persistencia, sem SQL.
 - `person.service.js`: boundary futuro de casos de uso, sem regras implementadas.
 - `person.validator.js`: boundary futuro de validacao, sem regras de negocio.
+- `application/services/resolve-identity.service.js`: resolucao canonica e somente leitura por `people.id` ou `cpf_normalized`.
 - `profiles/`: estrutura futura para perfis de Pessoa.
 - `relationships/`: estrutura futura para relacionamentos entre Pessoas e dominios.
 - `controllers/`: futuros controllers do dominio.
@@ -24,4 +25,6 @@ Representar Pessoa como uma base arquitetural futura para perfis como aluno, pro
 
 ## Estado atual
 
-Nenhum modulo existente foi migrado. Nenhum banco, SQL, endpoint, controller, service legado, autenticacao ou frontend foi alterado.
+O resolvedor retorna somente `FOUND`, `NOT_FOUND`, `CONFLICT` ou `INSUFFICIENT_DATA`, nao cria Pessoas e nao usa e-mail ou telefone como identificadores unicos.
+
+Nenhum modulo existente foi migrado. Nenhum endpoint, controller, service legado, frontend, migration ou schema foi alterado.

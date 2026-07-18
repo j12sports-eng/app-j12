@@ -205,6 +205,18 @@ class PersonRepository {
     return toPersonDataFromRow(Array.isArray(rows) ? rows[0] : null);
   }
 
+  /** Returns at most two ids, enough to distinguish a unique match from legacy duplication. */
+  async findIdentityCandidatesByNormalizedCpf(cpfNormalized) {
+    const rows = await this.query(
+      `SELECT id FROM ${TABLE_NAME} WHERE cpf_normalized = ? ORDER BY created_at ASC, id ASC LIMIT 2`,
+      [cpfNormalized],
+    );
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .filter((row) => typeof row?.id === "string" && row.id.trim())
+      .map((row) => ({ id: row.id }));
+  }
+
   /**
    * Lists Pessoas with optional filters.
    *
