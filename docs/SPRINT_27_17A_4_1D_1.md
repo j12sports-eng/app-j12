@@ -16,7 +16,9 @@ Foi criado `docs/PESSOAS/PERSON_IDENTITY_AND_CPF_EXECUTIVE_DECISION.md` com:
 - quadro consolidado;
 - formulário final de aprovação.
 
-Todas as decisões permanecem `PENDING_APPROVAL`. O documento não altera a política técnica, não aprova automaticamente recomendação alguma e não modifica o gate.
+As vinte deliberações recomendadas foram recebidas da Equipe J12 e registradas com seus estados individuais, incluindo condicionantes de implementação, jurídico, contabilidade e LGPD. O registro geral foi posteriormente aprovado em 18/07/2026 como entrada oficial da Sprint 27.17A.4.1D.2.
+
+Nesta etapa D.1, a atualização documental ainda não alterava automaticamente a política declarativa nem o gate. Essa tradução controlada foi realizada na Sprint 27.17A.4.1D.2.
 
 ## Escopo preservado
 
@@ -24,8 +26,8 @@ Nenhum código, teste funcional, service, repository, migration, schema, normali
 
 ## Próximos passos
 
-1. direção, jurídico e encarregado de proteção de dados analisam as vinte decisões;
-2. cada escolha recebe responsável, data e observações;
-3. decisões aprovadas são traduzidas em atualização controlada da política técnica em sprint posterior;
+1. resultado geral e data são formalizados no documento executivo — concluído em 18/07/2026;
+2. jurídico, contabilidade e encarregado de proteção de dados concluem as revisões indicadas;
+3. decisões finais são traduzidas em atualização controlada da política técnica — concluído na Sprint 27.17A.4.1D.2;
 4. validações MySQL e operacional continuam obrigatórias;
 5. unique de CPF permanece bloqueado até aprovação simultânea de todos os gates.

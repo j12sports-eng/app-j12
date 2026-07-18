@@ -1,662 +1,235 @@
-# Aprovação Executiva — Identidade de Pessoa e CPF
+# Decisões Executivas Recomendadas — Política de Identidade e CPF
 
-## 1. Resumo Executivo
+## Situação do registro
 
-A J12 Sports precisa definir como o ERP reconhece uma pessoa ao longo de toda a sua relação com a empresa. Essa definição determina quando dois cadastros representam a mesma pessoa, quando o CPF é exigido e como tratar menores, estrangeiros, empresas, correções e registros antigos.
+As deliberações abaixo foram fornecidas pela Equipe J12. Os estados individuais são registrados exatamente como deliberados. O resultado geral ainda não está marcado e a data não foi preenchida; por isso, a tradução para a política declarativa e para o gate deverá ocorrer em etapa controlada posterior.
 
-Enquanto essas escolhas permanecerem abertas, não é seguro ativar unicidade de CPF, automatizar a resolução de identidade, converter Leads em Pessoas e Matrículas ou deduplicar cadastros. Uma decisão incorreta pode bloquear clientes legítimos, associar dados financeiros à pessoa errada, expor informações entre unidades ou criar riscos contratuais e de LGPD.
+## Princípios aprovados
 
-Dependem desta aprovação: Pessoas, Alunos, Responsáveis, Professores, Matrículas, CRM, Financeiro, Locações, Portais, autenticação e operação multiunidade.
+- Cada pessoa física terá uma única identidade global no ERP.
+- Perfis, vínculos, matrículas, acessos e operações serão contextuais por unidade.
+- A mesma Pessoa poderá ser simultaneamente aluno, responsável, professor, colaborador ou usuário.
+- O CPF pertencerá à Pessoa, nunca ao perfil.
+- E-mail e telefone poderão ser compartilhados.
+- O CPF não será obrigatório para criar todo e qualquer cadastro.
+- Quando informado e considerado válido, o CPF não poderá estar associado a outra Pessoa.
+- Nenhuma duplicidade será resolvida por escolha automática, exclusão ou merge silencioso.
+- A resolução global de identidade não concederá acesso global aos dados.
 
-Este documento apresenta recomendações técnicas, mas não aprova nenhuma alternativa. Todas as decisões estão em `PENDING_APPROVAL` até manifestação formal da direção.
+## DEC-01 — Natureza do domínio `people`
 
-## 2. Situação Atual
+**Decisão:** Opção A — somente Pessoa Física.
 
-### Fatos confirmados
+**Estado:** `APPROVED`
 
-- o ERP possui uma base moderna de Pessoa sem vínculo direto com unidade;
-- CPF pode estar ausente nessa base;
-- fluxos antigos ainda mantêm cadastros paralelos;
-- pré-matrícula exige CPF do responsável;
-- não existe modelo completo para empresas ou documentos estrangeiros;
-- alteração e exclusão de Pessoa ainda não possuem política empresarial formal;
-- a validação física MySQL e a auditoria dos dados operacionais ainda não foram executadas.
+O domínio `people` representará exclusivamente indivíduos. Empresas, fornecedores, patrocinadores e demais entidades jurídicas não serão cadastrados como Pessoa.
 
-### Decisões técnicas aprovadas
+**Justificativa:** mantém o modelo coerente, permite tratar CPF como identificador pessoal e evita misturar regras de CPF e CNPJ.
 
-- a identidade deve ser separada dos papéis exercidos pela pessoa;
-- uma mesma pessoa pode exercer múltiplos papéis;
-- identidade global não significa acesso global aos seus dados;
-- e-mail e telefone podem ser compartilhados e não devem identificar uma pessoa isoladamente.
+## DEC-02 — Entidade para Pessoa Jurídica
 
-### Decisões propostas
+**Decisão:** Opção A — criar entidade própria futuramente.
 
-- CPF como identificador forte opcional, exigido conforme etapa;
-- bloqueio e revisão de CPF duplicado;
-- rejeição de novo CPF inválido;
-- preservação controlada de registros legados inválidos;
-- reserva da identidade quando a pessoa fica inativa.
+**Estado:** `APPROVED`
 
-### Decisões bloqueadas
+Pessoas jurídicas serão tratadas em entidade ou domínio próprio quando surgir necessidade funcional, incluindo fornecedores, patrocinadores, parceiros, empresas contratantes, clientes corporativos e locatários empresariais. Essa implementação não faz parte da trilha atual de Pessoas.
 
-- fronteira entre Pessoa Física e Pessoa Jurídica;
-- política de estrangeiros e documentos alternativos;
-- momento obrigatório do CPF em cada jornada;
-- autorização e auditoria para alterar CPF;
-- retenção e exclusão física diante de obrigações legais e LGPD.
+## DEC-03 — Papel oficial do CPF
 
-## 3. Decisões para aprovação
+**Decisão:** Opção A — identificador forte opcional.
 
-### DEC-01 — Escopo da entidade People
+**Estado:** `APPROVED`
 
-**Código:** DEC-01
+A Pessoa poderá existir sem CPF nas etapas autorizadas. Quando informado e validado, o CPF identificará uma única Pessoa em todo o ERP. `people.id` continuará sendo a chave primária.
 
-**Pergunta:** People representa somente Pessoa Física?
+## DEC-04 — Momento de obrigatoriedade do CPF
 
-**Contexto:** A estrutura atual contém CPF e dados pessoais, mas não possui tipo de pessoa ou CNPJ. Há demandas relacionadas a empresas em locação, patrocínio e fornecimento.
+**Estado:** `APPROVED WITH SPECIALIST REVIEW`
 
-**Alternativas:**
+- **Lead:** não obrigatório.
+- **Conversão do Lead:** obrigatório conforme a pessoa e a operação resultante; não inventar ou exigir CPF quando a política permitir ausência.
+- **Pré-matrícula:** não obrigatório para iniciar; pendências documentais devem ficar claras.
+- **Matrícula DRAFT:** pode existir sem CPF.
+- **Matrícula ACTIVE:** CPF obrigatório para aluno adulto brasileiro e responsável contratual brasileiro; opcional para aluno menor; estrangeiro segue política alternativa.
+- **Financeiro e contrato:** obrigatório para quem assumir responsabilidade contratual ou financeira, salvo exceção formal para estrangeiros.
 
-- A — Somente Pessoa Física.
-- B — Pessoa Física e Jurídica.
-- C — Decisão futura, mantendo novos usos empresariais bloqueados.
+Aplicação fiscal, contratual e documental depende de validação com contabilidade e jurídico antes da implementação.
 
-**Impactos:** Define o significado central da base, os documentos aceitos e o desenho das integrações futuras.
+## DEC-05 — Aluno menor sem CPF
 
-**Riscos:** Misturar pessoas e empresas sem discriminador pode gerar unicidade incorreta e dados fiscais inconsistentes.
+**Decisão:** Opção A — permitir.
 
-**Recomendação Técnica:** A — reservar People para Pessoa Física e modelar organizações separadamente.
+**Estado:** `APPROVED`
 
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
+O aluno menor poderá possuir Pessoa, perfil e matrícula sem CPF próprio, desde que exista responsável válido e as regras contratuais sejam atendidas. O CPF do responsável nunca será gravado no campo do aluno.
 
-**Responsável:** (preencher)
+## DEC-06 — Aluno adulto sem CPF
 
-**Data:** (dd/mm/aaaa)
+**Decisão:** Opção A — brasileiro não ativa matrícula sem CPF.
 
-**Observações:** (preencher)
+**Estado:** `APPROVED WITH EXCEPTION`
 
-### DEC-02 — Pessoa Jurídica
+O aluno adulto brasileiro poderá possuir cadastro preliminar e matrícula `DRAFT`, mas não ativará matrícula sem CPF válido. Estrangeiros seguirão política documental própria e poderão não possuir CPF.
 
-**Código:** DEC-02
+## DEC-07 — CPF do responsável
 
-**Pergunta:** Empresas possuirão domínio próprio?
+**Decisão:** Opção B — obrigatório antes da matrícula `ACTIVE`.
 
-**Contexto:** Fornecedores, patrocinadores, parceiros e locatários empresariais possuem dados, documentos e responsabilidades diferentes de indivíduos.
+**Estado:** `APPROVED WITH SPECIALIST REVIEW`
 
-**Alternativas:**
+Não será obrigatório para iniciar Lead ou pré-matrícula. Será obrigatório antes da ativação quando o responsável assumir responsabilidade contratual, financeira, assinatura ou pagamento. Exigências fiscais e contratuais dependem de jurídico e contabilidade.
 
-- A — Criar futuramente domínio próprio de Organizações.
-- B — Incluir empresas em People após ampliar o modelo.
-- C — Não atender Pessoa Jurídica no ERP.
+## DEC-08 — Estrangeiros
 
-**Impactos:** Afeta contratos, financeiro, locações, patrocínios e representação por pessoas.
+**Decisão:** Opção A — permitir sem CPF.
 
-**Riscos:** Ausência de domínio claro incentiva uso indevido de CPF ou nome de representante como identidade da empresa.
+**Estado:** `APPROVED`
 
-**Recomendação Técnica:** A — domínio próprio, ligado às Pessoas que representam a organização.
+É proibido gerar CPF fictício, usar sequência de zeros, CPF compartilhado ou armazenar passaporte/documento estrangeiro no campo CPF. O cadastro será sustentado por `people.id` até o suporte a documentos alternativos.
 
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
+## DEC-09 — Documentos alternativos
 
-**Responsável:** (preencher)
+**Decisão:** Opção A — planejar módulo ou estrutura própria.
 
-**Data:** (dd/mm/aaaa)
+**Estado:** `APPROVED FOR FUTURE IMPLEMENTATION`
 
-**Observações:** (preencher)
+O ERP suportará futuramente passaporte, CRNM/RNE, documento nacional estrangeiro, país emissor, tipo, número e validade quando aplicável. Esses documentos não serão armazenados nas colunas de CPF.
 
-### DEC-03 — Papel do CPF
+## DEC-10 — Nível de validação do CPF
 
-**Código:** DEC-03
+**Decisão:** política em camadas.
 
-**Pergunta:** Qual é o papel oficial do CPF no cadastro?
+**Estado:** `APPROVED`
 
-**Contexto:** O CPF pode identificar fortemente um indivíduo quando informado corretamente, mas há jornadas legítimas que podem começar sem ele.
+1. **Normalizado:** somente 11 dígitos.
+2. **Semanticamente válido:** dígitos verificadores válidos.
+3. **Verificado:** confirmação administrativa ou integração futura.
 
-**Alternativas:**
+Novos cadastros modernos exigirão no mínimo o segundo nível. Verificação externa não será obrigatória nesta fase.
 
-- A — Identificador forte opcional.
-- B — Obrigatório para toda Pessoa.
-- C — Apenas atributo cadastral.
-- D — Outro: **\*\***\*\*\*\***\*\***\_\_\_\_**\*\***\*\*\*\***\*\***.
+## DEC-11 — Novo CPF inválido
 
-**Impactos:** Define busca, prevenção de duplicidade e requisitos de onboarding.
+**Decisão:** Opção A — rejeitar.
 
-**Riscos:** Torná-lo sempre obrigatório pode excluir menores e estrangeiros; tratá-lo apenas como atributo mantém duplicidades.
+**Estado:** `APPROVED`
 
-**Recomendação Técnica:** A — identificador forte opcional, sujeito a regras por etapa.
+Fluxos modernos não persistirão CPF preenchido inválido. Erros não exporão CPF em logs ou mensagens técnicas. Cadastros sem CPF continuarão permitidos nos cenários autorizados.
 
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
+## DEC-12 — CPF legado inválido
 
-**Responsável:** (preencher)
+**Decisão:** Opção A — preservar e marcar para revisão.
 
-**Data:** (dd/mm/aaaa)
+**Estado:** `APPROVED`
 
-**Observações:** (preencher)
+Registros legados não serão apagados, corrigidos, preenchidos ou mesclados automaticamente. Entrarão em saneamento assistido e manterão `cpf_normalized = NULL` enquanto não saneados.
 
-### DEC-04 — Momento de obrigatoriedade do CPF
+## DEC-13 — CPF duplicado
 
-**Código:** DEC-04
+**Decisão:** bloquear e encaminhar para revisão.
 
-**Pergunta:** Em qual etapa o CPF passa a ser obrigatório?
+**Estado:** `APPROVED`
 
-**Contexto:** Lead, pré-matrícula, Draft, matrícula Active e financeiro possuem necessidades e compromissos diferentes.
+Nenhuma nova Pessoa será criada ou escolhida automaticamente. Nenhum registro será excluído, sobrescrito ou mesclado automaticamente. O caso será conflito de identidade.
 
-**Alternativas:**
+## DEC-14 — Alteração de CPF
 
-- A — Lead: opcional; pré-matrícula: responsável obrigatório; Draft: opcional; Active e financeiro: conforme menor/estrangeiro e exigência contratual.
-- B — Obrigatório a partir da pré-matrícula.
-- C — Obrigatório somente antes de gerar financeiro.
-- D — Regras específicas a definir por jornada.
+**Decisão:** somente por processo autorizado e auditado.
 
-**Impactos:** Afeta conversão comercial, ativação, contratos e cobrança.
+**Estado:** `APPROVED WITH IMPLEMENTATION PENDING`
 
-**Riscos:** Exigência precoce reduz conversão; exigência tardia pode impedir cobrança ou documentação contratual.
+A alteração exigirá permissão específica, motivo, validação, verificação de conflito, data/hora, usuário, histórico anterior e auditoria. Telas comuns e integrações genéricas não poderão alterar CPF.
 
-**Recomendação Técnica:** A, condicionada às decisões sobre menor, adulto, responsável e estrangeiro.
+## DEC-15 — Histórico de CPF
 
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
+**Decisão:** Opção A — manter histórico.
 
-**Responsável:** (preencher)
+**Estado:** `APPROVED WITH LGPD REVIEW`
 
-**Data:** (dd/mm/aaaa)
+O histórico será restrito a finalidades legítimas de auditoria, correção, prevenção de fraude, resolução de conflito e conformidade. Retenção, anonimização e acesso dependem de validação LGPD/jurídica.
 
-**Observações:** (preencher)
+## DEC-16 — Pessoa inativa
 
-### DEC-05 — Aluno menor
+**Decisão:** Opção A — continua reservando CPF.
 
-**Código:** DEC-05
+**Estado:** `APPROVED`
 
-**Pergunta:** Aluno menor pode existir sem CPF?
+Inativar matrícula, perfil, unidade, vínculo ou acesso não libera o CPF nem permite criar outra Pessoa com ele.
 
-**Contexto:** Crianças podem não ter CPF disponível no início, enquanto o responsável legal e financeiro sustenta a relação contratual.
+## DEC-17 — Exclusão física de Pessoa
 
-**Alternativas:**
+**Decisão:** Opção C — apenas sem vínculos e por processo controlado.
 
-- A — Sim, com responsável identificado e pendência de documento.
-- B — Não, CPF obrigatório antes de qualquer cadastro.
-- C — Sim apenas até a matrícula Draft.
+**Estado:** `APPROVED WITH LGPD REVIEW`
 
-**Impactos:** Afeta captação, matrícula infantil e responsabilidade contratual.
+Pessoas com histórico não serão excluídas fisicamente. Devem ser preferidas inativação, restrição de acesso, anonimização controlada e retenção mínima. Exclusão só será considerada sem vínculos, obrigações, financeiro, matrículas, contratos ou auditorias e mediante autorização.
 
-**Riscos:** Bloquear pode excluir alunos legítimos; liberar sem responsável suficiente cria risco contratual.
+## DEC-18 — Política para `cpf_normalized = NULL`
 
-**Recomendação Técnica:** A — permitir, usando ID interno e responsável devidamente identificado.
+**Estado:** `APPROVED`
 
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
+- **CPF ausente:** `cpf = NULL` e `cpf_normalized = NULL` são permitidos.
+- **CPF válido:** original e normalizado são obrigatórios.
+- **CPF legado inválido:** original preenchido e normalizado nulo são temporariamente permitidos para saneamento.
+- **Novo CPF inválido:** rejeitado.
 
-**Responsável:** (preencher)
+Nenhum novo writer moderno poderá criar CPF original preenchido com normalizado nulo.
 
-**Data:** (dd/mm/aaaa)
+## DEC-19 — Escopo da unicidade
 
-**Observações:** (preencher)
+**Decisão:** Opção A — unicidade global.
 
-### DEC-06 — Aluno adulto
+**Estado:** `APPROVED, CONDICIONADO AOS GATES TÉCNICOS`
 
-**Código:** DEC-06
+Quando presente e válido, o CPF será único em todo o ERP, independentemente da unidade. A restrição física depende de validação MySQL isolada, diagnóstico operacional, zero duplicidades, zero drift relevante, saneamento, writers sincronizados e confirmação da política de Pessoa Física.
 
-**Pergunta:** Aluno adulto pode ativar matrícula sem CPF?
+## DEC-20 — Identidade, acesso e privacidade
 
-**Contexto:** A ativação gera relação contratual e pode gerar obrigações financeiras.
+**Decisão:** resolução global e autorização contextual.
 
-**Alternativas:**
+**Estado:** `APPROVED`
 
-- A — Não, salvo estrangeiro coberto por política específica.
-- B — Sim, sem restrição.
-- C — Sim, somente com aprovação administrativa e prazo de regularização.
+O sistema poderá reconhecer uma Pessoa globalmente sem conceder visualização global. Resolução não exporá PII; usuários sem permissão não verão CPF, e-mail ou telefone; vínculo com nova unidade exigirá autorização; logs não conterão CPF.
 
-**Impactos:** Afeta ativação, contrato, cobrança e qualidade cadastral.
+## Consolidação executiva
 
-**Riscos:** Ausência de documento pode dificultar cobrança e identificação; regra absoluta pode bloquear estrangeiros.
+| Código | Decisão                               | Estado                                      |
+| ------ | ------------------------------------- | ------------------------------------------- |
+| DEC-01 | `people` somente Pessoa Física        | `APPROVED`                                  |
+| DEC-02 | Pessoa Jurídica em entidade própria   | `APPROVED`                                  |
+| DEC-03 | CPF forte e opcional                  | `APPROVED`                                  |
+| DEC-04 | Obrigatoriedade por etapa             | `APPROVED WITH SPECIALIST REVIEW`           |
+| DEC-05 | Menor pode existir sem CPF            | `APPROVED`                                  |
+| DEC-06 | Adulto brasileiro não ativa sem CPF   | `APPROVED WITH EXCEPTION`                   |
+| DEC-07 | CPF do responsável antes da ativação  | `APPROVED WITH SPECIALIST REVIEW`           |
+| DEC-08 | Estrangeiro permitido sem CPF         | `APPROVED`                                  |
+| DEC-09 | Documentos alternativos futuros       | `APPROVED FOR FUTURE IMPLEMENTATION`        |
+| DEC-10 | Validação em camadas                  | `APPROVED`                                  |
+| DEC-11 | Novo CPF inválido rejeitado           | `APPROVED`                                  |
+| DEC-12 | Legado inválido preservado e revisado | `APPROVED`                                  |
+| DEC-13 | CPF duplicado bloqueado               | `APPROVED`                                  |
+| DEC-14 | Alteração autorizada e auditada       | `APPROVED WITH IMPLEMENTATION PENDING`      |
+| DEC-15 | Histórico restrito                    | `APPROVED WITH LGPD REVIEW`                 |
+| DEC-16 | Inativo continua reservando CPF       | `APPROVED`                                  |
+| DEC-17 | Exclusão física excepcional           | `APPROVED WITH LGPD REVIEW`                 |
+| DEC-18 | Política de normalizado nulo          | `APPROVED`                                  |
+| DEC-19 | Unicidade global futura               | `APPROVED, CONDICIONADO AOS GATES TÉCNICOS` |
+| DEC-20 | Identidade global e acesso contextual | `APPROVED`                                  |
 
-**Recomendação Técnica:** A — exigir para adulto brasileiro e tratar estrangeiro separadamente.
+## Registro de aprovação
 
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
+**Responsável:** Equipe J12
 
-**Responsável:** (preencher)
+**Data da aprovação:** 18/07/2026
 
-**Data:** (dd/mm/aaaa)
+**Resultado geral:** ☒ Aprovado ☐ Rejeitado ☐ Necessita revisão
 
-**Observações:** (preencher)
+**Observações:** Decisões adotadas como política oficial da J12 Sports. Condições de revisão especializada e implementação permanecem obrigatórias.
 
-### DEC-07 — Responsável
+## Revisões especializadas pendentes
 
-**Código:** DEC-07
-
-**Pergunta:** Quando o CPF do responsável passa a ser obrigatório?
-
-**Contexto:** A pré-matrícula atual já exige CPF do responsável, que pode exercer responsabilidade legal, financeira ou apenas contato.
-
-**Alternativas:**
-
-- A — Quando assumir responsabilidade legal ou financeira.
-- B — Em todo cadastro de responsável.
-- C — Somente antes da primeira cobrança ou assinatura.
-
-**Impactos:** Afeta menores, contratos, cobranças e relacionamentos familiares.
-
-**Riscos:** Confundir contato com responsável legal amplia coleta de dados; ausência no pagador prejudica obrigações financeiras.
-
-**Recomendação Técnica:** A — exigir conforme o papel formal assumido.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-08 — Estrangeiros
-
-**Código:** DEC-08
-
-**Pergunta:** Como Pessoas estrangeiras serão cadastradas?
-
-**Contexto:** Estrangeiros podem não possuir CPF e não devem receber números fictícios.
-
-**Alternativas:**
-
-- A — ID interno e documento estrangeiro próprio; CPF opcional.
-- B — CPF obrigatório.
-- C — Cadastro excepcional manual sem documento.
-
-**Impactos:** Afeta inclusão, contratos, identificação e conformidade documental.
-
-**Riscos:** CPF fictício cria colisões; ausência total de documento dificulta identificação e auditoria.
-
-**Recomendação Técnica:** A — documento alternativo e CPF opcional quando legalmente disponível.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-09 — Documento alternativo
-
-**Código:** DEC-09
-
-**Pergunta:** Será criado domínio específico para documentos alternativos?
-
-**Contexto:** Passaporte, CRNM/RNE e documentos estrangeiros exigem tipo, país emissor e normalização próprios.
-
-**Alternativas:**
-
-- A — Criar domínio de documentos de Pessoa.
-- B — Adicionar campos fixos diretamente em People.
-- C — Não armazenar documento alternativo.
-
-**Impactos:** Determina a capacidade de atender estrangeiros e novos documentos.
-
-**Riscos:** Campos fixos escalam mal; não armazenar reduz a segurança de identificação.
-
-**Recomendação Técnica:** A — domínio tipado de documentos, com acesso restrito.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-10 — Validação do CPF
-
-**Código:** DEC-10
-
-**Pergunta:** Qual nível de validação será adotado?
-
-**Contexto:** O contrato atual reconhece apenas onze dígitos e não comprova existência ou titularidade.
-
-**Alternativas:**
-
-- A — Apenas 11 dígitos.
-- B — 11 dígitos e dígitos verificadores.
-- C — Documento verificado por processo autorizado.
-- D — B para cadastro e C apenas em operações de maior risco.
-
-**Impactos:** Afeta experiência, qualidade, fraude e custos operacionais.
-
-**Riscos:** Validação fraca aceita erros; verificação externa generalizada aumenta custo, tratamento de dados e dependências.
-
-**Recomendação Técnica:** D — validar dígitos no cadastro e verificar somente quando houver finalidade aprovada.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-11 — Novo CPF inválido
-
-**Código:** DEC-11
-
-**Pergunta:** Como tratar novo CPF inválido?
-
-**Contexto:** Hoje um writer moderno pode preservar o original e deixar o normalizado nulo, contornando uma futura unicidade.
-
-**Alternativas:**
-
-- A — Rejeitar.
-- B — Permitir.
-- C — Permitir e marcar para revisão.
-
-**Impactos:** Afeta qualidade, onboarding e eficácia da unicidade.
-
-**Riscos:** Permitir silenciosamente perpetua drift; rejeitar sem exceções pode afetar importações controladas.
-
-**Recomendação Técnica:** A — rejeitar novos writes; importação legada deve ter processo separado.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-12 — CPF legado inválido
-
-**Código:** DEC-12
-
-**Pergunta:** Como tratar CPF inválido já existente?
-
-**Contexto:** Registros antigos podem conter máscara inadequada, erro ou valor não normalizável.
-
-**Alternativas:**
-
-- A — Preservar, marcar para revisão e impedir uso como identidade forte.
-- B — Apagar automaticamente.
-- C — Corrigir automaticamente.
-- D — Bloquear todo acesso ao registro.
-
-**Impactos:** Afeta continuidade operacional, saneamento e auditoria.
-
-**Riscos:** Apagar ou corrigir automaticamente altera dado civil sem comprovação.
-
-**Recomendação Técnica:** A — preservar original com acesso restrito e saneamento assistido.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-13 — CPF duplicado
-
-**Código:** DEC-13
-
-**Pergunta:** Qual é a política oficial quando o mesmo CPF aparece em Pessoas diferentes?
-
-**Contexto:** O banco atual permite duplicidade; ela pode representar erro, fraude ou cadastros repetidos.
-
-**Alternativas:**
-
-- A — Bloquear nova criação e encaminhar para revisão.
-- B — Reutilizar automaticamente o cadastro mais recente.
-- C — Permitir duplicidade.
-- D — Mesclar automaticamente.
-
-**Impactos:** Afeta matrículas, financeiro, CRM e portais.
-
-**Riscos:** Reuso ou merge automático pode associar dados e contratos à pessoa errada.
-
-**Recomendação Técnica:** A — conflito explícito e revisão humana autorizada.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-14 — Alteração de CPF
-
-**Código:** DEC-14
-
-**Pergunta:** Quem poderá alterar CPF e sob quais controles?
-
-**Contexto:** A alteração técnica é possível, mas não há permissão específica, motivo obrigatório ou trilha de documento.
-
-**Alternativas:**
-
-- A — Somente função administrativa autorizada, com motivo, auditoria e verificação de conflito.
-- B — Qualquer operador com edição cadastral.
-- C — CPF não pode ser alterado.
-- D — Apenas suporte técnico mediante processo formal.
-
-**Impactos:** Afeta correções, fraude, atendimento e responsabilização.
-
-**Riscos:** Alteração livre permite apropriação de identidade; proibição absoluta impede correções legítimas.
-
-**Recomendação Técnica:** A, com permissão segregada e sem exposição do valor em logs.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-15 — Histórico de CPF
-
-**Código:** DEC-15
-
-**Pergunta:** Histórico de alteração de CPF será obrigatório?
-
-**Contexto:** Correções precisam preservar autoria, motivo e momento sem ampliar acesso ao documento.
-
-**Alternativas:**
-
-- A — Sim, histórico obrigatório e protegido.
-- B — Registrar somente evento sem valor anterior.
-- C — Não manter histórico.
-
-**Impactos:** Afeta auditoria, investigação, LGPD e suporte.
-
-**Riscos:** Guardar valores amplia responsabilidade de proteção; não guardar reduz rastreabilidade.
-
-**Recomendação Técnica:** A — histórico protegido, com retenção e acesso definidos pelo jurídico/LGPD.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-16 — Pessoa inativa
-
-**Código:** DEC-16
-
-**Pergunta:** Pessoa inativa continua reservando sua identidade?
-
-**Contexto:** Fim de matrícula, perfil ou contrato não significa que o indivíduo deixou de existir.
-
-**Alternativas:**
-
-- A — Sim, CPF permanece reservado.
-- B — Não, CPF pode ser usado em nova Pessoa.
-- C — Reserva por prazo determinado.
-
-**Impactos:** Afeta retorno de clientes, histórico, contratos e duplicidade.
-
-**Riscos:** Liberar CPF cria duas identidades para o mesmo indivíduo; retenção indefinida precisa de base legal.
-
-**Recomendação Técnica:** A, condicionada à política jurídica de retenção.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-17 — Exclusão física
-
-**Código:** DEC-17
-
-**Pergunta:** Exclusão física de Pessoa será permitida?
-
-**Contexto:** O sistema atual permite delete físico, mas Pessoas podem possuir vínculos, pagamentos e obrigações históricas.
-
-**Alternativas:**
-
-- A — Proibir quando houver vínculos; usar inativação/anonimização conforme política.
-- B — Permitir para administradores.
-- C — Permitir apenas por processo jurídico/LGPD formal.
-- D — Nunca permitir.
-
-**Impactos:** Afeta retenção, direito do titular, auditoria e integridade referencial.
-
-**Riscos:** Exclusão pode quebrar histórico legal; retenção excessiva pode violar princípios de minimização.
-
-**Recomendação Técnica:** A com exceção controlada C, após parecer jurídico.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-18 — Política para cpf_normalized nulo
-
-**Código:** DEC-18
-
-**Pergunta:** Quando `cpf_normalized = NULL` é permitido?
-
-**Contexto:** O valor nulo é necessário quando CPF está ausente, mas também pode ocultar CPF inválido preenchido.
-
-**Alternativas:**
-
-- A — Ausência: permitido; legado inválido: temporário e em revisão; novo cadastro com CPF inválido: rejeitado.
-- B — Sempre permitido.
-- C — Nunca permitido.
-- D — Permitido apenas para menores e estrangeiros.
-
-**Impactos:** Determina a eficácia de uma futura unicidade e o tratamento do legado.
-
-**Riscos:** Permissão ampla cria bypass; proibição total bloqueia pessoas legitimamente sem CPF.
-
-**Recomendação Técnica:** A.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-19 — Escopo futuro da unicidade
-
-**Código:** DEC-19
-
-**Pergunta:** Qual será o escopo da unicidade de CPF?
-
-**Contexto:** A base moderna de Pessoa é global e não possui unidade; vínculos e permissões são contextuais.
-
-**Alternativas:**
-
-- A — Global em todo o ERP.
-- B — Por unidade.
-- C — Por organização/tenant futuro.
-- D — Outro: **\*\***\*\*\*\***\*\***\_\_\_\_**\*\***\*\*\*\***\*\***.
-
-**Impactos:** Define se uma pessoa em duas unidades reutiliza a mesma identidade.
-
-**Riscos:** Unicidade por unidade perpetua duplicidade civil; unicidade global sem autorização adequada pode expor existência entre unidades.
-
-**Recomendação Técnica:** A — unicidade global, com resposta de conflito que não exponha dados sem autorização.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C ☐ D — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-### DEC-20 — Privacidade e autorização
-
-**Código:** DEC-20
-
-**Pergunta:** Resolução de identidade será separada da autorização para visualizar ou usar a Pessoa?
-
-**Contexto:** Encontrar correspondência global não deve conceder acesso a dados de outra unidade ou perfil.
-
-**Alternativas:**
-
-- A — Separar resolução e autorização, com resposta sem PII quando não houver permissão.
-- B — Quem puder pesquisar pode visualizar a Pessoa encontrada.
-- C — Resolução somente dentro da unidade, mesmo com identidade global.
-
-**Impactos:** Afeta portais, unidades, CRM, atendimento e LGPD.
-
-**Riscos:** Busca global aberta expõe dados; busca apenas local permite cadastros duplicados.
-
-**Recomendação Técnica:** A — resolução global interna e autorização contextual obrigatória.
-
-**Campo para Aprovação:** ☐ A ☐ B ☐ C — Status: `PENDING_APPROVAL`
-
-**Responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Observações:** (preencher)
-
-## 4. Quadro consolidado
-
-| Código | Decisão                   | Recomendação Técnica                               | Status             |
-| ------ | ------------------------- | -------------------------------------------------- | ------------------ |
-| DEC-01 | Escopo da entidade People | somente Pessoa Física                              | `PENDING_APPROVAL` |
-| DEC-02 | Pessoa Jurídica           | domínio próprio de Organizações                    | `PENDING_APPROVAL` |
-| DEC-03 | Papel do CPF              | identificador forte opcional                       | `PENDING_APPROVAL` |
-| DEC-04 | Momento obrigatório       | exigência progressiva por jornada                  | `PENDING_APPROVAL` |
-| DEC-05 | Aluno menor               | permitir sem CPF com responsável                   | `PENDING_APPROVAL` |
-| DEC-06 | Aluno adulto              | exigir na ativação, salvo estrangeiro              | `PENDING_APPROVAL` |
-| DEC-07 | Responsável               | exigir no papel legal/financeiro                   | `PENDING_APPROVAL` |
-| DEC-08 | Estrangeiros              | documento alternativo e CPF opcional               | `PENDING_APPROVAL` |
-| DEC-09 | Documento alternativo     | domínio tipado de documentos                       | `PENDING_APPROVAL` |
-| DEC-10 | Validação                 | dígitos verificadores e verificação por risco      | `PENDING_APPROVAL` |
-| DEC-11 | Novo CPF inválido         | rejeitar                                           | `PENDING_APPROVAL` |
-| DEC-12 | CPF legado inválido       | preservar e revisar                                | `PENDING_APPROVAL` |
-| DEC-13 | CPF duplicado             | bloquear e revisar                                 | `PENDING_APPROVAL` |
-| DEC-14 | Alteração de CPF          | autorização segregada e auditoria                  | `PENDING_APPROVAL` |
-| DEC-15 | Histórico de CPF          | obrigatório e protegido                            | `PENDING_APPROVAL` |
-| DEC-16 | Pessoa inativa            | identidade continua reservada                      | `PENDING_APPROVAL` |
-| DEC-17 | Exclusão física           | bloquear com vínculos; processo formal             | `PENDING_APPROVAL` |
-| DEC-18 | Normalizado nulo          | ausência/legado controlado; rejeitar novo inválido | `PENDING_APPROVAL` |
-| DEC-19 | Escopo da unicidade       | global com autorização contextual                  | `PENDING_APPROVAL` |
-| DEC-20 | Privacidade               | resolução separada de autorização                  | `PENDING_APPROVAL` |
-
-## 5. Formulário de Aprovação
-
-Este formulário não substitui a seleção registrada em cada decisão.
-
-**Resultado geral:** ☐ Aprovado ☐ Rejeitado ☐ Necessita Revisão
-
-**Diretor responsável:** (preencher)
-
-**Data:** (dd/mm/aaaa)
-
-**Assinatura:** (preencher)
-
-**Observações:**
-
----
-
----
-
----
+- obrigações contratuais e fiscais relacionadas ao CPF;
+- retenção e histórico de documentos;
+- exclusão, anonimização e direitos do titular;
+- tratamento de documentos estrangeiros;
+- política de acesso a dados entre unidades;
+- prazo e fundamento para retenção de registros inativos.

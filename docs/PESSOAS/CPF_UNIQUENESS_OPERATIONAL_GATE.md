@@ -46,40 +46,40 @@ O avaliador `evaluateCpfUniquenessGate()` só aprova quando todas as evidências
 
 O avaliador não consulta banco e não cria índice. `state=NOT_EXECUTED` representa ausência de execução física; `decision=BLOCKED` impede a Sprint A.4.2.
 
-## Decisões de negócio — Sprint 27.17A.4.1D
+## Decisões de negócio — Sprint 27.17A.4.1D.2
 
-O gate passou a exigir estados explícitos para oito decisões:
+O documento executivo foi adotado como política oficial. O contrato técnico representa vinte decisões empresariais, todas com estado `APPROVED`. As oito dimensões originais do gate estão consolidadas assim:
 
 | Decisão                                     | Estado atual |
 | ------------------------------------------- | ------------ |
 | escopo global com perfis/acesso contextuais | `APPROVED`   |
-| papel do CPF                                | `PROPOSED`   |
-| fronteira de Pessoa Jurídica                | `BLOCKED`    |
-| estrangeiros/documentos alternativos        | `BLOCKED`    |
-| obrigatoriedade condicional do CPF          | `PROPOSED`   |
-| alteração autorizada e auditada             | `BLOCKED`    |
-| reserva da identidade inativa               | `PROPOSED`   |
-| CPF preenchido versus normalizado nulo      | `PROPOSED`   |
+| papel forte e opcional do CPF               | `APPROVED`   |
+| `people` somente PF; PJ em domínio próprio  | `APPROVED`   |
+| estrangeiros sem CPF/documento futuro       | `APPROVED`   |
+| obrigatoriedade condicional por etapa       | `APPROVED`   |
+| alteração autorizada e auditada             | `APPROVED`   |
+| reserva da identidade inativa               | `APPROVED`   |
+| política para normalizado nulo              | `APPROVED`   |
 
-Qualquer estado diferente de `APPROVED` mantém blocker próprio. A política declarativa está em `person-identity-policy.js`; a fundamentação está em `PERSON_IDENTITY_AND_CPF_POLICY.md`. Nenhum critério anterior foi relaxado.
+Qualquer decisão diferente de `APPROVED` continua bloqueando o gate. Revisões LGPD, contábeis e implementações futuras são condições de execução, não pendências da decisão empresarial. Nenhum critério técnico ou operacional foi relaxado, e o gate global permanece `NOT_EXECUTED/BLOCKED`.
 
 ## Evidência de negócio no repositório
 
-| Pergunta                                               | Classificação                    | Evidência                                                                     |
-| ------------------------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------- |
-| Pessoa é global no schema moderno?                     | `CONFIRMED` tecnicamente         | `people` não possui unidade/tenant.                                           |
-| A mesma Pessoa pode existir por unidade?               | `NOT_CONFIRMED`                  | O ERP possui unidades, mas a política civil não está formalizada.             |
-| `people` contém apenas Pessoa Física?                  | `NOT_CONFIRMED`                  | Não há `person_type`/CNPJ, mas ausência de coluna não é proibição de negócio. |
-| Há ou haverá PJ na tabela?                             | `NOT_CONFIRMED`                  | Documentos arquiteturais mencionam CPF/CNPJ genericamente.                    |
-| CPF pode faltar?                                       | `CONFIRMED`                      | `cpf VARCHAR(20) NULL` e serviços não o exigem.                               |
-| Estrangeiro sem CPF é permitido?                       | `NOT_CONFIRMED`                  | Não existe política encontrada.                                               |
-| Cadastro provisório sem CPF é permitido?               | `CONFIRMED` tecnicamente         | Schema e repository aceitam `NULL`.                                           |
-| CPF pode aparecer legitimamente em mais de uma Pessoa? | `NOT_CONFIRMED`                  | Documento alvo sugere um CPF por Pessoa ativa, sem decisão para inativos/PJ.  |
-| Inativos permanecem na tabela?                         | `CONFIRMED`                      | Campo `ativo`; repository não remove automaticamente.                         |
-| Existe soft delete em `people`?                        | `NOT_APPLICABLE` no schema atual | Não há `deleted_at`; existe delete físico no repository.                      |
-| CPF pode ser alterado?                                 | `CONFIRMED` tecnicamente         | `PersonRepository.update()` permite atualização.                              |
-| Existe histórico de documento?                         | `NOT_CONFIRMED`                  | Nenhuma tabela de histórico foi encontrada.                                   |
-| Há writers fora do repository moderno?                 | `CONFIRMED`                      | Fixture E2E faz SQL direto; sistemas externos permanecem desconhecidos.       |
+| Pergunta                                               | Classificação                    | Evidência                                                                      |
+| ------------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------ |
+| Pessoa é global no schema moderno?                     | `CONFIRMED` tecnicamente         | `people` não possui unidade/tenant.                                            |
+| A mesma Pessoa pode existir por unidade?               | `EXCLUDED_BY_POLICY`             | A identidade é global; perfis, vínculos e acessos são contextuais por unidade. |
+| `people` contém apenas Pessoa Física?                  | `CONFIRMED_BY_POLICY`            | A DEC-01 restringe o domínio `people` a indivíduos.                            |
+| Há ou haverá PJ na tabela?                             | `EXCLUDED_BY_POLICY`             | A DEC-02 reserva Pessoa Jurídica a domínio próprio futuro.                     |
+| CPF pode faltar?                                       | `CONFIRMED`                      | `cpf VARCHAR(20) NULL` e serviços não o exigem.                                |
+| Estrangeiro sem CPF é permitido?                       | `CONFIRMED_BY_POLICY`            | A DEC-08 permite o cadastro sustentado por `people.id`.                        |
+| Cadastro provisório sem CPF é permitido?               | `CONFIRMED` tecnicamente         | Schema e repository aceitam `NULL`.                                            |
+| CPF pode aparecer legitimamente em mais de uma Pessoa? | `EXCLUDED_BY_POLICY`             | As DEC-03, DEC-13, DEC-16 e DEC-19 reservam o CPF válido a uma Pessoa global.  |
+| Inativos permanecem na tabela?                         | `CONFIRMED`                      | Campo `ativo`; repository não remove automaticamente.                          |
+| Existe soft delete em `people`?                        | `NOT_APPLICABLE` no schema atual | Não há `deleted_at`; existe delete físico no repository.                       |
+| CPF pode ser alterado?                                 | `APPROVED_WITH_CONTROL_PENDING`  | A DEC-14 exige processo autorizado e auditado; writer comum deve ser proibido. |
+| Existe histórico de documento?                         | `REQUIRED_NOT_IMPLEMENTED`       | A DEC-15 exige histórico restrito; a estrutura ainda não existe.               |
+| Há writers fora do repository moderno?                 | `CONFIRMED`                      | Fixture E2E faz SQL direto; sistemas externos permanecem desconhecidos.        |
 
 ## Writers e drift
 
@@ -124,9 +124,6 @@ Não são fornecidos comandos com host, usuário, senha ou connection string. O 
 - `MYSQL_ENVIRONMENT_UNAVAILABLE`;
 - `MYSQL_VALIDATION_FAILED` — significa “não validado”, não falha observada no MySQL;
 - `OPERATIONAL_DATA_UNAVAILABLE`;
-- `IDENTITY_SCOPE_NOT_CONFIRMED`;
-- `LEGAL_ENTITY_MODEL_NOT_CONFIRMED`;
-- `LEGITIMATE_DUPLICATE_USE_NOT_EXCLUDED`;
 - `LEGACY_WRITERS_UNSYNCHRONIZED`;
 - `MIGRATION_NOT_APPLIED` no MySQL real de teste;
 - `MIGRATION_NOT_IDEMPOTENT` no MySQL real de teste;

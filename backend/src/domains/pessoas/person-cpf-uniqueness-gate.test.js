@@ -60,21 +60,21 @@ test("missing business scope and legal entity evidence remain explicit blockers"
   ]);
 });
 
-test("proposed or blocked policy decisions keep the uniqueness gate blocked", () => {
+test("official executive policy satisfies every business decision gate", () => {
   const evidence = approvedEvidence();
   evidence.businessDecisions = decisionStates();
   const result = evaluateCpfUniquenessGate(evidence);
-  assert.equal(result.decision, "BLOCKED");
-  assert.deepEqual(result.blockers, [
-    "CPF_CHANGE_POLICY_NOT_CONFIRMED",
-    "CPF_OPTIONALITY_NOT_CONFIRMED",
-    "CPF_ROLE_NOT_CONFIRMED",
-    "FOREIGN_PERSON_POLICY_NOT_CONFIRMED",
-    "INACTIVE_PERSON_POLICY_NOT_CONFIRMED",
-    "LEGAL_ENTITY_MODEL_NOT_CONFIRMED",
-    "NULL_NORMALIZED_POLICY_NOT_CONFIRMED",
-  ]);
+  assert.equal(result.decision, "APPROVED");
+  assert.deepEqual(result.blockers, []);
   assert.doesNotMatch(JSON.stringify(result), /[0-9]{11}|@|\+55/u);
+});
+
+test("one unapproved executive decision keeps the uniqueness gate blocked", () => {
+  const evidence = approvedEvidence();
+  evidence.businessDecisions = { ...decisionStates(), cpfHistoryPolicy: "PROPOSED" };
+  const result = evaluateCpfUniquenessGate(evidence);
+  assert.equal(result.decision, "BLOCKED");
+  assert.deepEqual(result.blockers, ["EXECUTIVE_POLICY_NOT_CONFIRMED"]);
 });
 
 test("gate rejects missing, truthy or invalid evidence instead of approving partially", () => {

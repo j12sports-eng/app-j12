@@ -1,138 +1,84 @@
-# Política de Identidade de Pessoa e CPF
+# Política Oficial de Identidade de Pessoa e CPF
 
-> Aprovação executiva pendente: consulte
-> [Aprovação Executiva — Identidade de Pessoa e CPF](./PERSON_IDENTITY_AND_CPF_EXECUTIVE_DECISION.md).
-> As recomendações desse formulário não alteram os estados desta política até decisão formal.
+## Autoridade e estado
 
-## 1. Status e método
+Esta política consolida as decisões oficiais da J12 Sports registradas em
+[Decisões Executivas — Identidade e CPF](./PERSON_IDENTITY_AND_CPF_EXECUTIVE_DECISION.md).
 
-Este documento é a decisão arquitetural da Sprint 27.17A.4.1D. Cada conclusão distingue:
+As vinte decisões estão `APPROVED`. Condições de revisão especializada, implementação futura e gates técnicos não reabrem a decisão empresarial; elas controlam quando e como cada comportamento poderá ser implementado.
 
-- **FATO CONFIRMADO NO CÓDIGO**: estrutura ou comportamento verificável;
-- **REGRA CONFIRMADA NA DOCUMENTAÇÃO**: princípio já registrado;
-- **INFERÊNCIA**: consequência técnica, não regra empresarial;
-- **DECISÃO APROVADA**: sustentada conjuntamente pelo modelo e documentação;
-- **DECISÃO PROPOSTA**: recomendação que exige aprovação empresarial;
-- **PENDÊNCIA/BLOCKED**: não há evidência para decidir com segurança.
+Fonte técnica: `backend/src/domains/pessoas/person-identity-policy.js`.
 
-Nenhuma política proposta ou bloqueada altera o comportamento atual.
+## Princípios oficiais
 
-## 2. Evidências principais
-
-| Tema                                                                   | Evidência                              | Classificação     |
-| ---------------------------------------------------------------------- | -------------------------------------- | ----------------- |
-| `people` não possui `unit_id` ou tenant                                | foundation, repository e migration A.4 | FATO CONFIRMADO   |
-| `person_profiles.person_id` liga papéis à Pessoa                       | schema e profile services              | FATO CONFIRMADO   |
-| Pessoa é identidade; Profile é papel                                   | `PERSON_PROFILE_ARCHITECTURE.md`       | REGRA DOCUMENTADA |
-| uma Pessoa pode ter contratos em unidades diferentes                   | arquitetura de perfis                  | REGRA DOCUMENTADA |
-| CPF é nullable e somente nome é obrigatório em `PersonService`         | schema/service                         | FATO CONFIRMADO   |
-| pré-matrícula exige CPF do responsável                                 | schema e validator de pré-matrícula    | FATO CONFIRMADO   |
-| aluno, responsável e professor legados têm identidades paralelas       | controllers/routes/schema legado       | FATO CONFIRMADO   |
-| não há `person_type`, CNPJ ou documento estrangeiro persistido         | schema/mapper                          | FATO CONFIRMADO   |
-| locação possui perfil de locatário; financeiro aceita devedor CPF/CNPJ | perfis e integração financeira         | FATO CONFIRMADO   |
-| CRM Lead tem `person_id` opcional e conversão não implementada         | domínio CRM                            | FATO CONFIRMADO   |
-
-Há tensão entre o alvo global e os fluxos legados separados. Isso é coexistência de arquitetura em migração, não autorização para duplicar identidade civil por unidade.
-
-## 3. Matriz oficial de decisões
-
-| Decisão              | Valor                                            | Estado       | Fundamento                                                                                 |
-| -------------------- | ------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------ |
-| Escopo de Pessoa     | `GLOBAL_IDENTITY_CONTEXTUAL_PROFILES_AND_ACCESS` | **APPROVED** | tabela global + princípio Person/Profile + contratos multiunidade                          |
-| Papel do CPF         | `OPTIONAL_STRONG_IDENTIFIER`                     | **PROPOSED** | CPF é forte quando presente, mas o sistema permite ausência                                |
-| Natureza de `people` | `LEGAL_ENTITY_BOUNDARY_UNDEFINED`                | **BLOCKED**  | PJ não é modelada, porém fornecedores, parceiros e representante empresarial são previstos |
-| Estrangeiros         | `ALTERNATIVE_DOCUMENT_MODEL_REQUIRED`            | **BLOCKED**  | nenhum documento alternativo ou regra operacional existe                                   |
-| Obrigatoriedade      | `CPF_CONDITIONALLY_REQUIRED`                     | **PROPOSED** | exigências atuais variam por fluxo e estágio                                               |
-| Alteração de CPF     | `AUTHORIZED_AUDITED_CHANGE_REQUIRED`             | **BLOCKED**  | update é tecnicamente possível, sem autorização/histórico                                  |
-| Pessoa inativa       | `IDENTITY_REMAINS_RESERVED`                      | **PROPOSED** | identidade não deveria desaparecer com fim de vínculo; delete físico existe                |
-| CPF normalizado nulo | `NULL_ONLY_WHEN_CPF_ABSENT_OR_LEGACY_INVALID`    | **PROPOSED** | compatibilidade legada existe; novos writes ainda não rejeitam inválido                    |
-
-## 4. Princípios aprovados
-
-1. Pessoa é global; perfis, vínculos, matrículas, contratos e permissões são contextuais.
-2. Identidade global não concede acesso global. Resolução e autorização são operações separadas.
-3. Uma Pessoa pode possuir múltiplos perfis; perfil não cria nova identidade.
+1. Cada pessoa física possui uma identidade global no ERP.
+2. Perfis, vínculos, matrículas, acessos e operações são contextuais por unidade.
+3. A mesma Pessoa pode exercer múltiplos perfis.
 4. CPF pertence à Pessoa, não ao perfil.
-5. E-mail e telefone são contatos compartilháveis e não identificadores únicos.
-6. `people.id` sustenta tecnicamente Pessoas sem CPF.
+5. E-mail e telefone são compartilháveis.
+6. CPF é identificador forte opcional e `people.id` continua sendo a chave técnica.
+7. CPF informado e válido identifica uma única Pessoa globalmente.
+8. Duplicidade nunca é resolvida automaticamente.
+9. Resolução global não concede acesso global.
+10. `people` representa exclusivamente Pessoa Física; organizações terão domínio próprio.
 
-Esses princípios não aprovam busca global pública. Um futuro resolvedor deve evitar confirmar a existência de Pessoa fora do escopo autorizado.
+## Contrato técnico das vinte decisões
 
-## 5. CPF e ausência
+| Código | Campo técnico                | Valor oficial                                              | Condição posterior           |
+| ------ | ---------------------------- | ---------------------------------------------------------- | ---------------------------- |
+| DEC-01 | `entityNatureDecision`       | `NATURAL_PERSON_ONLY`                                      | nenhuma                      |
+| DEC-02 | `legalEntityDecision`        | `SEPARATE_LEGAL_ENTITY_DOMAIN`                             | implementação futura         |
+| DEC-03 | `cpfRoleDecision`            | `OPTIONAL_STRONG_IDENTIFIER`                               | nenhuma                      |
+| DEC-04 | `cpfOptionalityPolicy`       | `CONDITIONALLY_REQUIRED_BY_LIFECYCLE`                      | revisão especialista         |
+| DEC-05 | `minorStudentCpfPolicy`      | `ALLOW_WITHOUT_CPF_WHEN_RESPONSIBLE_IS_VALID`              | nenhuma                      |
+| DEC-06 | `adultStudentCpfPolicy`      | `BRAZILIAN_ADULT_REQUIRES_VALID_CPF_FOR_ACTIVE_ENROLLMENT` | exceção estrangeiro          |
+| DEC-07 | `responsibleCpfPolicy`       | `REQUIRED_BEFORE_ACTIVE_WHEN_CONTRACTUAL_OR_FINANCIAL`     | revisão especialista         |
+| DEC-08 | `foreignPersonPolicy`        | `ALLOW_WITHOUT_CPF_USING_INTERNAL_ID`                      | nenhuma                      |
+| DEC-09 | `alternativeDocumentPolicy`  | `TYPED_ALTERNATIVE_DOCUMENT_DOMAIN`                        | implementação futura         |
+| DEC-10 | `cpfValidationPolicy`        | `NORMALIZED_SEMANTICALLY_VALID_AND_VERIFIED_LEVELS`        | verificação externa futura   |
+| DEC-11 | `invalidNewCpfPolicy`        | `REJECT_INVALID_CPF_ON_MODERN_WRITES`                      | implementação pendente       |
+| DEC-12 | `invalidLegacyCpfPolicy`     | `PRESERVE_WITH_NULL_NORMALIZED_AND_ASSISTED_REVIEW`        | saneamento assistido         |
+| DEC-13 | `duplicateCpfPolicy`         | `BLOCK_AND_REVIEW_WITHOUT_AUTOMATIC_MERGE`                 | implementação pendente       |
+| DEC-14 | `cpfChangePolicy`            | `AUTHORIZED_AUDITED_CHANGE_ONLY`                           | implementação pendente       |
+| DEC-15 | `cpfHistoryPolicy`           | `RESTRICTED_CPF_HISTORY_REQUIRED`                          | revisão LGPD                 |
+| DEC-16 | `inactivePersonPolicy`       | `IDENTITY_AND_CPF_REMAIN_RESERVED`                         | nenhuma                      |
+| DEC-17 | `physicalDeletionPolicy`     | `CONTROLLED_ONLY_WITHOUT_LINKS_OR_OBLIGATIONS`             | revisão LGPD                 |
+| DEC-18 | `nullNormalizedPolicy`       | `NULL_ONLY_WHEN_CPF_ABSENT_OR_LEGACY_INVALID`              | saneamento e writers         |
+| DEC-19 | `personScopeDecision`        | `GLOBAL_IDENTITY_CONTEXTUAL_PROFILES_AND_ACCESS`           | gates técnicos               |
+| DEC-20 | `privacyAuthorizationPolicy` | `GLOBAL_RESOLUTION_CONTEXTUAL_AUTHORIZATION`               | implementação de autorização |
 
-Política proposta:
+## Obrigatoriedade por etapa
 
-- ausência real é `cpf = NULL` e `cpf_normalized = NULL`; string vazia é apenas legado a sanear;
-- CPF sintaticamente aceito continua sendo 11 dígitos, sem alegar verificação de dígitos;
-- novo write moderno com CPF preenchido e inválido deve ser rejeitado em sprint futura;
-- legado inválido pode ser preservado temporariamente com normalizado nulo e revisão explícita;
-- nenhum CPF fictício, sequencial ou compartilhado deve representar ausência ou estrangeiro;
-- CPF válido repetido deve bloquear nova criação e exigir revisão, sem escolha ou merge automático.
+- Lead: CPF opcional.
+- Conversão: conforme Pessoa e operação resultante.
+- Pré-matrícula: pode iniciar sem CPF, com pendência explícita.
+- Matrícula `DRAFT`: pode existir sem CPF.
+- Matrícula `ACTIVE`: adulto brasileiro exige CPF válido; menor pode não possuir CPF; responsável contratual brasileiro exige CPF; estrangeiro segue política própria.
+- Financeiro/contrato: CPF da pessoa responsável é obrigatório, salvo exceção formal de estrangeiro.
 
-O ponto exato em que CPF se torna obrigatório não está aprovado. O código confirma apenas: Pessoa moderna aceita ausência; pré-matrícula exige CPF do responsável; matrícula/financeiro possuem contratos distintos e não consolidam uma regra civil única.
+Regras fiscais e contratuais deverão passar por revisão especialista antes da implementação, sem alterar a decisão de negócio.
 
-## 6. Cenários
+## Validade, legado e conflito
 
-| Cenário real auditado | Criar registro                              | CPF atual                          | Política/resultado                      |
-| --------------------- | ------------------------------------------- | ---------------------------------- | --------------------------------------- |
-| Pessoa moderna mínima | permitido                                   | opcional                           | fato atual; completude futura PROPOSED  |
-| Pré-matrícula         | permitido em tabela própria                 | CPF do responsável obrigatório     | fato atual, não regra global            |
-| Aluno menor           | permitido nos fluxos legados                | regra fragmentada                  | BLOCKED para obrigatoriedade civil      |
-| Aluno adulto          | permitido                                   | não há regra consolidada por idade | BLOCKED                                 |
-| Lead CRM              | criado como Lead, não Pessoa                | contato pode existir sem CPF       | fato atual; conversão fora do escopo    |
-| Estrangeiro           | não há modelo específico                    | não usar CPF fictício              | BLOCKED; requer documentos alternativos |
-| CPF repetido          | fisicamente permitido hoje                  | conflito detectável                | PROPOSED: bloquear e revisar            |
-| CPF inválido legado   | preservar sem inventar normalizado          | normalizado nulo                   | PROPOSED: revisão                       |
-| CPF inválido novo     | repository hoje preserva original           | normalizado nulo                   | PROPOSED: rejeitar em sprint própria    |
-| Pessoa inativa        | permanece com `ativo=0` quando não deletada | CPF permanece                      | PROPOSED: reservar identidade           |
-| Contato compartilhado | permitido                                   | não determina identidade           | APPROVED                                |
+- novo CPF moderno inválido será rejeitado;
+- legado inválido será preservado com normalizado nulo e saneamento assistido;
+- CPF ausente usa original e normalizado nulos;
+- CPF válido exige original e normalizado preenchidos;
+- duplicidade bloqueia criação e exige revisão;
+- não haverá seleção, exclusão, sobrescrita ou merge automático;
+- alteração exige permissão, motivo, validação, conflito, autoria, data e histórico;
+- logs e respostas técnicas não expõem CPF.
 
-Não existe evidência para afirmar que matrícula ativa ou financeiro devam exigir CPF em todos os cenários. Essa decisão envolve menores, estrangeiros, contratos e requisitos fiscais.
+## Inatividade, exclusão e LGPD
 
-## 7. Pessoa Jurídica
+Inativação não libera identidade ou CPF. Exclusão física é excepcional, somente sem vínculos ou obrigações e por processo autorizado. Histórico, retenção, anonimização e acesso dependem de revisão LGPD/jurídica antes da implementação.
 
-`people` não suporta PJ corretamente. Ao mesmo tempo, a arquitetura cita fornecedor, parceiro, prestador, empresa locatária e representante de empresa, e o financeiro sabe formar payload CPF/CNPJ. Portanto, não está aprovado declarar `people` exclusivamente Pessoa Física.
+## Identidade global e autorização
 
-Direção deve escolher entre:
+Unicidade e resolução são globais; visualização e utilização são contextuais. Uma correspondência global não pode revelar CPF, e-mail, telefone ou existência detalhada a usuário não autorizado.
 
-1. `people` exclusivamente Pessoa Física e entidade própria para organizações; ou
-2. supertipo de partes com discriminador e identificadores CPF/CNPJ separados.
+## Impacto no gate
 
-Até a decisão, `LEGAL_ENTITY_MODEL_NOT_CONFIRMED` permanece ativo e nenhum CNPJ deve ser colocado em `cpf_normalized`.
+Os blockers de decisão empresarial estão resolvidos pelo contrato oficial. O gate global continua condicionado a evidências técnicas e operacionais, incluindo MySQL isolado, migration, idempotência, rollback, múltiplos nulos, dados operacionais, zero duplicidades, zero drift, writers sincronizados, rollout e impacto aceito.
 
-## 8. Alteração, duplicidade e histórico
-
-Alteração de CPF hoje é um update comum e delete de Pessoa é físico. A política segura proposta exige autorização específica, verificação de conflito, motivo, auditoria do valor anterior com acesso restrito e distinção entre correção e merge. Como não existe histórico de documentos, a política fica **BLOCKED** para aprovação.
-
-Mesmo CPF em Pessoas distintas é conflito, não licença para escolher o registro mais novo. Pessoa sem CPF não pode ser deduplicada por nome, nascimento ou contato isoladamente. Nenhum merge automático está autorizado.
-
-## 9. Inativos e múltiplos perfis
-
-É **APPROVED** que encerrar perfil, matrícula ou contrato não cria nova identidade. É **PROPOSED** que CPF continue reservado inclusive para Pessoa inativa, pois o repository ainda permite delete físico e não há política de retenção aprovada. Questões LGPD, fiscais e contratuais exigem decisão da direção/jurídico.
-
-## 10. Bypass por normalizado nulo
-
-Uma future unique nullable não cobre `cpf preenchido + cpf_normalized NULL`. Antes da A.4.2 é obrigatório:
-
-- aprovar rejeição de CPF inválido em novos writes;
-- sanear legado autorizado até zero drift;
-- comprovar writers versionados e externos;
-- validar MySQL fisicamente;
-- decidir constraint complementar sem antecipá-la nesta sprint.
-
-## 11. Estados futuros
-
-`INCOMPLETE`, `UNVERIFIED`, `VERIFIED`, `CONFLICT` e `LEGACY_INVALID` podem apoiar onboarding e saneamento, mas permanecem **PROPOSED**. Nenhum estado foi adicionado ao schema.
-
-## 12. Critérios de revisão e liberação
-
-A.4.2 continua bloqueada até que todas as oito decisões do contrato estejam `APPROVED`, o gate técnico/operacional esteja aprovado, duplicidades e drift sejam zero e writers externos sejam controlados. A aprovação documental não substitui validação MySQL nem diagnóstico operacional.
-
-Decisões que exigem direção/jurídico:
-
-- fronteira Pessoa Física/Pessoa Jurídica;
-- etapa de obrigatoriedade do CPF para menor, adulto, matrícula e financeiro;
-- política para estrangeiros;
-- autorização, retenção e auditoria de alteração;
-- reserva de CPF em inativos/excluídos;
-- definição do que é CPF sintático, semanticamente válido ou verificado.
+Esta política não autoriza criar unique, migration, validação funcional ou alteração de dados nesta Sprint.
