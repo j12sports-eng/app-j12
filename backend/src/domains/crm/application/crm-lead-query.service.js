@@ -16,10 +16,14 @@ const STAGES = new Set([
 ]);
 const STATUSES = new Set(["OPEN", "CONVERTED", "LOST", "ARCHIVED"]);
 const CONVERSION_STATUSES = new Set(["NONE", "STUDENT_COMPLETED", "ENROLLMENT_COMPLETED"]);
+const { HISTORY_COVERAGE, TERMINAL_STAGES, utcIso } = require("../domain/crm-lead-stage-timing.js");
+const { CrmLeadStageSlaPolicy } = require("../domain/crm-lead-stage-sla-policy.js");
 
 class CrmLeadQueryService {
-  constructor({ repository = null } = {}) {
+  constructor({ repository = null, clock = null, slaPolicy = null } = {}) {
     this.repository = repository;
+    this.clock = clock || Object.freeze({ now: () => new Date() });
+    this.slaPolicy = slaPolicy || new CrmLeadStageSlaPolicy();
   }
 
   async listLeads(filters = {}) {
@@ -38,7 +42,11 @@ class CrmLeadQueryService {
 
     const safeRows = Array.isArray(rows) ? rows : [];
     const hasNextPage = safeRows.length > normalized.limit;
-    const items = safeRows.slice(0, normalized.limit).map(toListItem);
+    const measuredAt = utcIso(this.clock.now());
+    if (!measuredAt) throw queryError("CRM Lead query failed.", "CRM_LEAD_QUERY_FAILED", 500);
+    const items = safeRows
+      .slice(0, normalized.limit)
+      .map((row) => toListItem(row, { measuredAt, slaPolicy: this.slaPolicy }));
     const last = items.at(-1);
     return Object.freeze({
       items,
@@ -63,7 +71,9 @@ class CrmLeadQueryService {
       throw queryError("CRM Lead query failed.", "CRM_LEAD_QUERY_FAILED", 500);
     }
     if (!row) throw queryError("CRM Lead not found.", "CRM_LEAD_NOT_FOUND", 404);
-    return toDetail(row);
+    const measuredAt = utcIso(this.clock.now());
+    if (!measuredAt) throw queryError("CRM Lead query failed.", "CRM_LEAD_QUERY_FAILED", 500);
+    return toDetail(row, { measuredAt, slaPolicy: this.slaPolicy });
   }
 
   getRepository() {
@@ -131,9 +141,9 @@ function encodeCursor({ createdAt, id }) {
   ).toString("base64url");
 }
 
-function toListItem(row) {
+function toListItem(row, timingOptions = null) {
   const eligibility = resolveEligibility(row);
-  return Object.freeze({
+  const item = {
     assignedTo: row.assigned_to ?? row.assignedTo ?? null,
     createdAt: iso(row.created_at ?? row.createdAt),
     eligibility,
@@ -144,11 +154,13 @@ function toListItem(row) {
     unitId: row.unit_id ?? row.unitId,
     updatedAt: iso(row.updated_at ?? row.updatedAt),
     conversions: conversionSummary(row),
-  });
+  };
+  if (timingOptions) item.stageTiming = toStageTimingSummary(row, timingOptions);
+  return Object.freeze(item);
 }
 
-function toDetail(row) {
-  const item = toListItem(row);
+function toDetail(row, timingOptions = null) {
+  const item = toListItem(row, timingOptions);
   return Object.freeze({
     ...item,
     contact: Object.freeze({
@@ -182,6 +194,31 @@ function conversionSummary(row) {
     enrollmentCompleted,
     enrollmentStatus: row.enrollment_status ?? row.enrollmentStatus ?? null,
     studentCompleted,
+  });
+}
+
+function toStageTimingSummary(row, { measuredAt, slaPolicy }) {
+  const historyStage = row.timing_history_stage ?? row.timingHistoryStage ?? null;
+  const rawEntryAt = row.current_stage_entry_at ?? row.currentStageEntryAt ?? null;
+  const entryAt = historyStage === row.stage ? utcIso(rawEntryAt) : null;
+  const initialReliable = Boolean(
+    Number(row.timing_initial_event_reliable ?? row.timingInitialEventReliable ?? 0),
+  );
+  let historyCoverage = entryAt
+    ? initialReliable
+      ? HISTORY_COVERAGE.COMPLETE
+      : HISTORY_COVERAGE.PARTIAL
+    : HISTORY_COVERAGE.UNAVAILABLE;
+  let elapsedMs = entryAt ? Math.max(0, Date.parse(measuredAt) - Date.parse(entryAt)) : null;
+  if (entryAt && Date.parse(entryAt) > Date.parse(measuredAt))
+    historyCoverage = HISTORY_COVERAGE.PARTIAL;
+  if (TERMINAL_STAGES.has(row.stage) && elapsedMs != null) elapsedMs = 0;
+  return Object.freeze({
+    currentStageElapsedMs: elapsedMs,
+    currentStageEntryAt: entryAt,
+    historyCoverage,
+    measuredAt,
+    sla: slaPolicy.evaluate({ elapsedMs, historyCoverage, stage: row.stage }),
   });
 }
 
@@ -267,4 +304,5 @@ module.exports = {
   resolveEligibility,
   toDetail,
   toListItem,
+  toStageTimingSummary,
 };

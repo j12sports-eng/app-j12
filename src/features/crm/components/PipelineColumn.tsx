@@ -10,6 +10,7 @@ export function PipelineColumn({
   onChangeStage,
   dragState,
   submittingLeadId,
+  nowMs,
 
   stage,
 }: {
@@ -18,6 +19,7 @@ export function PipelineColumn({
   onChangeStage?: (leadId: string) => void;
   dragState?: "idle" | "allowed" | "invalid";
   submittingLeadId?: string | null;
+  nowMs: number;
   stage: CrmPipelineStage;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -53,6 +55,7 @@ export function PipelineColumn({
               onSelect={() => onSelect(lead.id)}
               onChangeStage={onChangeStage ? () => onChangeStage(lead.id) : undefined}
               submitting={submittingLeadId === lead.id}
+              nowMs={nowMs}
             />
           ))
         ) : (

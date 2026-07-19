@@ -29,6 +29,13 @@ test.describe("CRM Kanban keyboard and permissions", () => {
     await manual.click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(manual).toBeFocused();
+    expect(state.patchRequests).toHaveLength(1);
+
+    await manual.click();
+    await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Confirmar" }).click();
     await expect.poll(() => state.patchRequests.length).toBe(2);
     await expect(column(page, "QUALIFIED").filter({ has: card(page, "lead-a-new") })).toBeVisible();

@@ -54,6 +54,19 @@ test("success and conflict invalidate every CRM projection", () => {
   assert.match(mutation, /CRM_STAGE_CONFLICT/);
 });
 
+test("manual dialog restores focus only after close and refreshed stage remount", () => {
+  const page = read("pages/CrmLeadsPage.tsx");
+  const dialog = read("components/CrmLeadStageTransitionDialog.tsx");
+  assert.match(dialog, /onCloseAutoFocus/);
+  assert.match(dialog, /onSucceeded\?\.\(result\)/);
+  assert.match(page, /expectedStage: result\.stage/);
+  assert.match(page, /lead\.stage !== stageFocusRequest\.expectedStage/);
+  assert.match(page, /data-crm-stage-trigger/);
+  assert.match(page, /trigger\?\.isConnected/);
+  assert.match(page, /document\.activeElement === trigger/);
+  assert.doesNotMatch(page, /requestAnimationFrame/);
+});
+
 test("drag observability contains the required safe events and metrics", () => {
   const source = read("observability/crm-lead-drag.observability.ts");
   for (const value of [

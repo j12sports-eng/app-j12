@@ -1,3 +1,5 @@
+import type { CrmLeadStageTimingSummary } from "./crm-lead-stage-timing.types";
+
 export type CrmLeadStage =
   | "NEW"
   | "CONTACTED"
@@ -35,6 +37,7 @@ export type CrmLeadListItem = {
   updatedAt: string;
   eligibility: CrmLeadEligibility;
   conversions: CrmLeadConversionSummary;
+  stageTiming: CrmLeadStageTimingSummary;
 };
 
 export type CrmLeadConversionDetail = {

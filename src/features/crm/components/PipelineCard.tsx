@@ -2,17 +2,21 @@
 import type { CrmLeadListItem } from "../types/crm-lead.types";
 import { useDraggable } from "@dnd-kit/core";
 import { GripVertical, Loader2 } from "lucide-react";
+import { CrmLeadSlaBadge } from "./CrmLeadSlaBadge";
+import { displayElapsed, formatDuration } from "./CrmLeadStageTimingDetails";
 
 export function PipelineCard({
   lead,
   onSelect,
   onChangeStage,
   submitting = false,
+  nowMs,
 }: {
   lead: CrmLeadListItem;
   onSelect: () => void;
   onChangeStage?: () => void;
   submitting?: boolean;
+  nowMs: number;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -55,7 +59,24 @@ export function PipelineCard({
           <PipelineCardField label="Origem" value={lead.source || "Não informada"} />
           <PipelineCardField label="Responsável" value={lead.assignedTo || "Não atribuído"} />
           <PipelineCardField label="Última atualização" value={formatDateTime(lead.updatedAt)} />
+          <PipelineCardField
+            label="Tempo na etapa"
+            value={formatDuration(displayElapsed(lead.stageTiming, nowMs))}
+          />
         </dl>
+        <div
+          className="mt-3 flex flex-wrap items-center gap-2"
+          title={
+            lead.stageTiming.currentStageEntryAt
+              ? `Entrada na etapa: ${formatDateTime(lead.stageTiming.currentStageEntryAt)}`
+              : "Entrada na etapa indisponível"
+          }
+        >
+          <CrmLeadSlaBadge timing={lead.stageTiming} />
+          {lead.stageTiming.historyCoverage === "PARTIAL" ? (
+            <span className="text-[10px] font-semibold text-amber-200">Dados parciais</span>
+          ) : null}
+        </div>
       </button>
       {onChangeStage ? (
         <button

@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { useConvertCrmLeadToDraftEnrollment, useCrmLead } from "../hooks/use-crm-leads";
+import { useCrmLeadStageTiming, useVisibleMinuteClock } from "../hooks/use-crm-lead-stage-timing";
+import { CrmLeadStageTimingDetails } from "./CrmLeadStageTimingDetails";
 import type {
   CrmLeadConversionResult,
   CrmLeadDetail,
@@ -36,6 +38,8 @@ export function CrmLeadDetailsDialog({
   open: boolean;
 }) {
   const query = useCrmLead(leadId);
+  const timingQuery = useCrmLeadStageTiming(leadId, open);
+  const nowMs = useVisibleMinuteClock();
   const lead = query.data;
 
   return (
@@ -54,13 +58,43 @@ export function CrmLeadDetailsDialog({
             message={formatApiErrorMessage(query.error, "Não foi possível carregar o Lead.")}
           />
         ) : null}
-        {lead ? <LeadDetails lead={lead} onConvert={onConvert} /> : null}
+        {lead ? (
+          <LeadDetails
+            lead={lead}
+            onConvert={onConvert}
+            timing={timingQuery.data}
+            timingError={
+              timingQuery.isError
+                ? formatApiErrorMessage(
+                    timingQuery.error,
+                    "Não foi possível carregar o tempo no funil.",
+                  )
+                : null
+            }
+            timingLoading={timingQuery.isLoading}
+            nowMs={nowMs}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function LeadDetails({ lead, onConvert }: { lead: CrmLeadDetail; onConvert: () => void }) {
+function LeadDetails({
+  lead,
+  nowMs,
+  onConvert,
+  timing,
+  timingError,
+  timingLoading,
+}: {
+  lead: CrmLeadDetail;
+  nowMs: number;
+  onConvert: () => void;
+  timing: import("../types/crm-lead-stage-timing.types").CrmLeadStageTimingDetail | undefined;
+  timingError: string | null;
+  timingLoading: boolean;
+}) {
   const reason = reasonMessage(lead.eligibility.reasonCode);
   return (
     <div className="space-y-5">
@@ -81,6 +115,13 @@ function LeadDetails({ lead, onConvert }: { lead: CrmLeadDetail; onConvert: () =
           <DetailValue label="Telefone" value={lead.contact.telefone} />
         </div>
       </section>
+
+      <CrmLeadStageTimingDetails
+        data={timing}
+        error={timingError}
+        isLoading={timingLoading}
+        nowMs={nowMs}
+      />
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -18,7 +18,7 @@ module.exports = defineConfig({
   projects: [
     {
       name: "chromium-desktop",
-      testMatch: /.*\.(desktop|keyboard)\.spec\.cjs/,
+      testMatch: /.*\.(desktop|keyboard|sla)\.spec\.cjs/,
       use: { ...devices["Desktop Chrome"] },
     },
     {

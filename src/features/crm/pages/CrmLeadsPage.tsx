@@ -9,7 +9,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { toast } from "sonner";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/components/AppShell";
@@ -27,6 +27,7 @@ import { CrmLeadStageTransitionDialog } from "../components/CrmLeadStageTransiti
 import { PipelineHeader } from "../components/PipelineHeader";
 import { useCrmLead, useCrmLeads, useMoveCrmLeadStage } from "../hooks/use-crm-leads";
 import { useCrmPipeline } from "../hooks/use-crm-pipeline";
+import { useVisibleMinuteClock } from "../hooks/use-crm-lead-stage-timing";
 import { telemetry, useCrmLeadDrag, type CrmLeadDropRequest } from "../hooks/use-crm-lead-drag";
 import { recordCrmLeadDragEvent } from "../observability/crm-lead-drag.observability";
 import {
@@ -51,8 +52,9 @@ function CrmLeadsPage() {
   const [conversionOpen, setConversionOpen] = useState(false);
   const [stageLeadId, setStageLeadId] = useState<string | null>(null);
   const [dragRequest, setDragRequest] = useState<CrmLeadDropRequest | null>(null);
+  const [stageFocusRequest, setStageFocusRequest] = useState<StageFocusRequest | null>(null);
   const dragSucceeded = useRef(false);
-  const stageFocusLeadId = useRef<string | null>(null);
+  const pendingStageFocus = useRef<StageFocusRequest | null>(null);
   const query = useCrmLeads(filters);
   const pipelineQuery = useCrmPipeline();
   const stageLeadQuery = useCrmLead(stageLeadId);
@@ -67,21 +69,37 @@ function CrmLeadsPage() {
     setDetailsOpen(true);
   }
   function openStage(leadId: string) {
-    stageFocusLeadId.current = leadId;
+    pendingStageFocus.current = { expectedStage: null, leadId };
+    setStageFocusRequest(null);
     setStageLeadId(leadId);
   }
   function restoreStageFocus() {
-    requestAnimationFrame(() => {
-      const trigger = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-crm-stage-trigger]"),
-      ).find((element) => element.dataset.crmStageTrigger === stageFocusLeadId.current);
-      trigger?.focus();
-    });
+    const request = pendingStageFocus.current;
+    if (!request) return;
+    pendingStageFocus.current = null;
+    setStageFocusRequest(request);
   }
   function openConversion() {
     setDetailsOpen(false);
     setConversionOpen(true);
   }
+
+  useLayoutEffect(() => {
+    if (!stageFocusRequest || stageLeadId !== null) return;
+    const lead = items.find((item) => item.id === stageFocusRequest.leadId);
+    if (
+      !lead ||
+      (stageFocusRequest.expectedStage && lead.stage !== stageFocusRequest.expectedStage)
+    ) {
+      return;
+    }
+    const trigger = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-crm-stage-trigger]"),
+    ).find((element) => element.dataset.crmStageTrigger === stageFocusRequest.leadId);
+    if (!trigger?.isConnected) return;
+    trigger.focus();
+    if (document.activeElement === trigger) setStageFocusRequest(null);
+  }, [items, stageFocusRequest, stageLeadId]);
 
   return (
     <AppShell title="CRM Â· Leads">
@@ -232,7 +250,11 @@ function CrmLeadsPage() {
           pipeline={pipelineQuery.data}
           open={Boolean(stageLeadId)}
           initialStage={dragRequest?.lead.id === stageLeadId ? dragRequest.toStage : null}
-          onSucceeded={() => {
+          onSucceeded={(result) => {
+            pendingStageFocus.current = {
+              expectedStage: result.stage,
+              leadId: result.leadId,
+            };
             dragSucceeded.current = true;
             if (dragRequest) recordCrmLeadDragEvent("DRAG_SUCCEEDED", telemetry(dragRequest));
             setDragRequest(null);
@@ -255,6 +277,11 @@ function CrmLeadsPage() {
   );
 }
 
+type StageFocusRequest = {
+  expectedStage: CrmLeadListItem["stage"] | null;
+  leadId: string;
+};
+
 function PipelineBoard({
   items,
   onSelect,
@@ -269,6 +296,7 @@ function PipelineBoard({
   onDragConfirmation: (request: CrmLeadDropRequest | null) => void;
   pipeline: CrmPipeline;
 }) {
+  const nowMs = useVisibleMinuteClock();
   const mutation = useMoveCrmLeadStage();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -338,6 +366,7 @@ function PipelineBoard({
                 onSelect={onSelect}
                 onChangeStage={onChangeStage}
                 submittingLeadId={submittingLeadId}
+                nowMs={nowMs}
                 dragState={
                   !drag.activeLead
                     ? "idle"

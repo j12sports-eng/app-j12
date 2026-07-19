@@ -114,3 +114,18 @@ LOST reutiliza o diálogo de alteração e exige motivo; WON exige confirmação
 A validação isolada usa Playwright com frontend Vite local e contratos HTTP sintéticos, sem iniciar backend ou acessar MySQL. Execute `npm run e2e:27.18b.1`; screenshots, traces de falha e o relatório JSON ficam em `artifacts/e2e/crm-kanban/`, diretório excluído do Git.
 
 Os testes comprovaram e corrigiram pontos mínimos: o `DragOverlay` agora é portado para `document.body`, evitando deslocamento por ancestrais transformados, e conflitos `CRM_STAGE_CONFLICT` invalidam as queries na mutação de estágio correta. O handle bloqueia pan e seleção apenas durante o gesto touch por meio de `touch-action: none` e `user-select: none`; a modal controlada também devolve o foco ao botão do Lead após fechar. Consulte `docs/SPRINT_27_18B_1.md`.
+
+## Sprint 27.18C — SLA e tempo por etapa
+
+O tempo do funil é derivado exclusivamente de `crm_lead_stage_history`. Leads cujo primeiro evento ordenado é um `CREATED` confiável têm cobertura `COMPLETE`; históricos úteis sem início comprovado são `PARTIAL`; ausência de evidência para a etapa atual é `UNAVAILABLE`. `crm_leads.created_at` nunca é usado para inventar uma entrada.
+
+`CrmLeadStageTimingQueryService` usa `clock.now()` injetável, normaliza os instantes para UTC, limita o detalhe a 500 eventos e aplica `CrmLeadStageSlaPolicy`. Como não existe prazo empresarial aprovado, os limites operacionais estão vazios e Leads ativos mensuráveis retornam `NOT_CONFIGURED`; WON/LOST retornam `COMPLETED`.
+
+Endpoints read-only protegidos:
+
+- `GET /internal/crm/leads/:leadId/stage-timing`;
+- `GET /api/internal/crm/leads/:leadId/stage-timing`.
+
+A resposta não seleciona contato ou `reason`. A listagem paginada existente inclui um resumo de timing em uma única consulta limitada para alimentar os cards, sem N+1. O endpoint/filtro global de SLA não foi criado porque não há metas aprovadas e uma visão baseada apenas na página carregada seria enganosa.
+
+O Kanban exibe duração, badge textual e cobertura; o detalhe exibe resumo e timeline. A apresentação avança a cada 60 segundos e pausa em aba oculta, sem polling por segundo. Não houve migration, escrita periódica, job, notificação, automação ou MySQL externo. Contrato completo em `docs/SPRINT_27_18C.md`.

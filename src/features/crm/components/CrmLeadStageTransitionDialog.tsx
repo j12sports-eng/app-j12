@@ -14,6 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useMoveCrmLeadStage } from "../hooks/use-crm-leads";
+import type { CrmLeadStageTransitionResult } from "../api/crm-lead-stage-transition.api";
 import type { CrmLeadDetail } from "../types/crm-lead.types";
 import type { CrmPipeline } from "../types/crm-pipeline.types";
 
@@ -32,7 +33,7 @@ export function CrmLeadStageTransitionDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialStage?: string | null;
-  onSucceeded?: () => void;
+  onSucceeded?: (result: CrmLeadStageTransitionResult) => void;
   onFailed?: (error: unknown) => void;
   onReturnFocus?: () => void;
 }) {
@@ -55,7 +56,7 @@ export function CrmLeadStageTransitionDialog({
     if (!target || mutation.isPending) return;
     if (target === "LOST" && !reason.trim()) return;
     try {
-      await mutation.mutateAsync({
+      const result = await mutation.mutateAsync({
         leadId: lead.id,
         input: {
           nextStage: target as never,
@@ -65,7 +66,7 @@ export function CrmLeadStageTransitionDialog({
         },
       });
       toast.success("Estágio atualizado.");
-      onSucceeded?.();
+      onSucceeded?.(result);
       onOpenChange(false);
     } catch (error) {
       // Keep the dialog and reason open so the operator can recover from conflicts.

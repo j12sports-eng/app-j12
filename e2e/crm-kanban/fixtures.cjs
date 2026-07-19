@@ -27,6 +27,7 @@ function stage(id, label, transitions, terminal = false) {
 }
 
 function lead(id, stageId, status = "OPEN") {
+  const terminal = stageId === "WON" || stageId === "LOST";
   return {
     id,
     unitId: "synthetic-unit",
@@ -38,6 +39,20 @@ function lead(id, stageId, status = "OPEN") {
     updatedAt: "2026-07-18T12:00:00.000Z",
     eligibility: { canConvertToDraftEnrollment: false, reasonCode: "E2E_ONLY" },
     conversions: { studentCompleted: false, enrollmentCompleted: false, enrollmentStatus: null },
+    stageTiming: {
+      currentStageEntryAt: "2026-07-18T12:00:00.000Z",
+      currentStageElapsedMs: 3_600_000,
+      historyCoverage: "COMPLETE",
+      measuredAt: "2026-07-18T13:00:00.000Z",
+      sla: {
+        status: terminal ? "COMPLETED" : "NOT_CONFIGURED",
+        limitMs: null,
+        elapsedMs: terminal ? 0 : 3_600_000,
+        remainingMs: null,
+        overdueMs: 0,
+        consumedPercentage: null,
+      },
+    },
   };
 }
 
@@ -103,8 +118,14 @@ async function installCrmMock(page, options = {}) {
         success: true,
       });
     }
-    const match = path.match(/^\/internal\/crm\/leads\/([^/]+)(?:\/(stage|draft-enrollment))?$/);
-    if (match && request.method() === "GET") {
+    const match = path.match(
+      /^\/internal\/crm\/leads\/([^/]+)(?:\/(stage|stage-timing|draft-enrollment))?$/,
+    );
+    if (match && match[2] === "stage-timing" && request.method() === "GET") {
+      const item = state.leads.find((candidate) => candidate.id === decodeURIComponent(match[1]));
+      return json(route, { data: timingDetail(item), success: true });
+    }
+    if (match && !match[2] && request.method() === "GET") {
       const item = state.leads.find((candidate) => candidate.id === decodeURIComponent(match[1]));
       return json(route, { data: detail(item), success: true });
     }
@@ -148,6 +169,20 @@ async function installCrmMock(page, options = {}) {
               ? "LOST"
               : current.status,
         updatedAt: "2026-07-18T12:01:00.000Z",
+        stageTiming: {
+          ...current.stageTiming,
+          currentStageEntryAt: "2026-07-18T12:01:00.000Z",
+          currentStageElapsedMs: 0,
+          measuredAt: "2026-07-18T12:01:00.000Z",
+          sla: {
+            ...current.stageTiming.sla,
+            elapsedMs: 0,
+            status:
+              body.nextStage === "WON" || body.nextStage === "LOST"
+                ? "COMPLETED"
+                : "NOT_CONFIGURED",
+          },
+        },
       });
       return json(route, {
         data: {
@@ -187,6 +222,37 @@ function detail(item) {
       student: { status: null, personId: null, personProfileId: null, convertedAt: null },
       enrollment: { status: null, enrollmentId: null, enrollmentStatus: null, convertedAt: null },
     },
+  };
+}
+
+function timingDetail(item) {
+  return {
+    leadId: item.id,
+    currentStage: item.stage,
+    currentStatus: item.status,
+    ...item.stageTiming,
+    stages: [
+      {
+        stage: item.stage,
+        totalDurationMs: item.stageTiming.currentStageElapsedMs,
+        visitCount: 1,
+        firstEntryAt: item.stageTiming.currentStageEntryAt,
+        lastEntryAt: item.stageTiming.currentStageEntryAt,
+        lastExitAt: null,
+        isCurrent: true,
+      },
+    ],
+    timeline: [
+      {
+        stage: item.stage,
+        entryAt: item.stageTiming.currentStageEntryAt,
+        exitAt: null,
+        durationMs: item.stageTiming.currentStageElapsedMs,
+        actorId: "synthetic-operator",
+        action: "CREATED",
+        isCurrent: true,
+      },
+    ],
   };
 }
 

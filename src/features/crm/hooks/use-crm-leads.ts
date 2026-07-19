@@ -8,6 +8,10 @@ import { crmLeadQueryKeys } from "../query/crm-lead.query-keys";
 import { crmConversionHistoryQueryKeys } from "../query/crm-conversion-history.query-keys";
 import { crmPipelineQueryKeys } from "../query/crm-pipeline.query-keys";
 import {
+  crmLeadSlaQueryKeys,
+  crmLeadStageTimingQueryKeys,
+} from "../query/crm-lead-stage-timing.query-keys";
+import {
   moveCrmLeadStage,
   type CrmLeadStageTransitionInput,
 } from "../api/crm-lead-stage-transition.api";
@@ -48,6 +52,10 @@ export function useConvertCrmLeadToDraftEnrollment() {
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
       void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: crmLeadStageTimingQueryKeys.detail(variables.leadId),
+      });
+      void queryClient.invalidateQueries({ queryKey: crmLeadSlaQueryKeys.all });
     },
   });
 }
@@ -62,6 +70,10 @@ export function useMoveCrmLeadStage() {
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
       void queryClient.invalidateQueries({ queryKey: crmPipelineQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: crmLeadStageTimingQueryKeys.detail(variables.leadId),
+      });
+      void queryClient.invalidateQueries({ queryKey: crmLeadSlaQueryKeys.all });
     },
     // Conflitos indicam que outro operador alterou o lead; recarregamos a verdade do servidor.
     onError: (error, variables) => {
@@ -70,6 +82,10 @@ export function useMoveCrmLeadStage() {
         void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
         void queryClient.invalidateQueries({ queryKey: crmPipelineQueryKeys.all });
         void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
+        void queryClient.invalidateQueries({
+          queryKey: crmLeadStageTimingQueryKeys.detail(variables.leadId),
+        });
+        void queryClient.invalidateQueries({ queryKey: crmLeadSlaQueryKeys.all });
       }
     },
   });

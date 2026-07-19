@@ -20,6 +20,8 @@ function createCrmInternalRouter(options = {}) {
   const pipelineController = options.pipelineController || createCrmPipelineController(options);
   const stageTransitionController =
     options.stageTransitionController || createCrmLeadStageTransitionController(options);
+  const stageTimingController =
+    options.stageTimingController || createCrmLeadStageTimingController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
@@ -28,6 +30,7 @@ function createCrmInternalRouter(options = {}) {
   router.get("/conversions/export", conversionHistoryExportController.export);
   router.get("/conversions/:conversionId", conversionHistoryController.getById);
   router.get("/leads", queryController.list);
+  router.get("/leads/:leadId/stage-timing", stageTimingController.getByLeadId);
   router.get("/leads/:leadId", queryController.getById);
   router.patch("/leads/:leadId/stage", stageTransitionController.move);
   router.post("/leads/:leadId/draft-enrollment", controller.convert);
@@ -140,7 +143,41 @@ function createCrmLeadQueryService(options = {}) {
   return new CrmLeadQueryService({
     repository:
       options.leadQueryRepository || options.leadRepository || createCrmLeadRepository(options),
+    clock: options.stageTimingClock,
+    slaPolicy: options.stageSlaPolicy,
   });
+}
+
+function createCrmLeadStageTimingController(options = {}) {
+  const {
+    CrmLeadStageTimingController,
+  } = require("../controllers/crm-lead-stage-timing.controller.js");
+  return new CrmLeadStageTimingController({
+    queryService: createCrmLeadStageTimingQueryService(options),
+  });
+}
+
+function createCrmLeadStageTimingQueryService(options = {}) {
+  if (options.stageTimingQueryService) return options.stageTimingQueryService;
+  const {
+    CrmLeadStageTimingQueryService,
+  } = require("../../application/crm-lead-stage-timing-query.service.js");
+  return new CrmLeadStageTimingQueryService({
+    clock: options.stageTimingClock,
+    logger: options.logger,
+    repository:
+      options.stageTimingRepository ||
+      options.leadRepository ||
+      createCrmLeadStageTimingRepository(options),
+    slaPolicy: options.stageSlaPolicy,
+  });
+}
+
+function createCrmLeadStageTimingRepository(options = {}) {
+  const {
+    MySqlCrmLeadStageTimingRepository,
+  } = require("../../infrastructure/mysql-crm-lead-stage-timing.repository.js");
+  return new MySqlCrmLeadStageTimingRepository(options);
 }
 
 function createCrmLeadConversionHistoryController(options = {}) {
@@ -298,6 +335,9 @@ module.exports = {
   createCrmPipelineController,
   createCrmLeadQueryController,
   createCrmLeadQueryService,
+  createCrmLeadStageTimingController,
+  createCrmLeadStageTimingQueryService,
+  createCrmLeadStageTimingRepository,
   createCrmLeadUnitContextService,
   ensureCrmInternalAccess,
 };
