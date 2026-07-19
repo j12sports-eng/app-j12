@@ -19,6 +19,10 @@ module.exports = Object.freeze({
   ...require("./application/services/index.js"),
   MySqlEnrollmentClassLinkRepository: infrastructure.MySqlEnrollmentClassLinkRepository,
   MySqlEnrollmentRepository: infrastructure.MySqlEnrollmentRepository,
+  createCanonicalEnrollmentClassLinkFacade: infrastructure.createCanonicalEnrollmentClassLinkFacade,
+  createCanonicalEnrollmentClassLinkService:
+    infrastructure.createCanonicalEnrollmentClassLinkService,
+  createTransactionalClassFacade: infrastructure.createTransactionalClassFacade,
   application,
   infrastructure,
   presentation,

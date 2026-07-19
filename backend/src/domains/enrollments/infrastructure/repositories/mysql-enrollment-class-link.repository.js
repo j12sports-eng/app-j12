@@ -7,6 +7,20 @@ const TABLE_NAME = "enrollment_class_links";
 const ACTIVE_LINK_UNIQUE_INDEX = "ux_enrollment_class_links_active";
 const ACTIVE_STATUS = "ACTIVE";
 const INACTIVE_STATUS = "INACTIVE";
+const LINK_PROJECTION = `
+    id,
+    enrollment_id,
+    class_id,
+    status,
+    linked_at,
+    linked_by,
+    unlinked_at,
+    unlinked_by,
+    origin,
+    metadata_json,
+    created_at,
+    updated_at
+`;
 
 const INSERT_ACTIVE_LINK_SQL = `
   INSERT INTO ${TABLE_NAME} (
@@ -23,20 +37,29 @@ const INSERT_ACTIVE_LINK_SQL = `
 `;
 
 const SELECT_LINK_BY_ID_SQL = `
-  SELECT *
+  SELECT ${LINK_PROJECTION}
   FROM ${TABLE_NAME}
   WHERE id = ?
   LIMIT 1
 `;
 
 const SELECT_ACTIVE_LINK_BY_ENROLLMENT_AND_CLASS_SQL = `
-  SELECT *
+  SELECT ${LINK_PROJECTION}
   FROM ${TABLE_NAME}
   WHERE enrollment_id = ?
     AND class_id = ?
     AND status = ?
     AND unlinked_at IS NULL
   ORDER BY linked_at DESC, id DESC
+  LIMIT 1
+`;
+
+const SELECT_LATEST_LINK_BY_ENROLLMENT_AND_CLASS_SQL = `
+  SELECT ${LINK_PROJECTION}
+  FROM ${TABLE_NAME}
+  WHERE enrollment_id = ?
+    AND class_id = ?
+  ORDER BY linked_at DESC, created_at DESC, id DESC
   LIMIT 1
 `;
 
@@ -153,6 +176,24 @@ class MySqlEnrollmentClassLinkRepository {
       enrollmentId,
       classId,
       ACTIVE_STATUS,
+    ]);
+
+    return toEnrollmentClassLinkData(readFirstRow(rows));
+  }
+
+  /**
+   * Reads the latest state for a pair so callers never silently reactivate or
+   * overwrite an incompatible historical link.
+   *
+   * @param {{ enrollmentId?: string|null, classId?: string|number|null }} input
+   * @returns {Promise<Record<string, unknown>|null>}
+   */
+  async findLatestByEnrollmentAndClass(input = {}) {
+    const enrollmentId = requiredText(input.enrollmentId, "enrollmentId", 64);
+    const classId = requiredInteger(input.classId, "classId");
+    const rows = await this.query(SELECT_LATEST_LINK_BY_ENROLLMENT_AND_CLASS_SQL, [
+      enrollmentId,
+      classId,
     ]);
 
     return toEnrollmentClassLinkData(readFirstRow(rows));
@@ -365,6 +406,7 @@ module.exports = {
   MySqlEnrollmentClassLinkRepository,
   SELECT_ACTIVE_LINK_COUNT_BY_CLASS_SQL,
   SELECT_ACTIVE_LINK_BY_ENROLLMENT_AND_CLASS_SQL,
+  SELECT_LATEST_LINK_BY_ENROLLMENT_AND_CLASS_SQL,
   SELECT_LINK_BY_ID_SQL,
   TABLE_NAME,
   UPDATE_UNLINK_ACTIVE_LINK_SQL,

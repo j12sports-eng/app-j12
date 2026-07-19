@@ -84,10 +84,13 @@ class EnrollmentFacade {
     this.enrollmentClassLinkService =
       options.enrollmentClassLinkService ||
       new EnrollmentClassLinkService({
+        authorizeClassAssignment: options.authorizeClassAssignment || null,
         classFacade: options.classFacade || null,
         classLinkRepository: options.classLinkRepository || null,
         classReader: options.classReader || null,
+        clock: options.assignmentClock,
         enrollmentReader: this.enrollmentService,
+        logger: this.eventLogger,
         transactionRunner: options.transactionRunner || null,
       });
     this.enrollmentFinancialService =
@@ -274,6 +277,25 @@ class EnrollmentFacade {
    */
   linkActiveEnrollmentToClass(input = {}) {
     return this.getEnrollmentClassLinkService().linkActiveEnrollmentToClass(input);
+  }
+
+  /**
+   * Canonical authorized Enrollment -> Turma assignment boundary.
+   *
+   * @param {{ enrollmentId?: string|null, classId?: string|number|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown, correlationId?: string|null, requestId?: string|null }} context
+   * @returns {Promise<Readonly<Record<string, unknown>>>}
+   */
+  assignEnrollmentToClass(command = {}, context = {}) {
+    const service = this.getEnrollmentClassLinkService();
+
+    if (typeof service.assignEnrollmentToClass !== "function") {
+      throw new TypeError(
+        "EnrollmentFacade requires an enrollmentClassLinkService.assignEnrollmentToClass function.",
+      );
+    }
+
+    return service.assignEnrollmentToClass(command, context);
   }
 
   /**

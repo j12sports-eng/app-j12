@@ -17,6 +17,11 @@ const ENROLLMENT_CLASS_LINK_CLASS_FULL_CODE = "ENROLLMENT_CLASS_LINK_CLASS_FULL"
 const ENROLLMENT_CLASS_LINK_CLASS_CAPACITY_UNCONFIGURED_CODE =
   "ENROLLMENT_CLASS_LINK_CLASS_CAPACITY_UNCONFIGURED";
 const ENROLLMENT_CLASS_LINK_DUPLICATE_CODE = "ENROLLMENT_CLASS_LINK_DUPLICATE";
+const ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE = "ENROLLMENT_CLASS_LINK_ACCESS_DENIED";
+const ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE = "ENROLLMENT_CLASS_LINK_INPUT_INVALID";
+const ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE = "ENROLLMENT_CLASS_LINK_RESULT_INVALID";
+const ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE = "ENROLLMENT_CLASS_LINK_STATE_CONFLICT";
+const ENROLLMENT_CLASS_ASSIGNMENT_FIELDS = new Set(["classId", "enrollmentId"]);
 
 /**
  * Internal service for Enrollment -> Turma integration.
@@ -35,17 +40,133 @@ class EnrollmentClassLinkService {
    * @param {(work: (context?: { classFacade?: unknown, classLinkRepository?: unknown, classReader?: unknown, enrollmentReader?: unknown }) => Promise<unknown>) => Promise<unknown>} [options.transactionRunner]
    */
   constructor({
+    authorizeClassAssignment = null,
     classFacade = null,
     classLinkRepository = null,
     classReader = null,
+    clock = Date.now,
     enrollmentReader = null,
+    logger = null,
     transactionRunner = null,
   } = {}) {
+    this.authorizeClassAssignment =
+      typeof authorizeClassAssignment === "function" ? authorizeClassAssignment : null;
     this.classFacade = classFacade;
     this.classLinkRepository = classLinkRepository;
     this.classReader = classReader;
+    this.clock = typeof clock === "function" ? clock : Date.now;
     this.enrollmentReader = enrollmentReader;
+    this.logger = logger;
     this.transactionRunner = typeof transactionRunner === "function" ? transactionRunner : null;
+  }
+
+  /**
+   * Canonical authorized boundary for Enrollment -> Turma assignment.
+   * Only identifiers are accepted; student, actor and audit data are derived
+   * from persisted Enrollment and trusted execution context.
+   *
+   * @param {{ enrollmentId?: string|null, classId?: string|number|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown, correlationId?: string|null, requestId?: string|null }} context
+   * @returns {Promise<Readonly<{ enrollmentClassLinkId: string, enrollmentId: string, classId: string|number, status: string, created: boolean }>>}
+   */
+  async assignEnrollmentToClass(command = {}, context = {}) {
+    const startedAt = readClockMilliseconds(this.clock);
+    const safeCommand = readObject(command);
+    const unexpectedFields = Object.keys(safeCommand).filter(
+      (field) => !ENROLLMENT_CLASS_ASSIGNMENT_FIELDS.has(field),
+    );
+    const enrollmentId = nullableText(safeCommand.enrollmentId, 64);
+    const classId = normalizeClassIdInput(safeCommand.classId);
+    const actorId = nullableText(readProperty(context, "actorId"), 191);
+    const correlationId = nullableText(readProperty(context, "correlationId"), 191);
+    const requestId = nullableText(readProperty(context, "requestId"), 191);
+    const logContext = compactObject({ actorId, classId, correlationId, enrollmentId, requestId });
+
+    this.logAssignment("assignment_started", logContext);
+
+    try {
+      if (unexpectedFields.length > 0) {
+        throw controlledError(
+          "Enrollment class assignment accepts only enrollmentId and classId.",
+          ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE,
+          { unexpectedFields },
+        );
+      }
+
+      if (!enrollmentId || !isValidClassIdValue(classId) || !actorId) {
+        throw controlledError(
+          "Enrollment class assignment requires enrollmentId, classId and an authenticated actor.",
+          ENROLLMENT_CLASS_LINK_INPUT_REQUIRED_CODE,
+          {
+            hasActorId: Boolean(actorId),
+            hasClassId: isValidClassIdValue(classId),
+            hasEnrollmentId: Boolean(enrollmentId),
+          },
+        );
+      }
+
+      const authorized = await this.isClassAssignmentAuthorized({
+        actorId,
+        authorization: readProperty(context, "authorization"),
+        classId,
+        enrollmentId,
+      });
+
+      if (!authorized) {
+        throw controlledError(
+          "Actor is not authorized to assign this Enrollment to this class.",
+          ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE,
+          { actorId, classId, enrollmentId },
+        );
+      }
+
+      const metadata = compactObject({ correlationId, requestId });
+      const result = await this.linkActiveEnrollmentToClass({
+        classId,
+        enrollmentId,
+        linkedBy: actorId,
+        metadata,
+        origin: "canonical_assignment",
+        requireIncompatibleLinkCheck: true,
+      });
+      const dto = toEnrollmentClassAssignmentDto(result, { classId, enrollmentId });
+
+      this.logAssignment(dto.created ? "assignment_created" : "assignment_reused", {
+        ...logContext,
+        durationMs: elapsedMilliseconds(startedAt, this.clock),
+        enrollmentClassLinkId: dto.enrollmentClassLinkId,
+      });
+
+      return dto;
+    } catch (error) {
+      this.logAssignment(assignmentFailureEvent(error), {
+        ...logContext,
+        code: nullableText(readProperty(error, "code"), 96) || "UNEXPECTED_ERROR",
+        durationMs: elapsedMilliseconds(startedAt, this.clock),
+      });
+      throw error;
+    }
+  }
+
+  async isClassAssignmentAuthorized(input = {}) {
+    if (!this.authorizeClassAssignment) {
+      return false;
+    }
+
+    try {
+      return (await this.authorizeClassAssignment(Object.freeze({ ...input }))) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  logAssignment(event, context = {}) {
+    const logger = this.logger;
+    const level =
+      event === "assignment_failed" ? "error" : event.endsWith("rejected") ? "warn" : "info";
+    const method = typeof logger?.[level] === "function" ? logger[level].bind(logger) : null;
+
+    method?.(`[enrollments] ${event}`, compactObject(context));
   }
 
   /**
@@ -263,6 +384,26 @@ class EnrollmentClassLinkService {
         };
       }
 
+      if (input.requireIncompatibleLinkCheck === true) {
+        const incompatibleLink = await this.findLatestEnrollmentClassLink(
+          { classId, enrollmentId },
+          classLinkRepository,
+        );
+
+        if (incompatibleLink) {
+          throw controlledError(
+            "Enrollment already has an incompatible historical link to this class.",
+            ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE,
+            {
+              classId,
+              enrollmentId,
+              existingLinkId: nullableText(readProperty(incompatibleLink, "id"), 64),
+              existingStatus: nullableText(readProperty(incompatibleLink, "status"), 32),
+            },
+          );
+        }
+      }
+
       const classValidation = await this.validateClassReadiness(
         {
           capacityMode: "availability",
@@ -342,15 +483,28 @@ class EnrollmentClassLinkService {
   }
 
   /**
+   * @param {{ classId: string|number, enrollmentId: string }} input
+   * @param {unknown} classLinkRepository
+   * @returns {Promise<unknown|null>}
+   */
+  async findLatestEnrollmentClassLink(input, classLinkRepository = this.classLinkRepository) {
+    if (typeof classLinkRepository?.findLatestByEnrollmentAndClass !== "function") {
+      throw new TypeError(
+        "Canonical Enrollment class assignment requires classLinkRepository.findLatestByEnrollmentAndClass.",
+      );
+    }
+
+    return classLinkRepository.findLatestByEnrollmentAndClass(input);
+  }
+
+  /**
    * @returns {{ findEnrollmentById?: (id: string) => Promise<unknown|null>, findById?: (id: string) => Promise<unknown|null> }}
    */
   getEnrollmentReader(enrollmentReader = this.enrollmentReader) {
     if (
       !enrollmentReader ||
-      (
-        typeof enrollmentReader.findEnrollmentById !== "function" &&
-        typeof enrollmentReader.findById !== "function"
-      )
+      (typeof enrollmentReader.findEnrollmentById !== "function" &&
+        typeof enrollmentReader.findById !== "function")
     ) {
       throw new TypeError(
         "EnrollmentClassLinkService requires an enrollmentReader.findEnrollmentById or findById function.",
@@ -467,11 +621,12 @@ class EnrollmentClassLinkService {
       : readCurrentStudents(turma).length;
     const capacityChecked = capacity !== null;
     const explicitAvailableCapacity = capacitySnapshot?.availableCapacity ?? null;
-    const capacityAvailable = explicitAvailableCapacity !== null
-      ? Number(explicitAvailableCapacity) > 0
-      : capacityChecked
-        ? currentStudents < capacity
-        : null;
+    const capacityAvailable =
+      explicitAvailableCapacity !== null
+        ? Number(explicitAvailableCapacity) > 0
+        : capacityChecked
+          ? currentStudents < capacity
+          : null;
     const occupancyConsistent = capacityChecked ? currentStudents <= capacity : null;
 
     if (
@@ -770,10 +925,8 @@ class EnrollmentClassLinkService {
   getClassLinkRepository(classLinkRepository = this.classLinkRepository) {
     if (
       !classLinkRepository ||
-      (
-        typeof classLinkRepository.createActiveLinkIfNotExists !== "function" &&
-        typeof classLinkRepository.createOrReuseActiveLink !== "function"
-      )
+      (typeof classLinkRepository.createActiveLinkIfNotExists !== "function" &&
+        typeof classLinkRepository.createOrReuseActiveLink !== "function")
     ) {
       throw new TypeError(
         "EnrollmentClassLinkService requires a classLinkRepository.createActiveLinkIfNotExists or createOrReuseActiveLink function.",
@@ -839,11 +992,13 @@ function readClassStatus(turma) {
     return readProperty(turma, "ativa") ? "ativa" : "inativa";
   }
 
-  return normalizeLowerText(
-    readProperty(turma, "status") ||
-      readProperty(turma, "classStatus") ||
-      readProperty(turma, "situacao"),
-  ) || "ativa";
+  return (
+    normalizeLowerText(
+      readProperty(turma, "status") ||
+        readProperty(turma, "classStatus") ||
+        readProperty(turma, "situacao"),
+    ) || "ativa"
+  );
 }
 
 /**
@@ -875,9 +1030,7 @@ function readCurrentStudents(turma) {
     readProperty(turma, "aluno_ids_json");
   const parsed = typeof raw === "string" ? safeJsonParse(raw, []) : raw;
 
-  return Array.isArray(parsed)
-    ? parsed.map((item) => nullableText(item, 64)).filter(Boolean)
-    : [];
+  return Array.isArray(parsed) ? parsed.map((item) => nullableText(item, 64)).filter(Boolean) : [];
 }
 
 /**
@@ -925,7 +1078,7 @@ function safeJsonParse(value, fallback) {
  * @returns {unknown|null}
  */
 function readProperty(value, property) {
-  return value && typeof value === "object" ? value[property] ?? null : null;
+  return value && typeof value === "object" ? (value[property] ?? null) : null;
 }
 
 /**
@@ -1033,12 +1186,10 @@ function readCapacityTransactionOptions({
 } = {}) {
   const enabled = Boolean(
     classFacade &&
-      transactionUsed &&
-      (
-        transactionContext.classCapacityTransactionEnabled === true ||
-        transactionContext.transactionQueryRunner ||
-        transactionContext.transactionConnection
-      ),
+    transactionUsed &&
+    (transactionContext.classCapacityTransactionEnabled === true ||
+      transactionContext.transactionQueryRunner ||
+      transactionContext.transactionConnection),
   );
 
   return {
@@ -1057,7 +1208,11 @@ function buildClassCapacityTransactionResult({ capacityTransaction = {}, recheck
     enabled: capacityTransaction.enabled === true,
     lockForUpdate: capacityTransaction.lockForUpdate === true,
     occupancySource: nullableText(capacityTransaction.occupancySource, 64),
-    occupiedSlots: readFirstNumber(recheck, ["occupiedSlots", "currentStudentCount", "studentCount"]),
+    occupiedSlots: readFirstNumber(recheck, [
+      "occupiedSlots",
+      "currentStudentCount",
+      "studentCount",
+    ]),
     occupiedSlotsConsistent: readOccupancyConsistent(recheck),
     recheckedInsideTransaction: Boolean(capacityTransaction.enabled && recheck),
   };
@@ -1175,6 +1330,115 @@ function nullableText(value, max = 65535) {
 }
 
 /**
+ * Converts the broad internal persistence result into the intentionally small
+ * application boundary. Mismatched repository data is rejected fail-closed.
+ *
+ * @param {unknown} result
+ * @param {{ classId: string|number, enrollmentId: string }} expected
+ * @returns {Readonly<Record<string, unknown>>}
+ */
+function toEnrollmentClassAssignmentDto(result, expected) {
+  const link = readObject(readProperty(result, "link"));
+  const enrollmentClassLinkId = nullableText(readProperty(link, "id"), 64);
+  const enrollmentId = nullableText(readProperty(link, "enrollmentId"), 64);
+  const classId = normalizeClassIdInput(readProperty(link, "classId"));
+  const status = nullableText(readProperty(link, "status"), 32)?.toUpperCase() || null;
+
+  if (
+    !enrollmentClassLinkId ||
+    enrollmentId !== expected.enrollmentId ||
+    String(classId ?? "") !== String(expected.classId) ||
+    status !== "ACTIVE"
+  ) {
+    throw controlledError(
+      "Enrollment class assignment persistence returned an invalid link.",
+      ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE,
+      {
+        classIdMatches: String(classId ?? "") === String(expected.classId),
+        enrollmentIdMatches: enrollmentId === expected.enrollmentId,
+        hasEnrollmentClassLinkId: Boolean(enrollmentClassLinkId),
+        status,
+      },
+    );
+  }
+
+  return Object.freeze({
+    enrollmentClassLinkId,
+    enrollmentId,
+    classId,
+    status,
+    created: readBooleanProperty(result, "created", false),
+  });
+}
+
+/**
+ * @param {unknown} error
+ * @returns {string}
+ */
+function assignmentFailureEvent(error) {
+  const code = nullableText(readProperty(error, "code"), 96);
+
+  if (
+    code === ENROLLMENT_CLASS_LINK_CLASS_FULL_CODE ||
+    code === ENROLLMENT_CLASS_LINK_CLASS_CAPACITY_UNCONFIGURED_CODE
+  ) {
+    return "assignment_capacity_exhausted";
+  }
+
+  if (
+    code === ENROLLMENT_CLASS_LINK_DUPLICATE_CODE ||
+    code === ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE ||
+    code === ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE
+  ) {
+    return "assignment_conflict";
+  }
+
+  if (
+    code === ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE ||
+    code === ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE ||
+    code === ENROLLMENT_CLASS_LINK_INPUT_REQUIRED_CODE ||
+    code === ENROLLMENT_CLASS_LINK_ENROLLMENT_NOT_FOUND_CODE ||
+    code === ENROLLMENT_CLASS_LINK_CLASS_NOT_FOUND_CODE ||
+    code === ENROLLMENT_CLASS_LINK_INVALID_CLASS_ID_CODE ||
+    code === ENROLLMENT_CLASS_LINK_INVALID_CLASS_STATUS_CODE ||
+    code === ENROLLMENT_CLASS_LINK_INVALID_ENROLLMENT_STATUS_CODE
+  ) {
+    return "assignment_rejected";
+  }
+
+  return "assignment_failed";
+}
+
+/**
+ * @param {Record<string, unknown>} value
+ * @returns {Record<string, unknown>}
+ */
+function compactObject(value = {}) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== ""),
+  );
+}
+
+/**
+ * @param {Function} clock
+ * @returns {number}
+ */
+function readClockMilliseconds(clock) {
+  const value = clock();
+  const parsed = value instanceof Date ? value.getTime() : Number(value);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+/**
+ * @param {number} startedAt
+ * @param {Function} clock
+ * @returns {number}
+ */
+function elapsedMilliseconds(startedAt, clock) {
+  return Math.max(0, readClockMilliseconds(clock) - startedAt);
+}
+
+/**
  * @param {string} message
  * @param {string} code
  * @param {Record<string, unknown>} [details]
@@ -1192,11 +1456,17 @@ function controlledError(message, code, details = {}) {
 }
 
 module.exports = {
+  ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE,
   ENROLLMENT_CLASS_LINK_CLASS_CAPACITY_UNCONFIGURED_CODE,
   ENROLLMENT_CLASS_LINK_CLASS_FULL_CODE,
   ENROLLMENT_CLASS_LINK_CLASS_NOT_FOUND_CODE,
   ENROLLMENT_CLASS_LINK_DUPLICATE_CODE,
   ENROLLMENT_CLASS_LINK_ENROLLMENT_NOT_FOUND_CODE,
+  ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE,
   ENROLLMENT_CLASS_LINK_INPUT_REQUIRED_CODE,
+  ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE,
+  ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE,
   EnrollmentClassLinkService,
+  assignmentFailureEvent,
+  toEnrollmentClassAssignmentDto,
 };
