@@ -25,6 +25,7 @@ export function CrmLeadStageTransitionDialog({
   initialStage,
   onSucceeded,
   onFailed,
+  onReturnFocus,
 }: {
   lead: CrmLeadDetail;
   pipeline: CrmPipeline;
@@ -33,6 +34,7 @@ export function CrmLeadStageTransitionDialog({
   initialStage?: string | null;
   onSucceeded?: () => void;
   onFailed?: (error: unknown) => void;
+  onReturnFocus?: () => void;
 }) {
   const mutation = useMoveCrmLeadStage();
   const [nextStage, setNextStage] = useState("");
@@ -78,7 +80,14 @@ export function CrmLeadStageTransitionDialog({
         if (!mutation.isPending) onOpenChange(value);
       }}
     >
-      <DialogContent className="border-white/10 bg-card">
+      <DialogContent
+        className="border-white/10 bg-card"
+        onCloseAutoFocus={(event) => {
+          // A modal é controlada sem DialogTrigger; devolvemos o foco ao card que a abriu.
+          event.preventDefault();
+          onReturnFocus?.();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-white">Alterar estágio</DialogTitle>
           <DialogDescription>

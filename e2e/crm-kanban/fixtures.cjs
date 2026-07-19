@@ -1,0 +1,245 @@
+const { expect } = require("@playwright/test");
+
+const PIPELINE = {
+  stages: [
+    stage("NEW", "Novo", ["CONTACTED", "LOST"]),
+    stage("CONTACTED", "Contatado", ["QUALIFIED", "LOST"]),
+    stage("QUALIFIED", "Qualificado", ["PROPOSAL", "LOST"]),
+    stage("PROPOSAL", "Proposta", ["NEGOTIATION", "LOST"]),
+    stage("NEGOTIATION", "Negociação", ["WON", "LOST"]),
+    stage("WON", "Ganho", [], true),
+    stage("LOST", "Perdido", [], true),
+  ],
+  transitions: [],
+  cardFields: [],
+};
+
+function stage(id, label, transitions, terminal = false) {
+  return {
+    id,
+    label,
+    transitions,
+    terminal,
+    order: 1,
+    color: "#fb923c",
+    description: `Etapa sintética ${id}`,
+  };
+}
+
+function lead(id, stageId, status = "OPEN") {
+  return {
+    id,
+    unitId: "synthetic-unit",
+    source: "E2E sintético",
+    assignedTo: "Operador sintético",
+    stage: stageId,
+    status,
+    createdAt: "2026-07-18T12:00:00.000Z",
+    updatedAt: "2026-07-18T12:00:00.000Z",
+    eligibility: { canConvertToDraftEnrollment: false, reasonCode: "E2E_ONLY" },
+    conversions: { studentCompleted: false, enrollmentCompleted: false, enrollmentStatus: null },
+  };
+}
+
+function initialLeads() {
+  return [
+    lead("lead-a-new", "NEW"),
+    lead("lead-b-negotiation", "NEGOTIATION"),
+    lead("lead-c-won", "WON", "CONVERTED"),
+    lead("lead-d-lost", "LOST", "LOST"),
+  ];
+}
+
+async function installCrmMock(page, options = {}) {
+  const state = {
+    leads: initialLeads(),
+    patchRequests: [],
+    conversionRequests: [],
+    listRequests: 0,
+    events: [],
+    nextPatch: options.nextPatch || "success",
+    patchDelayMs: options.patchDelayMs ?? 250,
+  };
+
+  await page.addInitScript(
+    ({ role }) => {
+      const user = {
+        id: "synthetic-user",
+        nome: "Usuário E2E",
+        email: "e2e@example.invalid",
+        role,
+        perfil: role,
+      };
+      localStorage.setItem("j12_auth_token", "synthetic.e2e.token");
+      localStorage.setItem("j12_auth_user", JSON.stringify(user));
+      window.addEventListener("crm:drag", (event) => {
+        window.__crmDragEvents = [...(window.__crmDragEvents || []), event.detail];
+      });
+    },
+    { role: options.role || "admin" },
+  );
+
+  if (typeof page.routeWebSocket === "function") {
+    await page.routeWebSocket("**/socket.io/**", (socket) => socket.close());
+  }
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/socket.io/")) return route.abort("blockedbyclient");
+    if (!url.pathname.startsWith("/api/")) {
+      if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+        return route.abort("blockedbyclient");
+      }
+      return route.continue();
+    }
+    const path = url.pathname.replace(/^\/api/, "");
+
+    if (path === "/auth/me") return json(route, userFor(options.role || "admin"));
+    if (path === "/internal/crm/pipeline") return json(route, { data: PIPELINE, success: true });
+    if (path === "/internal/crm/leads" && request.method() === "GET") {
+      state.listRequests += 1;
+      return json(route, {
+        data: { items: state.leads, pageInfo: { nextCursor: null, hasNextPage: false } },
+        success: true,
+      });
+    }
+    const match = path.match(/^\/internal\/crm\/leads\/([^/]+)(?:\/(stage|draft-enrollment))?$/);
+    if (match && request.method() === "GET") {
+      const item = state.leads.find((candidate) => candidate.id === decodeURIComponent(match[1]));
+      return json(route, { data: detail(item), success: true });
+    }
+    if (match && match[2] === "draft-enrollment") {
+      state.conversionRequests.push(request.url());
+      return json(route, { code: "E2E_UNEXPECTED_CONVERSION" }, 500);
+    }
+    if (match && match[2] === "stage" && request.method() === "PATCH") {
+      const body = request.postDataJSON();
+      const leadId = decodeURIComponent(match[1]);
+      state.patchRequests.push({ body, leadId, method: request.method(), url: request.url() });
+      await new Promise((resolve) => setTimeout(resolve, state.patchDelayMs));
+      if (state.nextPatch === "error")
+        return json(
+          route,
+          { code: "CRM_STAGE_TRANSITION_FAILED", message: "Falha controlada." },
+          500,
+        );
+      if (state.nextPatch === "forbidden")
+        return json(route, { code: "CRM_ACCESS_DENIED", message: "Acesso negado." }, 403);
+      if (state.nextPatch === "conflict") {
+        const current = state.leads.find((candidate) => candidate.id === leadId);
+        if (current)
+          Object.assign(current, {
+            stage: "QUALIFIED",
+            status: "OPEN",
+            updatedAt: "2026-07-18T12:01:00.000Z",
+          });
+        state.nextPatch = "success";
+        return json(route, { code: "CRM_STAGE_CONFLICT", message: "Conflito controlado." }, 409);
+      }
+      const current = state.leads.find((candidate) => candidate.id === leadId);
+      const previousStage = current.stage;
+      const previousStatus = current.status;
+      Object.assign(current, {
+        stage: body.nextStage,
+        status:
+          body.nextStage === "WON"
+            ? "CONVERTED"
+            : body.nextStage === "LOST"
+              ? "LOST"
+              : current.status,
+        updatedAt: "2026-07-18T12:01:00.000Z",
+      });
+      return json(route, {
+        data: {
+          leadId,
+          stage: current.stage,
+          status: current.status,
+          previousStage,
+          previousStatus,
+          nextStage: current.stage,
+          nextStatus: current.status,
+          updatedAt: current.updatedAt,
+        },
+        success: true,
+      });
+    }
+    return json(route, []);
+  });
+  return state;
+}
+
+function userFor(role) {
+  return {
+    id: "synthetic-user",
+    nome: "Usuário E2E",
+    email: "e2e@example.invalid",
+    role,
+    perfil: role,
+  };
+}
+
+function detail(item) {
+  return {
+    ...item,
+    contact: { nome: null, email: null, telefone: null },
+    conversions: {
+      ...item.conversions,
+      student: { status: null, personId: null, personProfileId: null, convertedAt: null },
+      enrollment: { status: null, enrollmentId: null, enrollmentStatus: null, convertedAt: null },
+    },
+  };
+}
+
+async function json(route, body, status = 200) {
+  await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+}
+
+function column(page, stageId) {
+  return page.locator(`[aria-labelledby="pipeline-stage-${stageId}"]`);
+}
+
+function card(page, leadId) {
+  return page.locator("article").filter({ hasText: leadId });
+}
+
+async function dragMouse(page, leadId, targetStage) {
+  const handle = page.getByRole("button", { name: `Arrastar lead ${leadId}` });
+  const target = column(page, targetStage);
+  await handle.scrollIntoViewIfNeeded();
+  await expect(handle).toBeVisible();
+  const from = await handle.boundingBox();
+  let to = await target.boundingBox();
+  if (!from || !to) throw new Error("Drag bounds unavailable.");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  // dnd-kit só inicia o drag depois de movimento suficiente para ativar o PointerSensor.
+  await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2, { steps: 2 });
+  const viewport = page.viewportSize();
+  if (viewport && (to.x < 0 || to.x + to.width > viewport.width)) {
+    await target.evaluate((element) =>
+      element.scrollIntoView({ behavior: "instant", block: "nearest", inline: "center" }),
+    );
+    to = await target.boundingBox();
+    if (!to) throw new Error("Drag target bounds unavailable after horizontal scroll.");
+  }
+  await page.mouse.move(to.x + to.width / 2, to.y + 110, { steps: 12 });
+  return { from, to };
+}
+
+function assertSafePayload(body, expected) {
+  expect(Object.keys(body).sort()).toEqual(Object.keys(expected).sort());
+  expect(body).toEqual(expected);
+  for (const forbidden of [
+    "unitId",
+    "userId",
+    "actorId",
+    "metadata",
+    "previousStage",
+    "contact",
+    "email",
+    "phone",
+  ])
+    expect(body).not.toHaveProperty(forbidden);
+}
+
+module.exports = { PIPELINE, assertSafePayload, card, column, dragMouse, installCrmMock };

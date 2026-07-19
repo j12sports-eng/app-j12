@@ -49,14 +49,6 @@ export function useConvertCrmLeadToDraftEnrollment() {
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
       void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
     },
-    onError: (error, variables) => {
-      if ((error as { data?: { code?: string } })?.data?.code === "CRM_STAGE_CONFLICT") {
-        void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.all });
-        void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
-        void queryClient.invalidateQueries({ queryKey: crmPipelineQueryKeys.all });
-        void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
-      }
-    },
   });
 }
 
@@ -70,6 +62,15 @@ export function useMoveCrmLeadStage() {
       void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
       void queryClient.invalidateQueries({ queryKey: crmPipelineQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
+    },
+    // Conflitos indicam que outro operador alterou o lead; recarregamos a verdade do servidor.
+    onError: (error, variables) => {
+      if ((error as { data?: { code?: string } })?.data?.code === "CRM_STAGE_CONFLICT") {
+        void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.all });
+        void queryClient.invalidateQueries({ queryKey: crmLeadQueryKeys.detail(variables.leadId) });
+        void queryClient.invalidateQueries({ queryKey: crmPipelineQueryKeys.all });
+        void queryClient.invalidateQueries({ queryKey: crmConversionHistoryQueryKeys.all });
+      }
     },
   });
 }

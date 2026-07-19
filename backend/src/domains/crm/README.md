@@ -108,3 +108,9 @@ Internal stage transitions reuse the canonical pipeline, trusted unit context, t
 O Kanban administrativo reutiliza `@dnd-kit/core` e aceita somente destinos publicados em `stage.transitions` pelo endpoint do pipeline. O card permanece na coluna original até a confirmação do PATCH canônico; falhas preservam a posição e conflitos invalidam leads, pipeline, detalhe e histórico para recarregar o estado do backend.
 
 LOST reutiliza o diálogo de alteração e exige motivo; WON exige confirmação e nunca converte automaticamente em matrícula. O botão manual e a operação por teclado permanecem disponíveis. A telemetria frontend registra apenas os cinco eventos de drag, estágios, duração, `leadId` e `correlationId`, sem PII. Consulte `docs/SPRINT_27_18B.md`.
+
+## Sprint 27.18B.1 — Validação E2E desktop e touch
+
+A validação isolada usa Playwright com frontend Vite local e contratos HTTP sintéticos, sem iniciar backend ou acessar MySQL. Execute `npm run e2e:27.18b.1`; screenshots, traces de falha e o relatório JSON ficam em `artifacts/e2e/crm-kanban/`, diretório excluído do Git.
+
+Os testes comprovaram e corrigiram pontos mínimos: o `DragOverlay` agora é portado para `document.body`, evitando deslocamento por ancestrais transformados, e conflitos `CRM_STAGE_CONFLICT` invalidam as queries na mutação de estágio correta. O handle bloqueia pan e seleção apenas durante o gesto touch por meio de `touch-action: none` e `user-select: none`; a modal controlada também devolve o foco ao botão do Lead após fechar. Consulte `docs/SPRINT_27_18B_1.md`.

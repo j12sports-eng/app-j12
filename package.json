@@ -43,7 +43,8 @@
     "e2e:23.11:preflight": "node scripts/e2e/sprint-23-11-preflight.cjs",
     "e2e:23.11": "playwright test --config=playwright.config.cjs",
     "e2e:23.11:inspect": "node scripts/e2e/sprint-23-11-runner.cjs --inspect-only",
-    "e2e:23.11:local": "node scripts/e2e/sprint-23-11-runner.cjs --apply-local-migrations"
+    "e2e:23.11:local": "node scripts/e2e/sprint-23-11-runner.cjs --apply-local-migrations",
+    "e2e:27.18b.1": "playwright test --config=playwright.crm-kanban.config.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

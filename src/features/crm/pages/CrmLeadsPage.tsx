@@ -10,6 +10,7 @@ import {
 } from "@dnd-kit/core";
 import { toast } from "sonner";
 import { useRef } from "react";
+import { createPortal } from "react-dom";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ function CrmLeadsPage() {
   const [stageLeadId, setStageLeadId] = useState<string | null>(null);
   const [dragRequest, setDragRequest] = useState<CrmLeadDropRequest | null>(null);
   const dragSucceeded = useRef(false);
+  const stageFocusLeadId = useRef<string | null>(null);
   const query = useCrmLeads(filters);
   const pipelineQuery = useCrmPipeline();
   const stageLeadQuery = useCrmLead(stageLeadId);
@@ -65,7 +67,16 @@ function CrmLeadsPage() {
     setDetailsOpen(true);
   }
   function openStage(leadId: string) {
+    stageFocusLeadId.current = leadId;
     setStageLeadId(leadId);
+  }
+  function restoreStageFocus() {
+    requestAnimationFrame(() => {
+      const trigger = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-crm-stage-trigger]"),
+      ).find((element) => element.dataset.crmStageTrigger === stageFocusLeadId.current);
+      trigger?.focus();
+    });
   }
   function openConversion() {
     setDetailsOpen(false);
@@ -229,6 +240,7 @@ function CrmLeadsPage() {
           onFailed={() => {
             if (dragRequest) recordCrmLeadDragEvent("DRAG_FAILED", telemetry(dragRequest));
           }}
+          onReturnFocus={restoreStageFocus}
           onOpenChange={(open) => {
             if (!open) {
               if (dragRequest && !dragSucceeded.current)
@@ -338,9 +350,14 @@ function PipelineBoard({
           </div>
         </div>
       </section>
-      <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
-        {drag.activeLead ? <PipelineDragOverlay lead={drag.activeLead} /> : null}
-      </DragOverlay>
+      {typeof document !== "undefined"
+        ? createPortal(
+            <DragOverlay dropAnimation={{ duration: 180, easing: "ease-out" }}>
+              {drag.activeLead ? <PipelineDragOverlay lead={drag.activeLead} /> : null}
+            </DragOverlay>,
+            document.body,
+          )
+        : null}
     </DndContext>
   );
 }

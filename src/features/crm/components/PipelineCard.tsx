@@ -30,7 +30,7 @@ export function PipelineCard({
         disabled={submitting}
         {...listeners}
         {...attributes}
-        className="mb-2 inline-flex cursor-grab items-center gap-1 rounded-md px-1 py-1 text-[11px] text-slate-500 hover:text-primary active:cursor-grabbing disabled:cursor-wait"
+        className="mb-2 inline-flex touch-none select-none cursor-grab items-center gap-1 rounded-md px-1 py-1 text-[11px] text-slate-500 hover:text-primary active:cursor-grabbing disabled:cursor-wait"
       >
         {submitting ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -61,6 +61,7 @@ export function PipelineCard({
         <button
           type="button"
           onClick={onChangeStage}
+          data-crm-stage-trigger={lead.id}
           className="mt-3 w-full rounded-lg border border-primary/30 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10"
         >
           Alterar estágio
