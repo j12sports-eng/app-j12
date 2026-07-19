@@ -24,7 +24,7 @@ test("catalog orders migrations deterministically and calculates stable SHA-256 
 
 test("default catalog discovers every current versioned migration", async () => {
   const result = await discoverMigrationCatalog();
-  assert.equal(result.length, 22);
+  assert.equal(result.length, 23);
   assert.equal(result[0].id, "20260712183000_create_people_domain_tables");
   assert.ok(
     result.findIndex((item) => item.id === "20260712183000_create_people_domain_tables") <
@@ -34,7 +34,13 @@ test("default catalog discovers every current versioned migration", async () => 
     result.findIndex((item) => item.id === "20260713100000_create_classes_foundation_table") <
       result.findIndex((item) => item.id === "20260701103000_add_enrollment_class_links_table"),
   );
-  assert.equal(result.at(-1).id, "20260718220000_create_crm_lead_enrollment_conversions");
+  assert.ok(
+    result.findIndex((item) => item.id === "20260712183000_create_people_domain_tables") <
+      result.findIndex(
+        (item) => item.id === "20260719200000_add_pre_enrollment_integrity_constraints",
+      ),
+  );
+  assert.equal(result.at(-1).id, "20260719200000_add_pre_enrollment_integrity_constraints");
 });
 
 test("catalog resolves explicit dependencies without changing content checksums", () => {

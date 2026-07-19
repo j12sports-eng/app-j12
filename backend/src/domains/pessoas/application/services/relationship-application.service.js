@@ -107,7 +107,28 @@ class RelationshipApplicationService {
       );
 
       return relationshipResult(created, "CREATED", false);
-    } catch {
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        try {
+          const winners = await repository.findCandidatesByPeopleAndType(
+            responsibleId,
+            studentId,
+            PERSON_RELATIONSHIP_TYPE.RESPONSIBLE,
+          );
+          if (winners.length > 1) {
+            throw relationshipError(
+              "Responsible-student relationship conflict requires assisted review.",
+              RELATIONSHIP_APPLICATION_ERROR_CODES.CONFLICT,
+              409,
+            );
+          }
+          if (winners.length === 1) {
+            return relationshipResult(winners[0], "FOUND", true);
+          }
+        } catch (readError) {
+          if (readError instanceof AppError) throw readError;
+        }
+      }
       throw relationshipError(
         "Responsible-student relationship creation failed.",
         RELATIONSHIP_APPLICATION_ERROR_CODES.CREATION_FAILED,
@@ -144,6 +165,10 @@ class RelationshipApplicationService {
 
     return this.personRelationshipRepository;
   }
+}
+
+function isDuplicateEntryError(error) {
+  return error?.code === "ER_DUP_ENTRY" || Number(error?.errno) === 1062;
 }
 
 /**
@@ -241,4 +266,5 @@ module.exports = {
   buildResponsibleStudentRelationshipPayload,
   readPersonId,
   readStudentPersonId,
+  isDuplicateEntryError,
 };

@@ -5,6 +5,7 @@ const {
   NORMALIZED_COLUMNS,
   NORMALIZED_INDEXES,
   PEOPLE_IDENTITY_MIGRATION_ERRORS,
+  auditRawCpfConflicts,
   backfillPeopleIdentity,
   createPeopleNormalizedIdentityMigration,
   normalizeBackfillRow,
@@ -99,7 +100,7 @@ test("up adds only nullable compatible columns and non-unique indexes", async ()
   const fake = createFakeDatabase({
     rows: [
       person("a", { cpf: "012.345.678-90" }),
-      person("b", { cpf: "01234567890" }),
+      person("b", { cpf: "98765432100" }),
       person("c", { email: "shared@example.com" }),
       person("d", { email: "shared@example.com" }),
     ],
@@ -109,8 +110,8 @@ test("up adds only nullable compatible columns and non-unique indexes", async ()
 
   assert.deepEqual(Object.keys(fake.columns).sort(), Object.keys(NORMALIZED_COLUMNS).sort());
   assert.deepEqual(Object.keys(fake.indexes).sort(), Object.keys(NORMALIZED_INDEXES).sort());
-  assert.equal(result.duplicateCpfGroups, 1);
-  assert.equal(result.duplicateCpfRecords, 2);
+  assert.equal(result.duplicateCpfGroups, 0);
+  assert.equal(result.duplicateCpfRecords, 0);
   assert.equal(result.uniqueCpfConstraintCreated, false);
   assert.equal(
     fake.sql.some((sql) => /ADD UNIQUE|UNIQUE INDEX/iu.test(sql)),
@@ -123,6 +124,27 @@ test("up adds only nullable compatible columns and non-unique indexes", async ()
 
   const repeated = await migration.up({ batchSize: 2 });
   assert.equal(repeated.backfill.recordsNormalized, 0);
+});
+
+test("up blocks normalized CPF duplicates before any schema or data write", async () => {
+  const fake = createFakeDatabase({
+    rows: [person("a", { cpf: "012.345.678-90" }), person("b", { cpf: "01234567890" })],
+  });
+
+  assert.deepEqual(await auditRawCpfConflicts({ queryRunner: fake.query }), {
+    duplicateGroups: 1,
+    duplicateRecords: 2,
+  });
+  await assert.rejects(
+    createPeopleNormalizedIdentityMigration({ queryRunner: fake.query }).up(),
+    (error) => error.code === PEOPLE_IDENTITY_MIGRATION_ERRORS.DUPLICATES_FOUND,
+  );
+  assert.deepEqual(fake.columns, {});
+  assert.deepEqual(fake.indexes, {});
+  assert.equal(
+    fake.sql.some((sql) => /^(ALTER|UPDATE)\b/iu.test(sql)),
+    false,
+  );
 });
 
 test("up fails closed for a missing table or incompatible existing schema", async () => {
@@ -306,7 +328,7 @@ function createFakeDatabase({
       delete state.columns[match[1]];
       return { affectedRows: 0 };
     }
-    if (/SELECT id, cpf, email, telefone, celular/iu.test(compact)) {
+    if (/SELECT id, cpf(?:, email, telefone, celular)?/iu.test(compact)) {
       state.pageCalls.push({ params: [...params] });
       return state.rows.filter((row) => row.id > params[0]).slice(0, params[1]);
     }

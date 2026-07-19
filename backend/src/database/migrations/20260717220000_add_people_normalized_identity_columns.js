@@ -27,6 +27,7 @@ const NORMALIZED_INDEXES = Object.freeze({
 const PEOPLE_IDENTITY_MIGRATION_ERRORS = Object.freeze({
   BACKFILL_INCOMPLETE: "PEOPLE_IDENTITY_BACKFILL_INCOMPLETE",
   DOWN_BLOCKED: "PEOPLE_IDENTITY_DOWN_BLOCKED",
+  DUPLICATES_FOUND: "PEOPLE_IDENTITY_DUPLICATES_FOUND",
   SCHEMA_UNSAFE: "PEOPLE_IDENTITY_SCHEMA_UNSAFE",
 });
 
@@ -36,6 +37,14 @@ function createPeopleNormalizedIdentityMigration({ queryRunner, logger = () => {
   async function up(options = {}) {
     const batchSize = boundedBatchSize(options.batchSize);
     await assertPeopleTableExists(queryRunner);
+    const preflight = await auditRawCpfConflicts({ batchSize, queryRunner });
+    if (preflight.duplicateGroups > 0) {
+      throw migrationError(
+        PEOPLE_IDENTITY_MIGRATION_ERRORS.DUPLICATES_FOUND,
+        "Normalized CPF duplicates block the identity migration.",
+        preflight,
+      );
+    }
 
     for (const [column, definition] of Object.entries(NORMALIZED_COLUMNS)) {
       await ensureColumn(queryRunner, column, definition);
@@ -135,6 +144,47 @@ function createPeopleNormalizedIdentityMigration({ queryRunner, logger = () => {
   }
 
   return Object.freeze({ down, status, up });
+}
+
+async function auditRawCpfConflicts({ batchSize = DEFAULT_BATCH_SIZE, queryRunner } = {}) {
+  if (typeof queryRunner !== "function") throw new TypeError("CPF preflight requires queryRunner.");
+  const limit = boundedBatchSize(batchSize);
+  const groups = new Map();
+  let cursor = "";
+
+  while (true) {
+    const rows = await queryRunner(
+      `SELECT id, cpf FROM ${PEOPLE_TABLE} WHERE id > ? ORDER BY id ASC LIMIT ?`,
+      [cursor, limit],
+    );
+    const page = Array.isArray(rows) ? rows : [];
+    if (page.length === 0) break;
+
+    for (const row of page) {
+      let normalized = null;
+      try {
+        normalized = normalizeCpf(row?.cpf);
+      } catch {
+        normalized = null;
+      }
+      if (normalized) groups.set(normalized, (groups.get(normalized) || 0) + 1);
+    }
+
+    cursor = String(page.at(-1)?.id ?? "");
+    if (!cursor) {
+      throw migrationError(
+        PEOPLE_IDENTITY_MIGRATION_ERRORS.BACKFILL_INCOMPLETE,
+        "CPF preflight page returned an invalid cursor.",
+      );
+    }
+    if (page.length < limit) break;
+  }
+
+  const duplicateSizes = [...groups.values()].filter((count) => count > 1);
+  return Object.freeze({
+    duplicateGroups: duplicateSizes.length,
+    duplicateRecords: duplicateSizes.reduce((total, count) => total + count, 0),
+  });
 }
 
 async function backfillPeopleIdentity({
@@ -429,6 +479,7 @@ module.exports = Object.freeze({
   PEOPLE_IDENTITY_MIGRATION_ERRORS,
   assertCompatibleColumn,
   assertCompatibleIndex,
+  auditRawCpfConflicts,
   backfillPeopleIdentity,
   createPeopleNormalizedIdentityMigration,
   normalizeBackfillRow,

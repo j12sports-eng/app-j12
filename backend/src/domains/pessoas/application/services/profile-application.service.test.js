@@ -123,6 +123,44 @@ test("profile creation failures are sanitized", async () => {
   });
 });
 
+test("duplicate key rereads and reuses the winning profile", async () => {
+  let reads = 0;
+  const service = makeService({
+    create: async () => {
+      throw Object.assign(new Error("duplicate"), { code: "ER_DUP_ENTRY" });
+    },
+    findCandidatesByPersonAndType: async () => (++reads === 1 ? [] : [{ id: "winner-profile" }]),
+  });
+
+  assert.deepEqual(await service.resolveOrCreateStudentProfile({ personId: "p1" }), {
+    personProfileId: "winner-profile",
+    profileResolution: "FOUND",
+    reused: true,
+  });
+});
+
+test("concurrent equivalent profile requests create once and reuse the winner", async () => {
+  let winner = null;
+  let creates = 0;
+  const service = makeService({
+    create: async (payload) => {
+      await Promise.resolve();
+      if (winner) throw Object.assign(new Error("duplicate"), { errno: 1062 });
+      creates += 1;
+      winner = { ...payload, id: "profile-winner" };
+      return winner;
+    },
+    findCandidatesByPersonAndType: async () => (winner ? [winner] : []),
+  });
+
+  const results = await Promise.all([
+    service.resolveOrCreateResponsibleProfile({ personId: "p1" }),
+    service.resolveOrCreateResponsibleProfile({ personId: "p1" }),
+  ]);
+  assert.equal(creates, 1);
+  assert.deepEqual(results.map((result) => result.profileResolution).sort(), ["CREATED", "FOUND"]);
+});
+
 function makeService(overrides = {}) {
   return new ProfileApplicationService({
     personProfileRepository: {

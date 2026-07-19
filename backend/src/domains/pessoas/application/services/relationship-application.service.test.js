@@ -120,6 +120,62 @@ test("relationship persistence failure is sanitized", async () => {
   );
 });
 
+test("duplicate key rereads and reuses the winning relationship", async () => {
+  let reads = 0;
+  const service = makeService({
+    create: async () => {
+      throw Object.assign(new Error("duplicate"), { code: "ER_DUP_ENTRY" });
+    },
+    findCandidatesByPeopleAndType: async () =>
+      ++reads === 1 ? [] : [{ id: "relationship-winner" }],
+  });
+
+  assert.deepEqual(
+    await service.resolveOrCreateResponsibleStudentRelationship({
+      responsiblePersonId: "responsible-1",
+      studentPersonId: "student-1",
+    }),
+    {
+      relationshipId: "relationship-winner",
+      relationshipResolution: "FOUND",
+      reused: true,
+    },
+  );
+});
+
+test("concurrent equivalent relationships create once and preserve different types", async () => {
+  let winner = null;
+  let creates = 0;
+  const repository = {
+    async create(payload) {
+      await Promise.resolve();
+      if (winner) throw Object.assign(new Error("duplicate"), { errno: 1062 });
+      creates += 1;
+      winner = { ...payload, id: "relationship-winner" };
+      return winner;
+    },
+    async findCandidatesByPeopleAndType(_personId, _relatedPersonId, relationshipType) {
+      return winner?.relationshipType === relationshipType ? [winner] : [];
+    },
+  };
+  const service = new RelationshipApplicationService({ personRelationshipRepository: repository });
+  const command = { responsiblePersonId: "responsible-1", studentPersonId: "student-1" };
+  const results = await Promise.all([
+    service.resolveOrCreateResponsibleStudentRelationship(command),
+    service.resolveOrCreateResponsibleStudentRelationship(command),
+  ]);
+
+  assert.equal(creates, 1);
+  assert.deepEqual(results.map((result) => result.relationshipResolution).sort(), [
+    "CREATED",
+    "FOUND",
+  ]);
+  assert.deepEqual(
+    await repository.findCandidatesByPeopleAndType("responsible-1", "student-1", "guardian"),
+    [],
+  );
+});
+
 function makeService(overrides = {}) {
   return new RelationshipApplicationService({
     personRelationshipRepository: {

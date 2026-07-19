@@ -112,7 +112,23 @@ class ProfileApplicationService {
     try {
       const created = await options.create();
       return profileResult(created, STUDENT_PROFILE_RESOLUTIONS.CREATED, false);
-    } catch {
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        try {
+          const winners = await repository.findCandidatesByPersonAndType(
+            personId,
+            options.profileType,
+          );
+          if (winners.length > 1) {
+            throw profileError(options.conflictMessage, options.conflictCode, 409);
+          }
+          if (winners.length === 1) {
+            return profileResult(winners[0], STUDENT_PROFILE_RESOLUTIONS.FOUND, true);
+          }
+        } catch (readError) {
+          if (readError instanceof AppError) throw readError;
+        }
+      }
       throw profileError(
         "Person profile creation failed.",
         PROFILE_APPLICATION_ERROR_CODES.CREATION_FAILED,
@@ -147,6 +163,10 @@ class ProfileApplicationService {
 
     return this.personProfileRepository;
   }
+}
+
+function isDuplicateEntryError(error) {
+  return error?.code === "ER_DUP_ENTRY" || Number(error?.errno) === 1062;
 }
 
 function profileResult(profile, profileResolution, reused) {
@@ -189,5 +209,6 @@ module.exports = {
   PROFILE_APPLICATION_ERROR_CODES,
   ProfileApplicationService,
   STUDENT_PROFILE_RESOLUTIONS,
+  isDuplicateEntryError,
   readPersonId,
 };

@@ -140,6 +140,8 @@ const DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS = 10;
 const DRAFT_ENROLLMENT_LOCK_TIMEOUT_CODE = "DRAFT_ENROLLMENT_LOCK_TIMEOUT";
 const DRAFT_ENROLLMENT_LOCK_FAILED_CODE = "DRAFT_ENROLLMENT_LOCK_FAILED";
 const DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED_CODE = "DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED";
+const DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED_CODE =
+  "DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED";
 const GET_DRAFT_ENROLLMENT_LOCK_SQL = "SELECT GET_LOCK(?, ?) AS locked";
 const RELEASE_DRAFT_ENROLLMENT_LOCK_SQL = "SELECT RELEASE_LOCK(?) AS released";
 
@@ -155,8 +157,10 @@ class MySqlEnrollmentRepository {
    * @param {{ error?: (message: string, context?: Record<string, unknown>) => void, info?: (message: string, context?: Record<string, unknown>) => void, warn?: (message: string, context?: Record<string, unknown>) => void }} [options.logger]
    * @param {number} [options.lockTimeoutSeconds]
    * @param {(sql: string, params?: unknown[]) => Promise<unknown>} [options.queryRunner]
+   * @param {() => Promise<{ execute: Function, release: Function }>} [options.connectionProvider]
    */
   constructor({
+    connectionProvider = null,
     logger = console,
     lockTimeoutSeconds = DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS,
     queryRunner = null,
@@ -164,6 +168,7 @@ class MySqlEnrollmentRepository {
     this.logger = logger;
     this.lockTimeoutSeconds = normalizeLockTimeoutSeconds(lockTimeoutSeconds);
     this.query = queryRunner || getDefaultQueryRunner();
+    this.connectionProvider = connectionProvider || getDefaultConnectionProvider();
   }
 
   /**
@@ -172,12 +177,12 @@ class MySqlEnrollmentRepository {
    * @param {import("../../domain/entities/enrollment.entity.js").Enrollment|Record<string, unknown>} enrollment
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async create(enrollment) {
+  async create(enrollment, queryRunner = this.query) {
     const input = toEnrollmentData(enrollment);
     const id = nullableText(input.id, 64) || randomUUID();
     const values = toEnrollmentRowValues({ ...input, id });
 
-    await this.query(INSERT_ENROLLMENT_SQL, [
+    await queryRunner(INSERT_ENROLLMENT_SQL, [
       values.id,
       values.student_person_id,
       values.student_profile_id,
@@ -189,7 +194,7 @@ class MySqlEnrollmentRepository {
       values.deleted_at,
     ]);
 
-    const rows = await this.query(SELECT_ENROLLMENT_BY_ID_SQL, [id]);
+    const rows = await queryRunner(SELECT_ENROLLMENT_BY_ID_SQL, [id]);
     const row = readFirstRow(rows) || values;
 
     return toEnrollmentDataFromRow(row);
@@ -201,9 +206,9 @@ class MySqlEnrollmentRepository {
    * @param {string} id
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findById(id) {
+  async findById(id, queryRunner = this.query) {
     const enrollmentId = requiredText(id, "id", 64);
-    const rows = await this.query(SELECT_ENROLLMENT_BY_ID_SQL, [enrollmentId]);
+    const rows = await queryRunner(SELECT_ENROLLMENT_BY_ID_SQL, [enrollmentId]);
 
     return toEnrollmentDataFromRow(readFirstRow(rows));
   }
@@ -276,11 +281,16 @@ class MySqlEnrollmentRepository {
     const id = nullableText(input.id, 64) || randomUUID();
     const values = toEnrollmentRowValues({ ...input, id, status: EnrollmentStatus.DRAFT });
     const lockName = buildDraftEnrollmentLockName(values);
+    let connection = null;
+    let dedicatedQuery = null;
     let lockAcquired = false;
     let operationError = null;
+    let cleanupError = null;
 
     try {
-      await this.acquireDraftEnrollmentLock(lockName);
+      connection = await this.getDedicatedConnection();
+      dedicatedQuery = createConnectionQueryRunner(connection);
+      await this.acquireDraftEnrollmentLock(lockName, dedicatedQuery);
       lockAcquired = true;
       this.logInfo("[enrollments] Draft Enrollment idempotency lock acquired.", {
         lockName,
@@ -288,10 +298,13 @@ class MySqlEnrollmentRepository {
         studentProfileId: values.student_profile_id,
       });
 
-      const existingEnrollment = await this.findDraftByStudent({
-        studentPersonId: values.student_person_id,
-        studentProfileId: values.student_profile_id,
-      });
+      const existingEnrollment = await this.findDraftByStudent(
+        {
+          studentPersonId: values.student_person_id,
+          studentProfileId: values.student_profile_id,
+        },
+        dedicatedQuery,
+      );
 
       if (existingEnrollment) {
         this.logInfo("[enrollments] Reusing existing draft Enrollment inside idempotency lock.", {
@@ -309,11 +322,14 @@ class MySqlEnrollmentRepository {
       }
 
       try {
-        const createdEnrollment = await this.create({
-          ...input,
-          id,
-          status: EnrollmentStatus.DRAFT,
-        });
+        const createdEnrollment = await this.create(
+          {
+            ...input,
+            id,
+            status: EnrollmentStatus.DRAFT,
+          },
+          dedicatedQuery,
+        );
         this.logInfo("[enrollments] Created new draft Enrollment inside idempotency lock.", {
           enrollmentId: createdEnrollment?.id ?? null,
           lockName,
@@ -331,10 +347,13 @@ class MySqlEnrollmentRepository {
           throw createError;
         }
 
-        const recoveredEnrollment = await this.findDraftByStudent({
-          studentPersonId: values.student_person_id,
-          studentProfileId: values.student_profile_id,
-        });
+        const recoveredEnrollment = await this.findDraftByStudent(
+          {
+            studentPersonId: values.student_person_id,
+            studentProfileId: values.student_profile_id,
+          },
+          dedicatedQuery,
+        );
 
         if (!recoveredEnrollment) {
           this.logWarn(
@@ -376,7 +395,7 @@ class MySqlEnrollmentRepository {
     } finally {
       if (lockAcquired) {
         try {
-          const releaseResult = await this.releaseDraftEnrollmentLock(lockName);
+          const releaseResult = await this.releaseDraftEnrollmentLock(lockName, dedicatedQuery);
           this.logInfo("[enrollments] Draft Enrollment idempotency lock released.", {
             lockName,
             released: releaseResult.released,
@@ -396,11 +415,28 @@ class MySqlEnrollmentRepository {
             studentProfileId: values.student_profile_id,
           });
 
-          if (!operationError) {
-            throw releaseError;
+          cleanupError = releaseError;
+        }
+      }
+      if (connection) {
+        try {
+          await connection.release();
+        } catch (releaseError) {
+          this.logError("[enrollments] Dedicated draft connection release failed.", {
+            code: DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED_CODE,
+            lockName,
+          });
+          if (!cleanupError) {
+            const normalizedError =
+              releaseError instanceof Error
+                ? releaseError
+                : new Error("Dedicated draft connection release failed.");
+            normalizedError.code ||= DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED_CODE;
+            cleanupError = normalizedError;
           }
         }
       }
+      if (!operationError && cleanupError) throw cleanupError;
     }
   }
 
@@ -412,12 +448,15 @@ class MySqlEnrollmentRepository {
    * @param {string|null} [input.studentProfileId]
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findDraftByStudent({ studentPersonId = null, studentProfileId = null } = {}) {
+  async findDraftByStudent(
+    { studentPersonId = null, studentProfileId = null } = {},
+    queryRunner = this.query,
+  ) {
     const personId = nullableText(studentPersonId, 64);
     const profileId = nullableText(studentProfileId, 64);
 
     if (personId && profileId) {
-      const rows = await this.query(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL, [
+      const rows = await queryRunner(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL, [
         EnrollmentStatus.DRAFT,
         personId,
         profileId,
@@ -427,11 +466,11 @@ class MySqlEnrollmentRepository {
     }
 
     if (personId) {
-      return this.findDraftByStudentPersonId(personId);
+      return this.findDraftByStudentPersonId(personId, queryRunner);
     }
 
     if (profileId) {
-      return this.findDraftByStudentProfileId(profileId);
+      return this.findDraftByStudentProfileId(profileId, queryRunner);
     }
 
     return null;
@@ -443,9 +482,9 @@ class MySqlEnrollmentRepository {
    * @param {string} studentPersonId
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findDraftByStudentPersonId(studentPersonId) {
+  async findDraftByStudentPersonId(studentPersonId, queryRunner = this.query) {
     const personId = requiredText(studentPersonId, "studentPersonId", 64);
-    const rows = await this.query(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PERSON_SQL, [
+    const rows = await queryRunner(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PERSON_SQL, [
       EnrollmentStatus.DRAFT,
       personId,
     ]);
@@ -459,9 +498,9 @@ class MySqlEnrollmentRepository {
    * @param {string} studentProfileId
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findDraftByStudentProfileId(studentProfileId) {
+  async findDraftByStudentProfileId(studentProfileId, queryRunner = this.query) {
     const profileId = requiredText(studentProfileId, "studentProfileId", 64);
-    const rows = await this.query(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL, [
+    const rows = await queryRunner(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL, [
       EnrollmentStatus.DRAFT,
       profileId,
     ]);
@@ -515,8 +554,8 @@ class MySqlEnrollmentRepository {
    * @param {string} lockName
    * @returns {Promise<void>}
    */
-  async acquireDraftEnrollmentLock(lockName) {
-    const rows = await this.query(GET_DRAFT_ENROLLMENT_LOCK_SQL, [
+  async acquireDraftEnrollmentLock(lockName, queryRunner = this.query) {
+    const rows = await queryRunner(GET_DRAFT_ENROLLMENT_LOCK_SQL, [
       lockName,
       this.lockTimeoutSeconds,
     ]);
@@ -554,8 +593,8 @@ class MySqlEnrollmentRepository {
    * @param {string} lockName
    * @returns {Promise<{ released: boolean, releaseValue: number|null }>}
    */
-  async releaseDraftEnrollmentLock(lockName) {
-    const rows = await this.query(RELEASE_DRAFT_ENROLLMENT_LOCK_SQL, [lockName]);
+  async releaseDraftEnrollmentLock(lockName, queryRunner = this.query) {
+    const rows = await queryRunner(RELEASE_DRAFT_ENROLLMENT_LOCK_SQL, [lockName]);
     const row = readFirstRow(rows);
     const releaseValue = Number(row?.released);
     const normalizedReleaseValue = Number.isFinite(releaseValue) ? releaseValue : null;
@@ -569,12 +608,34 @@ class MySqlEnrollmentRepository {
           releaseValue: normalizedReleaseValue,
         },
       );
+      const error = new Error(
+        "MySqlEnrollmentRepository could not release draft enrollment idempotency lock.",
+      );
+      error.code = DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED_CODE;
+      error.lockName = lockName;
+      error.releaseValue = normalizedReleaseValue;
+      throw error;
     }
 
     return {
       released,
       releaseValue: normalizedReleaseValue,
     };
+  }
+
+  async getDedicatedConnection() {
+    if (typeof this.connectionProvider !== "function") {
+      throw new TypeError("MySqlEnrollmentRepository requires a connectionProvider function.");
+    }
+    const connection = await this.connectionProvider();
+    if (
+      !connection ||
+      typeof connection.execute !== "function" ||
+      typeof connection.release !== "function"
+    ) {
+      throw new TypeError("MySqlEnrollmentRepository requires a dedicated MySQL connection.");
+    }
+    return connection;
   }
 
   /**
@@ -825,6 +886,20 @@ function getDefaultQueryRunner() {
   return require("../../../../config/db.js").query;
 }
 
+function getDefaultConnectionProvider() {
+  return () => require("../../../../config/db.js").pool.getConnection();
+}
+
+function createConnectionQueryRunner(connection) {
+  if (!connection || typeof connection.execute !== "function") {
+    throw new TypeError("Dedicated query runner requires connection.execute.");
+  }
+  return async (sql, params = []) => {
+    const [rows] = await connection.execute(sql, params);
+    return rows;
+  };
+}
+
 /**
  * @param {unknown} value
  * @param {string} field
@@ -857,6 +932,7 @@ module.exports = {
   ACTIVE_DRAFT_UNIQUE_INDEX_NAME,
   DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS,
   DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
+  DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_TIMEOUT_CODE,
@@ -873,6 +949,7 @@ module.exports = {
   SELECT_ENROLLMENT_BY_ID_SQL,
   UPDATE_ENROLLMENT_STATUS_SQL,
   buildDraftEnrollmentLockName,
+  createConnectionQueryRunner,
   escapeLikeTerm,
   isActiveDraftDuplicateEntryError,
   normalizeLockTimeoutSeconds,

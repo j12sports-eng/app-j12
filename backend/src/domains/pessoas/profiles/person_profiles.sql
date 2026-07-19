@@ -8,5 +8,6 @@ CREATE TABLE IF NOT EXISTS person_profiles (
 
   INDEX idx_person_profiles_person (person_id),
   INDEX idx_person_profiles_type (profile_type),
-  INDEX idx_person_profiles_status (status)
+  INDEX idx_person_profiles_status (status),
+  UNIQUE INDEX ux_person_profiles_person_type (person_id, profile_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
