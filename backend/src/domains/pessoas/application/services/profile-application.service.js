@@ -11,6 +11,7 @@ const STUDENT_PROFILE_RESOLUTIONS = Object.freeze({
 });
 const PROFILE_APPLICATION_ERROR_CODES = Object.freeze({
   CREATION_FAILED: "PROFILE_CREATION_FAILED",
+  RESPONSIBLE_PROFILE_CONFLICT: "RESPONSIBLE_PROFILE_CONFLICT",
   STUDENT_PROFILE_CONFLICT: "STUDENT_PROFILE_CONFLICT",
 });
 
@@ -74,31 +75,46 @@ class ProfileApplicationService {
 
   /** Resolves or creates the single modern Aluno profile for a Pessoa. */
   async resolveOrCreateStudentProfile(person = {}) {
+    return this.resolveOrCreateProfile(person, {
+      conflictCode: PROFILE_APPLICATION_ERROR_CODES.STUDENT_PROFILE_CONFLICT,
+      conflictMessage: "Student profile conflict requires assisted review.",
+      create: () => this.createStudentProfile(person),
+      profileType: PERSON_PROFILE_TYPES.ALUNO,
+    });
+  }
+
+  /** Resolves or creates the single modern Responsavel profile for a Pessoa. */
+  async resolveOrCreateResponsibleProfile(person = {}) {
+    return this.resolveOrCreateProfile(person, {
+      conflictCode: PROFILE_APPLICATION_ERROR_CODES.RESPONSIBLE_PROFILE_CONFLICT,
+      conflictMessage: "Responsible profile conflict requires assisted review.",
+      create: () => this.createResponsibleProfile(person),
+      profileType: PERSON_PROFILE_TYPES.RESPONSAVEL,
+    });
+  }
+
+  async resolveOrCreateProfile(person = {}, options = {}) {
     const personId = readPersonId(person);
     if (!personId) {
-      throw new TypeError("ProfileApplicationService requires a persisted student person id.");
+      throw new TypeError("ProfileApplicationService requires a persisted person id.");
     }
     const repository = this.getStudentProfileResolutionRepository();
     const candidates = await repository.findCandidatesByPersonAndType(
       personId,
-      PERSON_PROFILE_TYPES.ALUNO,
+      options.profileType,
     );
     if (candidates.length > 1) {
-      throw profileError(
-        "Student profile conflict requires assisted review.",
-        PROFILE_APPLICATION_ERROR_CODES.STUDENT_PROFILE_CONFLICT,
-        409,
-      );
+      throw profileError(options.conflictMessage, options.conflictCode, 409);
     }
     if (candidates.length === 1) {
       return profileResult(candidates[0], STUDENT_PROFILE_RESOLUTIONS.FOUND, true);
     }
     try {
-      const created = await this.createStudentProfile({ personId });
+      const created = await options.create();
       return profileResult(created, STUDENT_PROFILE_RESOLUTIONS.CREATED, false);
     } catch {
       throw profileError(
-        "Student profile creation failed.",
+        "Person profile creation failed.",
         PROFILE_APPLICATION_ERROR_CODES.CREATION_FAILED,
         500,
       );
@@ -137,7 +153,7 @@ function profileResult(profile, profileResolution, reused) {
   const personProfileId = readProfileId(profile);
   if (!personProfileId) {
     throw profileError(
-      "Student profile creation failed.",
+      "Person profile creation failed.",
       PROFILE_APPLICATION_ERROR_CODES.CREATION_FAILED,
       500,
     );

@@ -154,6 +154,25 @@ class PersonRelationshipRepository {
     return toPersonRelationshipDataFromRow(Array.isArray(rows) ? rows[0] : null);
   }
 
+  /** Returns at most two matches so the application layer can detect conflicts. */
+  async findCandidatesByPeopleAndType(personId, relatedPersonId, relationshipType) {
+    const rows = await this.query(
+      `
+        SELECT *
+        FROM ${TABLE_NAME}
+        WHERE person_id = ?
+          AND related_person_id = ?
+          AND relationship_type = ?
+          AND status = 'active'
+        ORDER BY created_at ASC, id ASC
+        LIMIT 2
+      `,
+      [personId, relatedPersonId, relationshipType],
+    );
+
+    return Array.isArray(rows) ? rows.map(toPersonRelationshipDataFromRow).filter(Boolean) : [];
+  }
+
   /**
    * Lists relationships with optional filters.
    *

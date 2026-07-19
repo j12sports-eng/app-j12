@@ -48,6 +48,36 @@ test("missing student profile is created explicitly", async () => {
   });
 });
 
+test("responsible profile uses the same idempotent resolution contract", async () => {
+  const calls = [];
+  const service = makeService({
+    findCandidatesByPersonAndType: async (personId, profileType) => {
+      calls.push({ personId, profileType });
+      return [{ id: "responsible-profile" }];
+    },
+  });
+
+  assert.deepEqual(await service.resolveOrCreateResponsibleProfile({ personId: "p1" }), {
+    personProfileId: "responsible-profile",
+    profileResolution: "FOUND",
+    reused: true,
+  });
+  assert.deepEqual(calls, [{ personId: "p1", profileType: "responsavel" }]);
+});
+
+test("multiple responsible profiles block arbitrary selection", async () => {
+  const service = makeService({
+    findCandidatesByPersonAndType: async () => [{ id: "pr1" }, { id: "pr2" }],
+  });
+
+  await assert.rejects(
+    service.resolveOrCreateResponsibleProfile({ personId: "p1" }),
+    (error) =>
+      error.code === PROFILE_APPLICATION_ERROR_CODES.RESPONSIBLE_PROFILE_CONFLICT &&
+      error.statusCode === 409,
+  );
+});
+
 test("multiple student profiles block arbitrary selection", async () => {
   const service = makeService({
     findCandidatesByPersonAndType: async () => [{ id: "pr1" }, { id: "pr2" }],

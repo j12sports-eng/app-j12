@@ -84,6 +84,23 @@ test("NOT_FOUND creates exactly once and returns explicit state", async () => {
   assert.equal(creates, 1);
 });
 
+test("explicit missing person id is fail-closed when the caller requires an existing Pessoa", async () => {
+  let creates = 0;
+  const service = makeService({
+    resolution: { status: "NOT_FOUND", matchedBy: "PERSON_ID" },
+    repository: { create: async () => creates++ },
+  });
+
+  await assert.rejects(
+    service.resolveOrCreatePerson(
+      { personId: "missing-person" },
+      { requireExistingPersonId: true },
+    ),
+    (error) => error.code === PERSON_APPLICATION_ERROR_CODES.NOT_FOUND && error.statusCode === 404,
+  );
+  assert.equal(creates, 0);
+});
+
 test("CONFLICT blocks creation with deterministic PII-safe error", async () => {
   let creates = 0;
   const service = makeService({

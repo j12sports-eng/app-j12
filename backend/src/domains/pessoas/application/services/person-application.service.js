@@ -2,6 +2,7 @@ const { PersonRepository } = require("../../person.repository.js");
 const { AppError } = require("../../../../errors/app-error.js");
 const { normalizeCpf } = require("../../person-identity-normalizer.js");
 const {
+  IDENTITY_MATCH_TYPES,
   IDENTITY_RESOLUTION_STATUSES,
   ResolveIdentityService,
 } = require("./resolve-identity.service.js");
@@ -10,6 +11,7 @@ const PERSON_APPLICATION_ERROR_CODES = Object.freeze({
   CREATION_FAILED: "PERSON_CREATION_FAILED",
   IDENTITY_CONFLICT: "PERSON_IDENTITY_CONFLICT",
   IDENTITY_REQUIRED: "PERSON_IDENTITY_REQUIRED",
+  NOT_FOUND: "PERSON_NOT_FOUND",
 });
 
 /**
@@ -56,6 +58,17 @@ class PersonApplicationService {
         "Identity conflict requires assisted review.",
         PERSON_APPLICATION_ERROR_CODES.IDENTITY_CONFLICT,
         409,
+      );
+    }
+    if (
+      resolution.status === IDENTITY_RESOLUTION_STATUSES.NOT_FOUND &&
+      resolution.matchedBy === IDENTITY_MATCH_TYPES.PERSON_ID &&
+      context.requireExistingPersonId === true
+    ) {
+      throw applicationError(
+        "Person was not found.",
+        PERSON_APPLICATION_ERROR_CODES.NOT_FOUND,
+        404,
       );
     }
     if (
