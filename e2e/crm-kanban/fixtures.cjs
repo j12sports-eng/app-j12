@@ -66,6 +66,7 @@ function initialLeads() {
 }
 
 async function installCrmMock(page, options = {}) {
+  const slaAlertRequestRecords = new Map();
   const state = {
     leads: initialLeads(),
     patchRequests: [],
@@ -74,7 +75,26 @@ async function installCrmMock(page, options = {}) {
     events: [],
     nextPatch: options.nextPatch || "success",
     patchDelayMs: options.patchDelayMs ?? 250,
+    slaAlertListRequests: 0,
+    slaAlertRequests: [],
+    nextSlaAlert: options.nextSlaAlert || "success",
+    slaAlertDelayMs: options.slaAlertDelayMs ?? 120,
   };
+
+  // Mantém a cronologia completa para diferenciar refetch legítimo de duplicação indevida.
+  page.on("requestfinished", (request) => {
+    const record = slaAlertRequestRecords.get(request);
+    if (!record) return;
+    record.finishedAt = new Date().toISOString();
+    record.outcome = "finished";
+  });
+  page.on("requestfailed", (request) => {
+    const record = slaAlertRequestRecords.get(request);
+    if (!record) return;
+    record.failedAt = new Date().toISOString();
+    record.failure = request.failure()?.errorText || "unknown";
+    record.outcome = "failed";
+  });
 
   await page.addInitScript(
     ({ role }) => {
@@ -111,6 +131,31 @@ async function installCrmMock(page, options = {}) {
 
     if (path === "/auth/me") return json(route, userFor(options.role || "admin"));
     if (path === "/internal/crm/pipeline") return json(route, { data: PIPELINE, success: true });
+    if (path === "/internal/crm/sla-alerts" && request.method() === "GET") {
+      const query = Object.freeze(Object.fromEntries(url.searchParams.entries()));
+      const requestRecord = {
+        method: request.method(),
+        params: query,
+        query,
+        queryString: url.search,
+        startedAt: new Date().toISOString(),
+        timestamp: Date.now(),
+        url: request.url(),
+        outcome: "pending",
+      };
+      state.slaAlertListRequests += 1;
+      state.slaAlertRequests.push(requestRecord);
+      slaAlertRequestRecords.set(request, requestRecord);
+      await new Promise((resolve) => setTimeout(resolve, state.slaAlertDelayMs));
+      if (state.nextSlaAlert === "error") {
+        return json(
+          route,
+          { code: "CRM_SLA_ALERT_QUERY_FAILED", message: "Falha sintética controlada." },
+          500,
+        );
+      }
+      return json(route, { data: slaAlertPage(url.searchParams), success: true });
+    }
     if (path === "/internal/crm/leads" && request.method() === "GET") {
       state.listRequests += 1;
       return json(route, {
@@ -201,6 +246,95 @@ async function installCrmMock(page, options = {}) {
     return json(route, []);
   });
   return state;
+}
+
+function slaAlertPage(searchParams) {
+  const cursor = searchParams.get("cursor");
+  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 25, 1), 100);
+  const stage = searchParams.get("stage");
+  const slaStatus = searchParams.get("slaStatus");
+  const unitId = searchParams.get("unitId");
+  const source = cursor ? [slaAlert("lead-sla-page-2", "PROPOSAL", "OVERDUE")] : slaAlerts();
+  const filtered = source
+    .filter((item) => !stage || item.stage === stage)
+    .filter((item) => !slaStatus || item.alertStatus === slaStatus)
+    .filter((item) => !unitId || item.unitId === unitId)
+    .slice(0, limit);
+  const hasMore = !cursor;
+  return {
+    items: filtered,
+    nextCursor: hasMore ? "synthetic-sla-cursor-v1-page-2" : null,
+    hasMore,
+    appliedFilters: { limit, stage, slaStatus, unitId },
+    summary: { pageCounts: pageCounts(filtered) },
+  };
+}
+
+function slaAlerts() {
+  return [
+    slaAlert("lead-a-new", "NEW", "OVERDUE"),
+    slaAlert("lead-b-negotiation", "NEGOTIATION", "WARNING"),
+    slaAlert("lead-c-won", "QUALIFIED", "UNAVAILABLE"),
+    slaAlert("lead-d-lost", "CONTACTED", "NOT_CONFIGURED"),
+  ];
+}
+
+function slaAlert(leadId, stageId, alertStatus) {
+  const slaStatus = alertStatus === "WARNING" ? "DUE_SOON" : alertStatus;
+  const unavailable = alertStatus === "UNAVAILABLE";
+  const notConfigured = alertStatus === "NOT_CONFIGURED";
+  const limitMs = unavailable || notConfigured ? null : 86_400_000;
+  const elapsedMs = unavailable
+    ? null
+    : alertStatus === "OVERDUE"
+      ? 172_800_000
+      : alertStatus === "WARNING"
+        ? 73_440_000
+        : 3_600_000;
+  return {
+    leadId,
+    unitId: "synthetic-unit",
+    stage: stageId,
+    status: "OPEN",
+    alertStatus,
+    historyCoverage: unavailable ? "UNAVAILABLE" : notConfigured ? "PARTIAL" : "COMPLETE",
+    currentStageEntryAt: unavailable ? null : "2026-07-17T13:00:00.000Z",
+    currentStageElapsedMs: elapsedMs,
+    measuredAt: "2026-07-18T13:00:00.000Z",
+    sla: {
+      status: slaStatus,
+      limitMs,
+      elapsedMs,
+      remainingMs: limitMs == null || elapsedMs == null ? null : Math.max(0, limitMs - elapsedMs),
+      overdueMs: limitMs == null || elapsedMs == null ? 0 : Math.max(0, elapsedMs - limitMs),
+      consumedPercentage:
+        limitMs == null || elapsedMs == null
+          ? null
+          : Math.min(100, Math.max(0, (elapsedMs / limitMs) * 100)),
+    },
+    updatedAt: "2026-07-18T12:00:00.000Z",
+  };
+}
+
+function pageCounts(items) {
+  const counts = {
+    overdue: 0,
+    warning: 0,
+    notConfigured: 0,
+    unavailable: 0,
+    normal: 0,
+    completed: 0,
+  };
+  const keys = {
+    OVERDUE: "overdue",
+    WARNING: "warning",
+    NOT_CONFIGURED: "notConfigured",
+    UNAVAILABLE: "unavailable",
+    NORMAL: "normal",
+    COMPLETED: "completed",
+  };
+  for (const item of items) counts[keys[item.alertStatus]] += 1;
+  return counts;
 }
 
 function userFor(role) {

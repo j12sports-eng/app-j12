@@ -22,10 +22,12 @@ function createCrmInternalRouter(options = {}) {
     options.stageTransitionController || createCrmLeadStageTransitionController(options);
   const stageTimingController =
     options.stageTimingController || createCrmLeadStageTimingController(options);
+  const slaAlertController = options.slaAlertController || createCrmLeadSlaAlertController(options);
 
   router.use(options.authMiddleware || requireAuth);
   router.use(options.accessMiddleware || ensureCrmInternalAccess);
   router.get("/pipeline", pipelineController.get);
+  router.get("/sla-alerts", slaAlertController.list);
   router.get("/conversions", conversionHistoryController.list);
   router.get("/conversions/export", conversionHistoryExportController.export);
   router.get("/conversions/:conversionId", conversionHistoryController.getById);
@@ -178,6 +180,27 @@ function createCrmLeadStageTimingRepository(options = {}) {
     MySqlCrmLeadStageTimingRepository,
   } = require("../../infrastructure/mysql-crm-lead-stage-timing.repository.js");
   return new MySqlCrmLeadStageTimingRepository(options);
+}
+
+function createCrmLeadSlaAlertController(options = {}) {
+  const { CrmLeadSlaAlertController } = require("../controllers/crm-lead-sla-alert.controller.js");
+  return new CrmLeadSlaAlertController({
+    queryService: createCrmLeadSlaAlertQueryService(options),
+  });
+}
+
+function createCrmLeadSlaAlertQueryService(options = {}) {
+  if (options.slaAlertQueryService) return options.slaAlertQueryService;
+  const {
+    CrmLeadSlaAlertQueryService,
+  } = require("../../application/crm-lead-sla-alert-query.service.js");
+  return new CrmLeadSlaAlertQueryService({
+    classifier: options.slaAlertClassifier,
+    leadQueryService: createCrmLeadQueryService(options),
+    logger: options.logger,
+    metrics: options.slaAlertMetrics,
+    monotonicClock: options.slaAlertMonotonicClock,
+  });
 }
 
 function createCrmLeadConversionHistoryController(options = {}) {
@@ -338,6 +361,8 @@ module.exports = {
   createCrmLeadStageTimingController,
   createCrmLeadStageTimingQueryService,
   createCrmLeadStageTimingRepository,
+  createCrmLeadSlaAlertController,
+  createCrmLeadSlaAlertQueryService,
   createCrmLeadUnitContextService,
   ensureCrmInternalAccess,
 };

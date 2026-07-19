@@ -24,6 +24,7 @@ import { formatApiErrorMessage } from "@/lib/api";
 import { PipelineColumn } from "../components/PipelineColumn";
 import { PipelineDragOverlay } from "../components/PipelineDragOverlay";
 import { CrmLeadStageTransitionDialog } from "../components/CrmLeadStageTransitionDialog";
+import { CrmSlaAlertsPanel } from "../components/CrmSlaAlertsPanel";
 import { PipelineHeader } from "../components/PipelineHeader";
 import { useCrmLead, useCrmLeads, useMoveCrmLeadStage } from "../hooks/use-crm-leads";
 import { useCrmPipeline } from "../hooks/use-crm-pipeline";
@@ -58,6 +59,7 @@ function CrmLeadsPage() {
   const query = useCrmLeads(filters);
   const pipelineQuery = useCrmPipeline();
   const stageLeadQuery = useCrmLead(stageLeadId);
+  const nowMs = useVisibleMinuteClock();
   const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
   const hasNextPage = query.hasNextPage;
 
@@ -186,6 +188,8 @@ function CrmLeadsPage() {
           </div>
         </section>
 
+        <CrmSlaAlertsPanel nowMs={nowMs} onOpenLead={openDetails} />
+
         {query.isLoading || pipelineQuery.isLoading ? <SkeletonTable columns={8} rows={6} /> : null}
         {query.isError ? (
           <ErrorPanel
@@ -216,6 +220,7 @@ function CrmLeadsPage() {
               dragSucceeded.current = false;
               setDragRequest(request);
             }}
+            nowMs={nowMs}
           />
         ) : null}
 
@@ -287,6 +292,7 @@ function PipelineBoard({
   onSelect,
   onChangeStage,
   onDragConfirmation,
+  nowMs,
 
   pipeline,
 }: {
@@ -294,9 +300,9 @@ function PipelineBoard({
   onSelect: (leadId: string) => void;
   onChangeStage: (leadId: string) => void;
   onDragConfirmation: (request: CrmLeadDropRequest | null) => void;
+  nowMs: number;
   pipeline: CrmPipeline;
 }) {
-  const nowMs = useVisibleMinuteClock();
   const mutation = useMoveCrmLeadStage();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
