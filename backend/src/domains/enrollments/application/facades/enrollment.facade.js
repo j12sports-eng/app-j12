@@ -299,6 +299,43 @@ class EnrollmentFacade {
   }
 
   /**
+   * Explicit canonical Enrollment -> Turma transfer boundary.
+   *
+   * @param {{ enrollmentId?: string|null, targetClassId?: string|number|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown, correlationId?: string|null, requestId?: string|null }} context
+   * @returns {Promise<Readonly<Record<string, unknown>>>}
+   */
+  transferEnrollmentToClass(command = {}, context = {}) {
+    const service = this.getEnrollmentClassLinkService();
+
+    if (typeof service.transferEnrollmentToClass !== "function") {
+      throw new TypeError(
+        "EnrollmentFacade requires an enrollmentClassLinkService.transferEnrollmentToClass function.",
+      );
+    }
+
+    return service.transferEnrollmentToClass(command, context);
+  }
+
+  /**
+   * Explicit canonical Enrollment -> Turma reactivation boundary.
+   *
+   * @param {{ enrollmentId?: string|null, classId?: string|number|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown }} context
+   * @returns {Promise<Readonly<Record<string, unknown>>>}
+   */
+  reactivateEnrollmentClassLink(command = {}, context = {}) {
+    const service = this.getEnrollmentClassLinkService();
+
+    if (typeof service.reactivateEnrollmentClassLink !== "function") {
+      throw new TypeError(
+        "EnrollmentFacade requires an enrollmentClassLinkService.reactivateEnrollmentClassLink function.",
+      );
+    }
+
+    return service.reactivateEnrollmentClassLink(command, context);
+  }
+  /**
    * Prepares a future Enrollment -> Financeiro link without creating charges.
    *
    * @param {Object} input

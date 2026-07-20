@@ -54,6 +54,16 @@ const SELECT_ACTIVE_LINK_BY_ENROLLMENT_AND_CLASS_SQL = `
   LIMIT 1
 `;
 
+const SELECT_ACTIVE_LINKS_BY_ENROLLMENT_SQL = `
+  SELECT ${LINK_PROJECTION}
+  FROM ${TABLE_NAME}
+  WHERE enrollment_id = ?
+    AND status = ?
+    AND unlinked_at IS NULL
+  ORDER BY linked_at DESC, created_at DESC, id DESC
+  LIMIT 50
+`;
+
 const SELECT_LATEST_LINK_BY_ENROLLMENT_AND_CLASS_SQL = `
   SELECT ${LINK_PROJECTION}
   FROM ${TABLE_NAME}
@@ -182,6 +192,23 @@ class MySqlEnrollmentClassLinkRepository {
   }
 
   /**
+   * Reads active links for an Enrollment so transfer commands can fail closed
+   * when the current class cannot be inferred safely.
+   *
+   * @param {{ enrollmentId?: string|null }} input
+   * @returns {Promise<Record<string, unknown>[]>}
+   */
+  async findActiveByEnrollment(input = {}) {
+    const enrollmentId = requiredText(input.enrollmentId, "enrollmentId", 64);
+    const rows = await this.query(SELECT_ACTIVE_LINKS_BY_ENROLLMENT_SQL, [
+      enrollmentId,
+      ACTIVE_STATUS,
+    ]);
+
+    return readRows(rows).map(toEnrollmentClassLinkData).filter(Boolean);
+  }
+
+  /**
    * Reads the latest state for a pair so callers never silently reactivate or
    * overwrite an incompatible historical link.
    *
@@ -294,14 +321,23 @@ function toEnrollmentClassLinkData(row) {
  * @returns {Record<string, unknown>|null}
  */
 function readFirstRow(result) {
-  if (!Array.isArray(result) || result.length === 0) {
-    return null;
-  }
-
-  const rows = Array.isArray(result[0]) ? result[0] : result;
+  const rows = readRows(result);
   const row = rows[0];
 
   return row && typeof row === "object" && !Array.isArray(row) ? row : null;
+}
+
+/**
+ * @param {unknown} result
+ * @returns {unknown[]}
+ */
+function readRows(result) {
+  if (!Array.isArray(result) || result.length === 0) {
+    return [];
+  }
+
+  const rows = Array.isArray(result[0]) ? result[0] : result;
+  return Array.isArray(rows) ? rows : [];
 }
 
 /**
@@ -405,6 +441,7 @@ module.exports = {
   INACTIVE_STATUS,
   MySqlEnrollmentClassLinkRepository,
   SELECT_ACTIVE_LINK_COUNT_BY_CLASS_SQL,
+  SELECT_ACTIVE_LINKS_BY_ENROLLMENT_SQL,
   SELECT_ACTIVE_LINK_BY_ENROLLMENT_AND_CLASS_SQL,
   SELECT_LATEST_LINK_BY_ENROLLMENT_AND_CLASS_SQL,
   SELECT_LINK_BY_ID_SQL,
@@ -412,5 +449,6 @@ module.exports = {
   UPDATE_UNLINK_ACTIVE_LINK_SQL,
   isActiveLinkDuplicateEntryError,
   readFirstRow,
+  readRows,
   toEnrollmentClassLinkData,
 };

@@ -21,7 +21,12 @@ const ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE = "ENROLLMENT_CLASS_LINK_ACCESS_D
 const ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE = "ENROLLMENT_CLASS_LINK_INPUT_INVALID";
 const ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE = "ENROLLMENT_CLASS_LINK_RESULT_INVALID";
 const ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE = "ENROLLMENT_CLASS_LINK_STATE_CONFLICT";
+const ENROLLMENT_CLASS_LINK_TRANSFER_CONFLICT_CODE = "ENROLLMENT_CLASS_LINK_TRANSFER_CONFLICT";
+const ENROLLMENT_CLASS_LINK_REACTIVATION_BLOCKED_CODE =
+  "ENROLLMENT_CLASS_LINK_REACTIVATION_BLOCKED";
 const ENROLLMENT_CLASS_ASSIGNMENT_FIELDS = new Set(["classId", "enrollmentId"]);
+const ENROLLMENT_CLASS_TRANSFER_FIELDS = new Set(["enrollmentId", "targetClassId"]);
+const ENROLLMENT_CLASS_REACTIVATION_FIELDS = new Set(["classId", "enrollmentId"]);
 
 /**
  * Internal service for Enrollment -> Turma integration.
@@ -169,6 +174,316 @@ class EnrollmentClassLinkService {
     method?.(`[enrollments] ${event}`, compactObject(context));
   }
 
+  /**
+   * Explicit Enrollment -> Turma transfer command. The current class is read
+   * from persistence; callers cannot forge source class, student, actor or
+   * timestamps.
+   *
+   * @param {{ enrollmentId?: string|null, targetClassId?: string|number|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown, correlationId?: string|null, requestId?: string|null }} context
+   * @returns {Promise<Readonly<Record<string, unknown>>>}
+   */
+  async transferEnrollmentToClass(command = {}, context = {}) {
+    const startedAt = readClockMilliseconds(this.clock);
+    const safeCommand = readObject(command);
+    const unexpectedFields = Object.keys(safeCommand).filter(
+      (field) => !ENROLLMENT_CLASS_TRANSFER_FIELDS.has(field),
+    );
+    const enrollmentId = nullableText(safeCommand.enrollmentId, 64);
+    const targetClassId = normalizeClassIdInput(safeCommand.targetClassId);
+    const actorId = nullableText(readProperty(context, "actorId"), 191);
+    const correlationId = nullableText(readProperty(context, "correlationId"), 191);
+    const requestId = nullableText(readProperty(context, "requestId"), 191);
+    const logContext = compactObject({
+      actorId,
+      correlationId,
+      enrollmentId,
+      requestId,
+      targetClassId,
+    });
+
+    this.logAssignment("transfer_started", logContext);
+
+    try {
+      if (unexpectedFields.length > 0) {
+        throw controlledError(
+          "Enrollment class transfer accepts only enrollmentId and targetClassId.",
+          ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE,
+          { unexpectedFields },
+        );
+      }
+
+      if (!enrollmentId || !isValidClassIdValue(targetClassId) || !actorId) {
+        throw controlledError(
+          "Enrollment class transfer requires enrollmentId, targetClassId and an authenticated actor.",
+          ENROLLMENT_CLASS_LINK_INPUT_REQUIRED_CODE,
+          {
+            hasActorId: Boolean(actorId),
+            hasEnrollmentId: Boolean(enrollmentId),
+            hasTargetClassId: isValidClassIdValue(targetClassId),
+          },
+        );
+      }
+
+      const authorized = await this.isClassAssignmentAuthorized({
+        actorId,
+        authorization: readProperty(context, "authorization"),
+        classId: targetClassId,
+        enrollmentId,
+        operation: "transferEnrollmentToClass",
+      });
+
+      if (!authorized) {
+        throw controlledError(
+          "Actor is not authorized to transfer this Enrollment to this class.",
+          ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE,
+          { actorId, enrollmentId, targetClassId },
+        );
+      }
+
+      const metadata = compactObject({ correlationId, requestId });
+      const result = await this.runLinkTransaction((transactionContext = {}) =>
+        this.transferEnrollmentToClassInsideTransaction(
+          { actorId, enrollmentId, metadata, targetClassId },
+          transactionContext,
+        ),
+      );
+      const dto = toEnrollmentClassTransferDto(result, { enrollmentId, targetClassId });
+
+      this.logAssignment(dto.reused ? "transfer_reused" : "transfer_completed", {
+        ...logContext,
+        durationMs: elapsedMilliseconds(startedAt, this.clock),
+        enrollmentClassLinkId: dto.enrollmentClassLinkId,
+        previousEnrollmentClassLinkId: dto.previousEnrollmentClassLinkId,
+      });
+
+      return dto;
+    } catch (error) {
+      this.logAssignment(assignmentFailureEvent(error), {
+        ...logContext,
+        code: nullableText(readProperty(error, "code"), 96) || "UNEXPECTED_ERROR",
+        durationMs: elapsedMilliseconds(startedAt, this.clock),
+      });
+      throw error;
+    }
+  }
+
+  async transferEnrollmentToClassInsideTransaction(input, transactionContext = {}) {
+    const classFacade = transactionContext.classFacade || this.classFacade;
+    const classReader = transactionContext.classReader || this.classReader;
+    const classLinkRepository = transactionContext.classLinkRepository || this.classLinkRepository;
+    const enrollmentReader = transactionContext.enrollmentReader || this.enrollmentReader;
+    const capacityTransaction = readCapacityTransactionOptions({
+      classFacade,
+      transactionContext,
+      transactionUsed: Boolean(this.transactionRunner),
+    });
+    const enrollment = await this.findEnrollmentById(input.enrollmentId, enrollmentReader);
+
+    if (!enrollment) {
+      throw controlledError(
+        "Enrollment was not found for class transfer.",
+        ENROLLMENT_CLASS_LINK_ENROLLMENT_NOT_FOUND_CODE,
+        { enrollmentId: input.enrollmentId },
+      );
+    }
+
+    const enrollmentStatus = normalizeEnrollmentStatus(readProperty(enrollment, "status"));
+
+    if (enrollmentStatus !== EnrollmentStatus.ACTIVE) {
+      throw controlledError(
+        "Only ACTIVE Enrollment can be transferred between classes.",
+        ENROLLMENT_CLASS_LINK_INVALID_ENROLLMENT_STATUS_CODE,
+        {
+          enrollmentId: input.enrollmentId,
+          enrollmentStatus,
+          requiredEnrollmentStatus: EnrollmentStatus.ACTIVE,
+        },
+      );
+    }
+
+    const activeLinks = await this.findActiveEnrollmentClassLinks(
+      { enrollmentId: input.enrollmentId },
+      classLinkRepository,
+    );
+
+    if (activeLinks.length === 0) {
+      throw controlledError(
+        "Enrollment has no active class link to transfer.",
+        ENROLLMENT_CLASS_LINK_TRANSFER_CONFLICT_CODE,
+        { enrollmentId: input.enrollmentId },
+      );
+    }
+
+    if (activeLinks.length > 1) {
+      throw controlledError(
+        "Enrollment has multiple active class links; transfer source is ambiguous.",
+        ENROLLMENT_CLASS_LINK_TRANSFER_CONFLICT_CODE,
+        { activeLinkCount: activeLinks.length, enrollmentId: input.enrollmentId },
+      );
+    }
+
+    const currentLink = activeLinks[0];
+    const currentClassId = normalizeClassIdInput(readProperty(currentLink, "classId"));
+
+    if (String(currentClassId) === String(input.targetClassId)) {
+      return {
+        created: false,
+        link: currentLink,
+        previousLink: null,
+        reused: true,
+      };
+    }
+
+    const targetHistory = await this.findLatestEnrollmentClassLink(
+      { classId: input.targetClassId, enrollmentId: input.enrollmentId },
+      classLinkRepository,
+    );
+
+    if (targetHistory) {
+      throw controlledError(
+        "Enrollment already has historical state for the target class; explicit reactivation/transfer cycle is blocked by current schema.",
+        ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE,
+        {
+          enrollmentId: input.enrollmentId,
+          existingLinkId: nullableText(readProperty(targetHistory, "id"), 64),
+          existingStatus: nullableText(readProperty(targetHistory, "status"), 32),
+          targetClassId: input.targetClassId,
+        },
+      );
+    }
+
+    const classValidation = await this.validateClassReadiness(
+      {
+        capacityMode: "availability",
+        classId: input.targetClassId,
+        enrollmentId: input.enrollmentId,
+        checkDuplicate: false,
+        lockForUpdate: capacityTransaction.lockForUpdate,
+        occupancySource: capacityTransaction.occupancySource,
+        requireClassReader: true,
+      },
+      { classFacade, classLinkRepository, classReader },
+    );
+    const repository = this.getTransferClassLinkRepository(classLinkRepository);
+
+    await repository.unlinkActiveLink({
+      classId: currentClassId,
+      enrollmentId: input.enrollmentId,
+      unlinkedBy: input.actorId,
+    });
+
+    const persistenceResult = await this.createActiveEnrollmentClassLink(repository, {
+      classId: input.targetClassId,
+      enrollmentId: input.enrollmentId,
+      linkedBy: input.actorId,
+      metadata: input.metadata,
+      origin: "canonical_transfer",
+    });
+    const link = readProperty(persistenceResult, "link") || persistenceResult;
+    const capacityRecheck = await this.recheckClassOccupancyAfterLink({
+      capacityTransaction,
+      classFacade,
+      classId: input.targetClassId,
+    });
+
+    return {
+      classCapacityTransaction: buildClassCapacityTransactionResult({
+        capacityTransaction,
+        recheck: capacityRecheck,
+      }),
+      classValidation,
+      created: readBooleanProperty(persistenceResult, "created", true),
+      link,
+      previousLink: currentLink,
+      reused: readBooleanProperty(persistenceResult, "reused", false),
+    };
+  }
+
+  /**
+   * Explicit reactivation boundary. The command exists to prevent implicit
+   * reactivation; the current schema cannot safely represent another cycle for
+   * the same Enrollment/Turma pair.
+   */
+  async reactivateEnrollmentClassLink(command = {}, context = {}) {
+    const safeCommand = readObject(command);
+    const unexpectedFields = Object.keys(safeCommand).filter(
+      (field) => !ENROLLMENT_CLASS_REACTIVATION_FIELDS.has(field),
+    );
+    const enrollmentId = nullableText(safeCommand.enrollmentId, 64);
+    const classId = normalizeClassIdInput(safeCommand.classId);
+    const actorId = nullableText(readProperty(context, "actorId"), 191);
+
+    if (unexpectedFields.length > 0) {
+      throw controlledError(
+        "Enrollment class reactivation accepts only enrollmentId and classId.",
+        ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE,
+        { unexpectedFields },
+      );
+    }
+
+    if (!enrollmentId || !isValidClassIdValue(classId) || !actorId) {
+      throw controlledError(
+        "Enrollment class reactivation requires enrollmentId, classId and an authenticated actor.",
+        ENROLLMENT_CLASS_LINK_INPUT_REQUIRED_CODE,
+        {
+          hasActorId: Boolean(actorId),
+          hasClassId: isValidClassIdValue(classId),
+          hasEnrollmentId: Boolean(enrollmentId),
+        },
+      );
+    }
+
+    const authorized = await this.isClassAssignmentAuthorized({
+      actorId,
+      authorization: readProperty(context, "authorization"),
+      classId,
+      enrollmentId,
+      operation: "reactivateEnrollmentClassLink",
+    });
+
+    if (!authorized) {
+      throw controlledError(
+        "Actor is not authorized to reactivate this Enrollment class link.",
+        ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE,
+        { actorId, classId, enrollmentId },
+      );
+    }
+
+    return this.runLinkTransaction(async (transactionContext = {}) => {
+      const classLinkRepository = transactionContext.classLinkRepository || this.classLinkRepository;
+      const latestLink = await this.findLatestEnrollmentClassLink(
+        { classId, enrollmentId },
+        classLinkRepository,
+      );
+
+      if (!latestLink) {
+        throw controlledError(
+          "Enrollment class link history was not found for reactivation.",
+          ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE,
+          { classId, enrollmentId },
+        );
+      }
+
+      if (nullableText(readProperty(latestLink, "status"), 32)?.toUpperCase() === "ACTIVE") {
+        return toEnrollmentClassAssignmentDto(
+          { created: false, link: latestLink },
+          { classId, enrollmentId },
+        );
+      }
+
+      throw controlledError(
+        "Enrollment class link reactivation is blocked until the historical cycle strategy is migrated and approved.",
+        ENROLLMENT_CLASS_LINK_REACTIVATION_BLOCKED_CODE,
+        {
+          classId,
+          enrollmentId,
+          existingLinkId: nullableText(readProperty(latestLink, "id"), 64),
+          existingStatus: nullableText(readProperty(latestLink, "status"), 32),
+        },
+      );
+    });
+  }
   /**
    * Prepares an Enrollment -> Turma link after validating the persisted
    * Enrollment. No link is persisted by this sprint.
@@ -920,6 +1235,33 @@ class EnrollmentClassLinkService {
   }
 
   /**
+   * @param {{ enrollmentId: string }} input
+   * @returns {Promise<unknown[]>}
+   */
+  async findActiveEnrollmentClassLinks(input, classLinkRepository = this.classLinkRepository) {
+    if (typeof classLinkRepository?.findActiveByEnrollment !== "function") {
+      throw new TypeError(
+        "Canonical Enrollment class transfer requires classLinkRepository.findActiveByEnrollment.",
+      );
+    }
+
+    const links = await classLinkRepository.findActiveByEnrollment(input);
+    return Array.isArray(links) ? links : [];
+  }
+
+  getTransferClassLinkRepository(classLinkRepository = this.classLinkRepository) {
+    const repository = this.getClassLinkRepository(classLinkRepository);
+
+    if (typeof repository.unlinkActiveLink !== "function") {
+      throw new TypeError(
+        "Canonical Enrollment class transfer requires classLinkRepository.unlinkActiveLink.",
+      );
+    }
+
+    return repository;
+  }
+
+  /**
    * @returns {{ createActiveLinkIfNotExists?: (input: Record<string, unknown>) => Promise<unknown|null>, createOrReuseActiveLink?: (input: Record<string, unknown>) => Promise<unknown|null> }}
    */
   getClassLinkRepository(classLinkRepository = this.classLinkRepository) {
@@ -1372,6 +1714,53 @@ function toEnrollmentClassAssignmentDto(result, expected) {
 }
 
 /**
+ * @param {unknown} result
+ * @param {{ enrollmentId: string, targetClassId: string|number }} expected
+ * @returns {Readonly<Record<string, unknown>>}
+ */
+function toEnrollmentClassTransferDto(result, expected) {
+  const link = readObject(readProperty(result, "link"));
+  const previousLink = readObject(readProperty(result, "previousLink"));
+  const enrollmentClassLinkId = nullableText(readProperty(link, "id"), 64);
+  const enrollmentId = nullableText(readProperty(link, "enrollmentId"), 64);
+  const targetClassId = normalizeClassIdInput(readProperty(link, "classId"));
+  const previousEnrollmentClassLinkId = nullableText(readProperty(previousLink, "id"), 64);
+  const previousClassId = normalizeClassIdInput(readProperty(previousLink, "classId"));
+  const status = nullableText(readProperty(link, "status"), 32)?.toUpperCase() || null;
+  const reused = readBooleanProperty(result, "reused", false);
+
+  if (
+    !enrollmentClassLinkId ||
+    enrollmentId !== expected.enrollmentId ||
+    String(targetClassId ?? "") !== String(expected.targetClassId) ||
+    status !== "ACTIVE" ||
+    (!reused && !previousEnrollmentClassLinkId)
+  ) {
+    throw controlledError(
+      "Enrollment class transfer persistence returned an invalid link.",
+      ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE,
+      {
+        enrollmentIdMatches: enrollmentId === expected.enrollmentId,
+        hasEnrollmentClassLinkId: Boolean(enrollmentClassLinkId),
+        hasPreviousEnrollmentClassLinkId: Boolean(previousEnrollmentClassLinkId),
+        status,
+        targetClassIdMatches: String(targetClassId ?? "") === String(expected.targetClassId),
+      },
+    );
+  }
+
+  return Object.freeze({
+    enrollmentClassLinkId,
+    enrollmentId,
+    previousClassId,
+    previousEnrollmentClassLinkId,
+    status,
+    targetClassId,
+    created: readBooleanProperty(result, "created", false),
+    reused,
+  });
+}
+/**
  * @param {unknown} error
  * @returns {string}
  */
@@ -1388,7 +1777,9 @@ function assignmentFailureEvent(error) {
   if (
     code === ENROLLMENT_CLASS_LINK_DUPLICATE_CODE ||
     code === ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE ||
-    code === ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE
+    code === ENROLLMENT_CLASS_LINK_REACTIVATION_BLOCKED_CODE ||
+    code === ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE ||
+    code === ENROLLMENT_CLASS_LINK_TRANSFER_CONFLICT_CODE
   ) {
     return "assignment_conflict";
   }
@@ -1456,7 +1847,7 @@ function controlledError(message, code, details = {}) {
 }
 
 module.exports = {
-  ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE,
+ENROLLMENT_CLASS_LINK_ACCESS_DENIED_CODE,
   ENROLLMENT_CLASS_LINK_CLASS_CAPACITY_UNCONFIGURED_CODE,
   ENROLLMENT_CLASS_LINK_CLASS_FULL_CODE,
   ENROLLMENT_CLASS_LINK_CLASS_NOT_FOUND_CODE,
@@ -1465,8 +1856,13 @@ module.exports = {
   ENROLLMENT_CLASS_LINK_INPUT_INVALID_CODE,
   ENROLLMENT_CLASS_LINK_INPUT_REQUIRED_CODE,
   ENROLLMENT_CLASS_LINK_RESULT_INVALID_CODE,
+  ENROLLMENT_CLASS_LINK_REACTIVATION_BLOCKED_CODE,
   ENROLLMENT_CLASS_LINK_STATE_CONFLICT_CODE,
+  ENROLLMENT_CLASS_LINK_TRANSFER_CONFLICT_CODE,
   EnrollmentClassLinkService,
   assignmentFailureEvent,
   toEnrollmentClassAssignmentDto,
+  toEnrollmentClassTransferDto,
+  ENROLLMENT_CLASS_LINK_INVALID_CLASS_STATUS_CODE,
+  ENROLLMENT_CLASS_LINK_INVALID_ENROLLMENT_STATUS_CODE,
 };
