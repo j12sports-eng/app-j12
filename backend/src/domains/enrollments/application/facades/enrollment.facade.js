@@ -78,6 +78,7 @@ class EnrollmentFacade {
     this.enrollmentService =
       injectedService ||
       new EnrollmentApplicationService({
+        authorizeEnrollmentCancellation: options.authorizeEnrollmentCancellation,
         enrollmentFactory: options.enrollmentFactory,
         enrollmentRepository: options.enrollmentRepository,
       });
@@ -474,6 +475,22 @@ class EnrollmentFacade {
     return service.prepareEnrollmentNotificationFromEvent(input);
   }
 
+  /**
+   * Canonical administrative Enrollment cancellation boundary.
+   *
+   * @param {{ enrollmentId?: string|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown, correlationId?: string|null, requestId?: string|null }} context
+   * @returns {Promise<Readonly<Record<string, unknown>>>}
+   */
+  cancelEnrollment(command = {}, context = {}) {
+    const service = this.getEnrollmentService();
+
+    if (typeof service.cancelEnrollment !== "function") {
+      throw new TypeError("EnrollmentFacade requires an enrollmentService.cancelEnrollment function.");
+    }
+
+    return service.cancelEnrollment(command, context);
+  }
   /**
    * @param {Object} input
    * @returns {Promise<unknown>}

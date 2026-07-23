@@ -233,3 +233,43 @@ function enrollment(id = "draft-1") {
 function silentLogger() {
   return { error() {}, info() {}, warn() {} };
 }
+test("cancelActiveEnrollment updates conditionally from ACTIVE to CANCELLED", async () => {
+  const calls = [];
+  const repository = new MySqlEnrollmentRepository({
+    queryRunner: async (sql, params) => {
+      calls.push({ params, sql });
+      return { affectedRows: 1 };
+    },
+  });
+
+  const result = await repository.cancelActiveEnrollment({
+    enrollmentId: "enrollment-cancel",
+    expectedStatus: "ACTIVE",
+    status: "CANCELLED",
+  });
+
+  assert.deepEqual(result, { changed: true });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /UPDATE enrollments/);
+  assert.match(calls[0].sql, /SET status = \?/);
+  assert.match(calls[0].sql, /WHERE id = \?/);
+  assert.match(calls[0].sql, /AND status = \?/);
+  assert.match(calls[0].sql, /AND deleted_at IS NULL/);
+  assert.doesNotMatch(calls[0].sql, /\bDELETE\b/i);
+  assert.doesNotMatch(calls[0].sql, /cancelled_at|cancelled_by|cancel_reason|cancellation_reason/i);
+  assert.deepEqual(calls[0].params, ["CANCELLED", "enrollment-cancel", "ACTIVE"]);
+});
+
+test("cancelActiveEnrollment reports unchanged when no row is updated", async () => {
+  const repository = new MySqlEnrollmentRepository({
+    queryRunner: async () => [{ affectedRows: 0 }, []],
+  });
+
+  const result = await repository.cancelActiveEnrollment({
+    enrollmentId: "enrollment-cancel",
+    expectedStatus: "ACTIVE",
+    status: "CANCELLED",
+  });
+
+  assert.deepEqual(result, { changed: false });
+});

@@ -17,6 +17,8 @@
  *   Read-only adapter method used by the application service to resolve the current active DRAFT.
  * @property {(studentPersonId: string) => Promise<unknown|null>} findDraftByStudentPersonId
  * @property {(studentProfileId: string) => Promise<unknown|null>} findDraftByStudentProfileId
+ * @property {({ enrollmentId, expectedStatus, status }: { enrollmentId?: string|null, expectedStatus?: string|null, status?: string|null }) => Promise<{ changed: boolean }>} cancelActiveEnrollment
+ *   Conditionally cancels an ACTIVE Enrollment without touching class links or integrations.
  * @property {(id: string, status: string, options?: { confirmedAt?: string|null, confirmedBy?: string|null }) => Promise<unknown|null>} updateStatus
  *   Updates the Enrollment status, confirmation audit metadata when activating,
  *   and updated_at.

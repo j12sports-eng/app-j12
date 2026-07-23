@@ -1,3 +1,4 @@
+const { Enrollment } = require("../../domain/entities/enrollment.entity.js");
 const { EnrollmentFactory } = require("../../domain/factories/enrollment.factory.js");
 const {
   EnrollmentStatus,
@@ -13,6 +14,13 @@ const ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED_CODE = "ENROLLMENT_PROCEED_GUARD_I
 const ENROLLMENT_PROCEED_BLOCKED_CODE = "ENROLLMENT_PROCEED_BLOCKED";
 const ENROLLMENT_PROCEED_CONFLICT_CODE = "ENROLLMENT_PROCEED_CONFLICT";
 const ENROLLMENT_PROCEED_STATUS_VALUES = Object.freeze(["NONE", "DRAFT", "ACTIVE", "CONFLICT"]);
+const ENROLLMENT_CANCEL_ACCESS_DENIED_CODE = "ENROLLMENT_CANCEL_ACCESS_DENIED";
+const ENROLLMENT_CANCEL_FAILED_CODE = "ENROLLMENT_CANCEL_FAILED";
+const ENROLLMENT_CANCEL_INPUT_INVALID_CODE = "ENROLLMENT_CANCEL_INPUT_INVALID";
+const ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE = "ENROLLMENT_CANCEL_INPUT_REQUIRED";
+const ENROLLMENT_CANCEL_NOT_FOUND_CODE = "ENROLLMENT_CANCEL_NOT_FOUND";
+const ENROLLMENT_STATE_CONFLICT_CODE = "ENROLLMENT_STATE_CONFLICT";
+const ENROLLMENT_CANCEL_COMMAND_FIELDS = new Set(["enrollmentId"]);
 
 /**
  * Application service for Enrollment use cases.
@@ -48,7 +56,13 @@ class EnrollmentApplicationService {
    * @param {{ createDraft: (input: Record<string, unknown>) => unknown }} [options.enrollmentFactory]
    * @param {{ create: (enrollment: unknown) => Promise<unknown>, createDraftIfNotExists?: (enrollment: unknown) => Promise<{ enrollment: unknown|null, created: boolean, reused: boolean }>, findActiveByStudent?: (input: Record<string, unknown>) => Promise<unknown|null>, findById?: (id: string) => Promise<unknown|null>, findDraftByStudent?: (input: Record<string, unknown>) => Promise<unknown|null>, searchStudentScopes?: (input: Record<string, unknown>) => Promise<unknown[]>, updateStatus?: (id: string, status: string, options?: Record<string, unknown>) => Promise<unknown|null> }} [options.enrollmentRepository]
    */
-  constructor({ enrollmentFactory = EnrollmentFactory, enrollmentRepository = null } = {}) {
+  constructor({
+    authorizeEnrollmentCancellation = null,
+    enrollmentFactory = EnrollmentFactory,
+    enrollmentRepository = null,
+  } = {}) {
+    this.authorizeEnrollmentCancellation =
+      typeof authorizeEnrollmentCancellation === "function" ? authorizeEnrollmentCancellation : null;
     this.enrollmentFactory = enrollmentFactory;
     this.enrollmentRepository = enrollmentRepository;
   }
@@ -405,6 +419,148 @@ class EnrollmentApplicationService {
   }
 
   /**
+   * Cancels a persisted ACTIVE Enrollment without touching class links or integrations.
+   *
+   * @param {{ enrollmentId?: string|null }} command
+   * @param {{ actorId?: string|null, authorization?: unknown, correlationId?: string|null, requestId?: string|null }} context
+   * @returns {Promise<Readonly<{ changed: boolean, enrollmentId: string, previousStatus: string, status: string }>>}
+   */
+  async cancelEnrollment(command = {}, context = {}) {
+    const safeCommand = readObject(command);
+    const unexpectedFields = Object.keys(safeCommand).filter(
+      (field) => !ENROLLMENT_CANCEL_COMMAND_FIELDS.has(field),
+    );
+    const enrollmentId = nullableText(safeCommand.enrollmentId, 64);
+    const actorId = nullableText(readProperty(context, "actorId"), 191);
+
+    if (unexpectedFields.length > 0) {
+      throw controlledError("cancelEnrollment accepts only enrollmentId.", ENROLLMENT_CANCEL_INPUT_INVALID_CODE, {
+        unexpectedFields,
+      });
+    }
+
+    if (!enrollmentId || !actorId) {
+      throw controlledError(
+        "cancelEnrollment requires enrollmentId and an authenticated actor.",
+        ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE,
+        {
+          hasActorId: Boolean(actorId),
+          hasEnrollmentId: Boolean(enrollmentId),
+        },
+      );
+    }
+
+    if (!isValidEnrollmentId(enrollmentId)) {
+      throw controlledError(
+        "cancelEnrollment received an invalid enrollmentId.",
+        ENROLLMENT_CANCEL_INPUT_INVALID_CODE,
+        { enrollmentIdValid: false },
+      );
+    }
+
+    const authorized = await this.isEnrollmentCancellationAuthorized({
+      actorId,
+      authorization: readProperty(context, "authorization"),
+      enrollmentId,
+      operation: "cancelEnrollment",
+    });
+
+    if (!authorized) {
+      throw controlledError(
+        "Actor is not authorized to cancel this Enrollment.",
+        ENROLLMENT_CANCEL_ACCESS_DENIED_CODE,
+        { actorId, enrollmentId },
+      );
+    }
+
+    const repository = this.getEnrollmentCancellationRepository();
+
+    try {
+      const currentEnrollment = await repository.findById(enrollmentId);
+
+      if (!currentEnrollment) {
+        throw controlledError(
+          "Enrollment was not found for cancellation.",
+          ENROLLMENT_CANCEL_NOT_FOUND_CODE,
+          { enrollmentId },
+        );
+      }
+
+      const currentStatus = normalizeEnrollmentStatus(readProperty(currentEnrollment, "status"));
+
+      if (currentStatus === EnrollmentStatus.CANCELLED) {
+        return toEnrollmentCancellationDto({
+          changed: false,
+          enrollmentId,
+          previousStatus: EnrollmentStatus.CANCELLED,
+        });
+      }
+
+      if (currentStatus !== EnrollmentStatus.ACTIVE) {
+        throw enrollmentCancellationStateConflict(enrollmentId, currentStatus);
+      }
+
+      const enrollment = new Enrollment(currentEnrollment);
+      enrollment.cancel();
+
+      const result = await repository.cancelActiveEnrollment({
+        enrollmentId,
+        expectedStatus: EnrollmentStatus.ACTIVE,
+        status: enrollment.status,
+      });
+
+      if (readBooleanProperty(result, "changed", false)) {
+        return toEnrollmentCancellationDto({
+          changed: true,
+          enrollmentId,
+          previousStatus: currentStatus,
+        });
+      }
+
+      const latestEnrollment = await repository.findById(enrollmentId);
+
+      if (!latestEnrollment) {
+        throw controlledError(
+          "Enrollment was not found after concurrent cancellation attempt.",
+          ENROLLMENT_CANCEL_NOT_FOUND_CODE,
+          { enrollmentId },
+        );
+      }
+
+      const latestStatus = normalizeEnrollmentStatus(readProperty(latestEnrollment, "status"));
+
+      if (latestStatus === EnrollmentStatus.CANCELLED) {
+        return toEnrollmentCancellationDto({
+          changed: false,
+          enrollmentId,
+          previousStatus: EnrollmentStatus.CANCELLED,
+        });
+      }
+
+      throw enrollmentCancellationStateConflict(enrollmentId, latestStatus);
+    } catch (error) {
+      if (isEnrollmentCancellationControlledError(error)) {
+        throw error;
+      }
+
+      throw controlledError("Enrollment cancellation failed.", ENROLLMENT_CANCEL_FAILED_CODE, {
+        enrollmentId,
+      });
+    }
+  }
+
+  async isEnrollmentCancellationAuthorized(input = {}) {
+    if (!this.authorizeEnrollmentCancellation) {
+      return false;
+    }
+
+    try {
+      return (await this.authorizeEnrollmentCancellation(Object.freeze({ ...input }))) === true;
+    } catch {
+      return false;
+    }
+  }
+  /**
    * Confirms a persisted DRAFT Enrollment internally.
    *
    * @param {Object} input
@@ -558,6 +714,22 @@ class EnrollmentApplicationService {
   /**
    * @returns {{ searchStudentScopes: (input: Record<string, unknown>) => Promise<unknown[]> }}
    */
+  /**
+   * @returns {{ findById: (id: string) => Promise<unknown|null>, cancelActiveEnrollment: (input: Record<string, unknown>) => Promise<{ changed: boolean }> }}
+   */
+  getEnrollmentCancellationRepository() {
+    if (typeof this.enrollmentRepository?.findById !== "function") {
+      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.findById function.");
+    }
+
+    if (typeof this.enrollmentRepository?.cancelActiveEnrollment !== "function") {
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.cancelActiveEnrollment function.",
+      );
+    }
+
+    return this.enrollmentRepository;
+  }
   getEnrollmentStudentScopeSearchReader() {
     if (typeof this.enrollmentRepository?.searchStudentScopes !== "function") {
       throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.searchStudentScopes function.");
@@ -578,6 +750,24 @@ function readProperty(value, property) {
 
 /**
  * @param {unknown} value
+ * @param {string} property
+ * @param {boolean} fallback
+ * @returns {boolean}
+ */
+function readBooleanProperty(value, property, fallback) {
+  const raw = readProperty(value, property);
+  return typeof raw === "boolean" ? raw : fallback;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {Record<string, unknown>}
+ */
+function readObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+/**
+ * @param {unknown} value
  * @param {number} [max]
  * @returns {string|null}
  */
@@ -588,6 +778,40 @@ function nullableText(value, max = 65535) {
   return normalized || null;
 }
 
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isValidEnrollmentId(value) {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(String(value ?? ""));
+}
+
+function enrollmentCancellationStateConflict(enrollmentId, currentStatus) {
+  return controlledError("Only ACTIVE Enrollment can be cancelled in this sprint.", ENROLLMENT_STATE_CONFLICT_CODE, {
+    currentStatus,
+    enrollmentId,
+    requiredStatus: EnrollmentStatus.ACTIVE,
+  });
+}
+
+function toEnrollmentCancellationDto({ changed, enrollmentId, previousStatus }) {
+  return Object.freeze({
+    changed: changed === true,
+    enrollmentId,
+    previousStatus,
+    status: EnrollmentStatus.CANCELLED,
+  });
+}
+
+function isEnrollmentCancellationControlledError(error) {
+  return [
+    ENROLLMENT_CANCEL_ACCESS_DENIED_CODE,
+    ENROLLMENT_CANCEL_INPUT_INVALID_CODE,
+    ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE,
+    ENROLLMENT_CANCEL_NOT_FOUND_CODE,
+    ENROLLMENT_STATE_CONFLICT_CODE,
+  ].includes(readProperty(error, "code"));
+}
 /**
  * @param {unknown} value
  * @returns {string|null}
@@ -664,6 +888,11 @@ module.exports = {
   ENROLLMENT_PROCEED_BLOCKED_CODE,
   ENROLLMENT_PROCEED_CONFLICT_CODE,
   ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED_CODE,
-  EnrollmentApplicationService,
+  ENROLLMENT_CANCEL_ACCESS_DENIED_CODE,
+  ENROLLMENT_CANCEL_FAILED_CODE,
+  ENROLLMENT_CANCEL_INPUT_INVALID_CODE,
+  ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE,
+  ENROLLMENT_CANCEL_NOT_FOUND_CODE,
+  ENROLLMENT_STATE_CONFLICT_CODE,  EnrollmentApplicationService,
   normalizeSearchLimit,
 };

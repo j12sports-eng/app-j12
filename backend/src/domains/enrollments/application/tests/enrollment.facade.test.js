@@ -1026,3 +1026,20 @@ function createDelegatingService(calls) {
     },
   };
 }
+test("EnrollmentFacade delegates cancelEnrollment command and context unchanged", async () => {
+  const calls = [];
+  const service = {
+    async cancelEnrollment(command, context) {
+      calls.push({ command, context });
+      return { enrollmentId: "enrollment-facade", status: "CANCELLED" };
+    },
+  };
+  const facade = new EnrollmentFacade({ enrollmentApplicationService: service });
+  const command = Object.freeze({ enrollmentId: "enrollment-facade" });
+  const context = Object.freeze({ actorId: "actor-facade", authorization: Object.freeze({ allowed: true }) });
+
+  const result = await facade.cancelEnrollment(command, context);
+
+  assert.deepEqual(result, { enrollmentId: "enrollment-facade", status: "CANCELLED" });
+  assert.deepEqual(calls, [{ command, context }]);
+});

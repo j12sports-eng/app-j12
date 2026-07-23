@@ -44,6 +44,15 @@ const SELECT_ACTIVE_ENROLLMENT_BY_STUDENT_SQL = `
   LIMIT 1
 `;
 
+const UPDATE_CANCEL_ACTIVE_ENROLLMENT_SQL = `
+  UPDATE ${TABLE_NAME}
+  SET status = ?,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE id = ?
+    AND status = ?
+    AND deleted_at IS NULL
+  LIMIT 1
+`;
 const UPDATE_ENROLLMENT_STATUS_SQL = `
   UPDATE ${TABLE_NAME}
   SET status = ?,
@@ -238,6 +247,33 @@ class MySqlEnrollmentRepository {
     return toEnrollmentDataFromRow(readFirstRow(rows));
   }
 
+  /**
+   * Conditionally cancels an ACTIVE Enrollment without touching class links or integrations.
+   *
+   * @param {{ enrollmentId?: string|null, expectedStatus?: string|null, status?: string|null }} input
+   * @returns {Promise<{ changed: boolean }>}
+   */
+  async cancelActiveEnrollment(input = {}) {
+    const enrollmentId = requiredText(input.enrollmentId, "enrollmentId", 64);
+    const expectedStatus = normalizeEnrollmentStatus(input.expectedStatus);
+    const nextStatus = normalizeEnrollmentStatus(input.status);
+
+    if (expectedStatus !== EnrollmentStatus.ACTIVE || nextStatus !== EnrollmentStatus.CANCELLED) {
+      throw new TypeError(
+        "MySqlEnrollmentRepository.cancelActiveEnrollment requires ACTIVE -> CANCELLED statuses.",
+      );
+    }
+
+    const result = await this.query(UPDATE_CANCEL_ACTIVE_ENROLLMENT_SQL, [
+      EnrollmentStatus.CANCELLED,
+      enrollmentId,
+      EnrollmentStatus.ACTIVE,
+    ]);
+
+    return {
+      changed: readAffectedRows(result) > 0,
+    };
+  }
   /**
    * Updates Enrollment status and confirmation audit fields when activating.
    *
@@ -742,6 +778,47 @@ function buildDraftEnrollmentLockName(values) {
 }
 
 /**
+ * Reads affectedRows from both mysql2 execute results and project query wrappers.
+ *
+ * Supported shapes:
+ * - ResultSetHeader
+ * - [ResultSetHeader, fields]
+ *
+ * @param {unknown} result
+ * @returns {number}
+ */
+function readAffectedRows(result) {
+  if (Array.isArray(result)) {
+    const header = result.find(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        Object.prototype.hasOwnProperty.call(item, "affectedRows"),
+    );
+
+    return normalizeAffectedRows(header?.affectedRows);
+  }
+
+  if (result && typeof result === "object") {
+    return normalizeAffectedRows(result.affectedRows);
+  }
+
+  return 0;
+}
+
+/**
+ * Normalizes MySQL affectedRows without accepting invalid values.
+ *
+ * @param {unknown} value
+ * @returns {number}
+ */
+function normalizeAffectedRows(value) {
+  const normalized = Number(value);
+
+  return Number.isSafeInteger(normalized) && normalized >= 0 ? normalized : 0;
+}
+/**
  * Accepts both the project query wrapper shape (`rows`) and mysql2
  * connection.execute shape (`[rows, fields]`).
  *
@@ -954,6 +1031,7 @@ module.exports = {
   isActiveDraftDuplicateEntryError,
   normalizeLockTimeoutSeconds,
   normalizeSearchLimit,
+  readAffectedRows,
   readFirstRow,
   toEnrollmentStudentScopeData,
   toEnrollmentData,
