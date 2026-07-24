@@ -5,5 +5,6 @@ module.exports = Object.freeze({
   ...require("./facades/enrollment.facade.js"),
   ...require("./http/index.js"),
   ...require("./repositories/index.js"),
+  ...require("./security/index.js"),
   ...require("./services/index.js"),
 });

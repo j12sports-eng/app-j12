@@ -13,6 +13,10 @@ module.exports = Object.freeze({
   MemoryEnrollmentDigitalInvitationRepository: infrastructure.MemoryEnrollmentDigitalInvitationRepository,
   MySqlEnrollmentDigitalInvitationRepository: infrastructure.MySqlEnrollmentDigitalInvitationRepository,
   createEnrollmentDigitalInvitationService: infrastructure.createEnrollmentDigitalInvitationService,
+  createEnrollmentInvitationAdminComposedRouter:
+    infrastructure.createEnrollmentInvitationAdminComposedRouter,
+  createEnrollmentInvitationAdminComposition:
+    infrastructure.createEnrollmentInvitationAdminComposition,
   createEnrollmentInvitationPublicComposition:
     infrastructure.createEnrollmentInvitationPublicComposition,
   createEnrollmentInvitationPublicRouter: infrastructure.createEnrollmentInvitationPublicRouter,
