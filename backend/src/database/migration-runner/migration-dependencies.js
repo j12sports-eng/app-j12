@@ -52,5 +52,8 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
     "20260629134546_create_enrollments_table",
     "20260629190607_add_active_draft_unique_constraint_to_enrollments",
   ]),
+  "20260724120000_create_auth_identities_table": Object.freeze([
+    "20260712184500_create_auth_runtime_tables",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };

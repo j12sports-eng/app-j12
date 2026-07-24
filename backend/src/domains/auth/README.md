@@ -1,19 +1,25 @@
 # Dominio Auth
 
-Estrutura reservada para a futura migracao do dominio de autenticacao.
-
-## Objetivo futuro
-
-Centralizar login, sessoes, tokens, reset de senha, primeiro acesso e integracao com usuarios.
-
-## Estrutura
-
-- `controllers/`: futuros controllers do dominio.
-- `services/`: futuros services do dominio.
-- `repositories/`: futuros repositories do dominio.
-- `validators/`: futuros validadores do dominio.
-- `types/`: futuros tipos e contratos do dominio.
+Boundary interna para fundacoes canonicas de autenticacao.
 
 ## Estado atual
 
-Nenhum modulo de autenticacao foi migrado nesta Sprint. O fluxo atual de login permanece intacto.
+A Sprint 29.1C.2A adicionou somente a fundacao de `AuthIdentity` canonica.
+O fluxo atual de login, sessoes, JWT, `req.user`, `req.auth`, rotas e autorizacao
+permanece intacto.
+
+## Fundacao disponivel
+
+- `AuthIdentity`: identidade autenticavel estavel.
+- `source`: origem real permitida (`users` ou `j12_usuarios`).
+- `sourceUserId`: PK da origem preservada como string.
+- `AuthIdentityApplicationService`: resolve ou cria a identidade de forma idempotente.
+- Repositories em memoria e MySQL para uso interno/testes.
+
+## Fora desta boundary por enquanto
+
+- Membership por unidade.
+- Unidade ativa.
+- Selecao de unidade.
+- Alteracao de login/JWT.
+- Frontend ou rotas publicas.
