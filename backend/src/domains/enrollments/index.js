@@ -10,6 +10,9 @@ const presentation = require("./presentation/index.js");
  * routes, controllers, services, APIs or frontend modules.
  */
 module.exports = Object.freeze({
+  MemoryEnrollmentDigitalInvitationRepository: infrastructure.MemoryEnrollmentDigitalInvitationRepository,
+  MySqlEnrollmentDigitalInvitationRepository: infrastructure.MySqlEnrollmentDigitalInvitationRepository,
+  createEnrollmentDigitalInvitationService: infrastructure.createEnrollmentDigitalInvitationService,
   domain: "enrollments",
   ...require("./domain/index.js"),
   ...require("./application/contracts/index.js"),
