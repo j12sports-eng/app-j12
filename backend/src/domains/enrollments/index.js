@@ -13,6 +13,9 @@ module.exports = Object.freeze({
   MemoryEnrollmentDigitalInvitationRepository: infrastructure.MemoryEnrollmentDigitalInvitationRepository,
   MySqlEnrollmentDigitalInvitationRepository: infrastructure.MySqlEnrollmentDigitalInvitationRepository,
   createEnrollmentDigitalInvitationService: infrastructure.createEnrollmentDigitalInvitationService,
+  createEnrollmentInvitationPublicComposition:
+    infrastructure.createEnrollmentInvitationPublicComposition,
+  createEnrollmentInvitationPublicRouter: infrastructure.createEnrollmentInvitationPublicRouter,
   domain: "enrollments",
   ...require("./domain/index.js"),
   ...require("./application/contracts/index.js"),
