@@ -55,5 +55,8 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260724120000_create_auth_identities_table": Object.freeze([
     "20260712184500_create_auth_runtime_tables",
   ]),
+  "20260724123000_create_user_unit_memberships_table": Object.freeze([
+    "20260724120000_create_auth_identities_table",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };
