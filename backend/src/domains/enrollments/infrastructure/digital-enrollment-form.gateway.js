@@ -34,6 +34,13 @@ class DigitalEnrollmentFormGateway {
     return Object.freeze({ enrollment, progress, relationship });
   }
 
+  async executeDigitalEnrollmentOperation({ operation, invitation }) {
+    if (operation !== "getForm") throw unavailable();
+    const enrollmentId = invitation?.enrollmentId;
+    if (!enrollmentId) throw unavailable();
+    return this.transaction((queryRunner) => this.loadFormAggregate(enrollmentId, queryRunner));
+  }
+
   async ensureProgress(enrollmentId, relationshipId, invitationId) {
     return this.transaction(async (queryRunner) => {
       const enrollment = await this.enrollmentRepository.findById(enrollmentId, queryRunner);

@@ -16,6 +16,9 @@ const INSERT_ENROLLMENT_SQL = `
     id,
     student_person_id,
     student_profile_id,
+    responsible_person_id,
+    responsible_profile_id,
+    responsible_relationship_id,
     status,
     start_date,
     end_date,
@@ -23,7 +26,7 @@ const INSERT_ENROLLMENT_SQL = `
     updated_at,
     deleted_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
 `;
 
 const SELECT_ENROLLMENT_BY_ID_SQL = `
@@ -195,6 +198,9 @@ class MySqlEnrollmentRepository {
       values.id,
       values.student_person_id,
       values.student_profile_id,
+      values.responsible_person_id,
+      values.responsible_profile_id,
+      values.responsible_relationship_id,
       values.status,
       values.start_date,
       values.end_date,
@@ -732,6 +738,9 @@ function toEnrollmentDataFromRow(row) {
     deletedAt: row.deleted_at ?? null,
     endDate: row.end_date ?? null,
     id: row.id ?? null,
+    responsiblePersonId: row.responsible_person_id ?? null,
+    responsibleProfileId: row.responsible_profile_id ?? null,
+    responsibleRelationshipId: row.responsible_relationship_id ?? null,
     startDate: row.start_date ?? null,
     status: normalizeEnrollmentStatus(row.status) || nullableText(row.status, 32),
     studentPersonId: row.student_person_id ?? null,
@@ -760,6 +769,18 @@ function toEnrollmentRowValues(enrollment = {}) {
     student_profile_id: requiredText(
       enrollment.studentProfileId ?? enrollment.student_profile_id,
       "studentProfileId",
+      64,
+    ),
+    responsible_person_id: nullableText(
+      enrollment.responsiblePersonId ?? enrollment.responsible_person_id,
+      64,
+    ),
+    responsible_profile_id: nullableText(
+      enrollment.responsibleProfileId ?? enrollment.responsible_profile_id,
+      64,
+    ),
+    responsible_relationship_id: nullableText(
+      enrollment.responsibleRelationshipId ?? enrollment.responsible_relationship_id,
       64,
     ),
     updated_at: nullableText(enrollment.updatedAt ?? enrollment.updated_at, 32),
