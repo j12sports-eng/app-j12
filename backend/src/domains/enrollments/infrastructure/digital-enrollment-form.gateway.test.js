@@ -27,12 +27,12 @@ test("partial writes persist each allowlisted step and increment revision", asyn
 
 test("advance is sequential and review is available only after every step", async () => {
   const { gateway } = fixture();
-  for (const [revision, targetStep] of [[1, "STUDENT_DATA"], [2, "ADDRESS"], [3, "ADDITIONAL_INFORMATION"], [4, "REVIEW"]]) {
+  for (const [revision, targetStep] of [[1, "STUDENT_DATA"], [2, "ADDRESS"], [3, "ADDITIONAL_INFORMATION", "DOCUMENTS"], [4, "DOCUMENTS"], [5, "REVIEW"]]) {
     await gateway.executeDigitalEnrollmentOperation({ command: { fields: { targetStep }, revision }, invitation: INVITATION, operation: "advanceStep" });
   }
   const review = await gateway.executeDigitalEnrollmentOperation({ invitation: INVITATION, operation: "getReview" });
   assert.equal(review.progress.status, "READY_FOR_REVIEW");
-  assert.deepEqual(review.progress.completedSteps, ["RESPONSIBLE_DATA", "STUDENT_DATA", "ADDRESS", "ADDITIONAL_INFORMATION"]);
+  assert.deepEqual(review.progress.completedSteps, ["RESPONSIBLE_DATA", "STUDENT_DATA", "ADDRESS", "ADDITIONAL_INFORMATION", "DOCUMENTS"]);
 });
 
 test("stale revision returns controlled conflict without merging", async () => {

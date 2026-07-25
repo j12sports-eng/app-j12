@@ -54,6 +54,10 @@ test("enrollment public composition exposes the isolated modern public endpoint"
     { methods: { patch: true }, path: "/:token/additional-information" },
     { methods: { post: true }, path: "/:token/advance" },
     { methods: { get: true }, path: "/:token/review" },
+    { methods: { post: true }, path: "/:token/documents" },
+    { methods: { get: true }, path: "/:token/documents" },
+    { methods: { delete: true }, path: "/:token/documents/:id" },
+    { methods: { get: true }, path: "/:token/documents/:id/download" },
   ]);  assert.equal(serverSource.includes("createEnrollmentInvitationPublicRouter"), true);
   assert.equal(serverSource.includes("ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH"), true);
   assert.equal(serverSource.includes("createEnrollmentInvitationAdminRouter"), false);

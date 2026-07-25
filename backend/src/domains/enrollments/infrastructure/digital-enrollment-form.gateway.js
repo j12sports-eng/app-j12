@@ -114,6 +114,19 @@ class DigitalEnrollmentFormGateway {
     });
   }
 
+  async resolveDocumentAccess(invitation) {
+    const enrollmentId = invitation?.enrollmentId;
+    if (!enrollmentId || !invitation?.invitationId) throw unavailable();
+    return this.transaction(async (context) => {
+      const aggregate = await this.loadFormAggregate(enrollmentId, context);
+      return Object.freeze({
+        enrollmentId: aggregate.enrollment.id,
+        responsibleRelationshipId: aggregate.enrollment.responsibleRelationshipId,
+        progressRevision: aggregate.progress.revision,
+      });
+    });
+  }
+
   async transaction(callback) {
     if (typeof this.transactionRunner !== "function") throw unavailable();
     return this.transactionRunner((value) => callback(normalizeContext(value)));

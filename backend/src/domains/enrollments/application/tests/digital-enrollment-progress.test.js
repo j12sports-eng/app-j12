@@ -51,7 +51,7 @@ test("progress rejects unsupported steps and premature review", () => {
   assert.throws(
     () =>
       new DigitalEnrollmentProgress({
-        completedSteps: ["DOCUMENTS"],
+        completedSteps: ["CONTRACT"],
         enrollmentId: "enrollment-1",
         responsibleRelationshipId: "relationship-1",
       }),

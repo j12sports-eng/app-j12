@@ -34,6 +34,7 @@ const EXPECTED_CANONICAL_MIGRATION_IDS = Object.freeze([
   "20260724120000_create_auth_identities_table",
   "20260724123000_create_user_unit_memberships_table",
   "20260724150000_create_digital_enrollment_progress",
+  "20260725120000_create_digital_enrollment_documents",
 ]);
 
 function catalog(...names) {

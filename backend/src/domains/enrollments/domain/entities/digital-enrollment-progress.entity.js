@@ -8,9 +8,10 @@ const DIGITAL_ENROLLMENT_STEPS = Object.freeze([
   "STUDENT_DATA",
   "ADDRESS",
   "ADDITIONAL_INFORMATION",
+  "DOCUMENTS",
   "REVIEW",
 ]);
-const REQUIRED_REVIEW_STEPS = DIGITAL_ENROLLMENT_STEPS.slice(0, 4);
+const REQUIRED_REVIEW_STEPS = DIGITAL_ENROLLMENT_STEPS.slice(0, 5);
 
 class DigitalEnrollmentProgress {
   constructor(input = {}) {

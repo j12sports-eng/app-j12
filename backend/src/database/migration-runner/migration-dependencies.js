@@ -64,5 +64,8 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
     "20260712183000_create_people_domain_tables",
     "20260720120000_create_enrollment_digital_invitations_table",
   ]),
+  "20260725120000_create_digital_enrollment_documents": Object.freeze([
+    "20260724150000_create_digital_enrollment_progress",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };

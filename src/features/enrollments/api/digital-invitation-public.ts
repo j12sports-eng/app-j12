@@ -4,7 +4,7 @@ export type PublicInvitation = {
   expiresAt: string | null;
   nextStep: string;
 };
-export type DigitalEnrollmentStep = "RESPONSIBLE_DATA" | "STUDENT_DATA" | "ADDRESS" | "ADDITIONAL_INFORMATION" | "REVIEW";
+export type DigitalEnrollmentStep = "RESPONSIBLE_DATA" | "STUDENT_DATA" | "ADDRESS" | "ADDITIONAL_INFORMATION" | "DOCUMENTS" | "REVIEW";
 export type DigitalEnrollmentForm = {
   responsible: { name: string; email: string; phone: string };
   student: { name: string; birthDate: string };
@@ -18,7 +18,7 @@ export class PublicInvitationError extends Error {
 export function isValidInvitationToken(token: string): boolean { return /^[A-Za-z0-9_-]{43}$/.test(token); }
 async function request<T>(token: string, suffix: string, init: RequestInit = {}): Promise<T> {
   try {
-    const response = await fetch(`/api/enrollments/digital-invitations/public/${encodeURIComponent(token)}${suffix}`, { credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", ...init, headers: { "Content-Type": "application/json", ...(init.headers || {}) } });
+    const response = await fetch(`/api/enrollments/digital-invitations/public/${encodeURIComponent(token)}${suffix}`, { credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", ...init, headers: init.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...(init.headers || {}) } });
     if (response.status === 429) throw new PublicInvitationError("rate_limit");
     if (response.status === 409) throw new PublicInvitationError("conflict");
     if (response.status === 400) throw new PublicInvitationError("invalid");
@@ -38,3 +38,10 @@ export function saveDigitalEnrollmentStep(token: string, endpoint: string, field
 export function advanceDigitalEnrollmentStep(token: string, targetStep: DigitalEnrollmentStep, revision: number) {
   return request<{ currentStep: DigitalEnrollmentStep; progress: DigitalEnrollmentForm["progress"] }>(token, "/advance", { method: "POST", body: JSON.stringify({ fields: { targetStep }, revision }) });
 }
+
+export type DigitalEnrollmentDocumentType = "CPF" | "RG" | "CERTIDAO_NASCIMENTO" | "COMPROVANTE_RESIDENCIA" | "FOTO" | "OUTRO";
+export type DigitalEnrollmentDocument = { id: string; type: DigitalEnrollmentDocumentType; status: "PENDING" | "APPROVED" | "REJECTED"; originalName: string; mimeType: string; extension: string; sizeBytes: number; sha256: string; rejectionReason: string | null };
+export function listDigitalEnrollmentDocuments(token: string) { return request<DigitalEnrollmentDocument[]>(token, "/documents"); }
+export function uploadDigitalEnrollmentDocument(token: string, type: DigitalEnrollmentDocumentType, file: File) { const body = new FormData(); body.append("type", type); body.append("file", file); return request<DigitalEnrollmentDocument>(token, "/documents", { method: "POST", body }); }
+export function deleteDigitalEnrollmentDocument(token: string, id: string) { return request<{ deleted: true; id: string }>(token, `/documents/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+export function digitalEnrollmentDocumentDownloadUrl(token: string, id: string) { return `/api/enrollments/digital-invitations/public/${encodeURIComponent(token)}/documents/${encodeURIComponent(id)}/download`; }

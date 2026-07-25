@@ -11,7 +11,7 @@ const api = fs.readFileSync(
   "utf8",
 );
 
-test("digital enrollment route is a five-step wizard with visible save states", () => {
+test("digital enrollment route is a six-step wizard with visible save states", () => {
   for (const label of [
     "Responsável",
     "Aluno",
