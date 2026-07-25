@@ -2,78 +2,94 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { DigitalEnrollmentFormGateway } = require("./digital-enrollment-form.gateway.js");
 
-test("gateway loads one consistent DRAFT aggregate through its transaction", async () => {
-  const gateway = fixture();
-  const aggregate = await gateway.executeDigitalEnrollmentOperation({
-    invitation: { enrollmentId: "enrollment-1" },
-    operation: "getForm",
-  });
-  assert.equal(aggregate.enrollment.status, "DRAFT");
-  assert.equal(aggregate.progress.revision, 1);
+const INVITATION = { enrollmentId: "enrollment-1", invitationId: "invitation-1" };
+
+test("getForm returns resumable canonical data", async () => {
+  const { gateway } = fixture();
+  const form = await gateway.executeDigitalEnrollmentOperation({ invitation: INVITATION, operation: "getForm" });
+  assert.equal(form.responsible.name, "Responsavel");
+  assert.equal(form.student.name, "Aluno");
+  assert.equal(form.progress.revision, 1);
 });
 
-test("gateway fails closed for old DRAFT without ownership", async () => {
-  const gateway = fixture({
-    enrollment: {
-      id: "enrollment-1",
-      status: "DRAFT",
-      studentPersonId: "student-1",
-    },
-  });
-  await assert.rejects(
-    () =>
-      gateway.executeDigitalEnrollmentOperation({
-        invitation: { enrollmentId: "enrollment-1" },
-        operation: "getForm",
-      }),
-    { code: "DIGITAL_ENROLLMENT_OWNERSHIP_NOT_AVAILABLE" },
-  );
+test("partial writes persist each allowlisted step and increment revision", async () => {
+  const { gateway, state } = fixture();
+  let form = await gateway.executeDigitalEnrollmentOperation({ command: { fields: { name: "Responsavel Atualizado" }, revision: 1 }, invitation: INVITATION, operation: "updateResponsible" });
+  assert.equal(form.responsible.name, "Responsavel Atualizado");
+  form = await gateway.executeDigitalEnrollmentOperation({ command: { fields: { birthDate: "2014-05-06", name: "Aluno Atualizado" }, revision: 2 }, invitation: INVITATION, operation: "updateStudent" });
+  assert.equal(form.student.birthDate, "2014-05-06");
+  form = await gateway.executeDigitalEnrollmentOperation({ command: { fields: { city: "Goiania", zipCode: "74000-000" }, revision: 3 }, invitation: INVITATION, operation: "updateAddress" });
+  assert.equal(form.address.city, "Goiania");
+  form = await gateway.executeDigitalEnrollmentOperation({ command: { fields: {}, revision: 4 }, invitation: INVITATION, operation: "updateAdditionalInformation" });
+  assert.equal(form.progress.revision, 5);
+  assert.equal(state.progress.updatedByInvitationId, "invitation-1");
 });
 
-test("gateway keeps every public write operation blocked", async () => {
-  const gateway = fixture();
-  await assert.rejects(
-    () =>
-      gateway.executeDigitalEnrollmentOperation({
-        invitation: { enrollmentId: "enrollment-1" },
-        operation: "updateResponsible",
-      }),
-    { code: "DIGITAL_ENROLLMENT_OWNERSHIP_NOT_AVAILABLE" },
-  );
+test("advance is sequential and review is available only after every step", async () => {
+  const { gateway } = fixture();
+  for (const [revision, targetStep] of [[1, "STUDENT_DATA"], [2, "ADDRESS"], [3, "ADDITIONAL_INFORMATION"], [4, "REVIEW"]]) {
+    await gateway.executeDigitalEnrollmentOperation({ command: { fields: { targetStep }, revision }, invitation: INVITATION, operation: "advanceStep" });
+  }
+  const review = await gateway.executeDigitalEnrollmentOperation({ invitation: INVITATION, operation: "getReview" });
+  assert.equal(review.progress.status, "READY_FOR_REVIEW");
+  assert.deepEqual(review.progress.completedSteps, ["RESPONSIBLE_DATA", "STUDENT_DATA", "ADDRESS", "ADDITIONAL_INFORMATION"]);
 });
+
+test("stale revision returns controlled conflict without merging", async () => {
+  const { gateway, state } = fixture();
+  await assert.rejects(() => gateway.executeDigitalEnrollmentOperation({ command: { fields: { name: "Stale" }, revision: 2 }, invitation: INVITATION, operation: "updateStudent" }), { code: "DIGITAL_ENROLLMENT_PROGRESS_CONFLICT", statusCode: 409 });
+  assert.equal(state.people["student-1"].name.fullName, "Aluno");
+});
+
+for (const [name, override] of [
+  ["enrollment ACTIVE", { enrollment: { status: "ACTIVE" } }],
+  ["ownership invalid", { relationship: { relatedPersonId: "other" } }],
+  ["progress missing", { progress: null }],
+]) {
+  test(`fails closed when ${name}`, async () => {
+    const { gateway } = fixture(override);
+    await assert.rejects(() => gateway.executeDigitalEnrollmentOperation({ invitation: INVITATION, operation: "getForm" }), { code: "DIGITAL_ENROLLMENT_OWNERSHIP_NOT_AVAILABLE" });
+  });
+}
 
 function fixture(overrides = {}) {
-  const enrollment = overrides.enrollment || {
-    id: "enrollment-1",
-    responsiblePersonId: "responsible-1",
-    responsibleRelationshipId: "relationship-1",
-    status: "DRAFT",
-    studentPersonId: "student-1",
+  const baseEnrollment = { id: "enrollment-1", responsiblePersonId: "responsible-1", responsibleProfileId: "responsible-profile-1", responsibleRelationshipId: "relationship-1", status: "DRAFT", studentPersonId: "student-1", studentProfileId: "student-profile-1" };
+  const state = {
+    enrollment: { ...baseEnrollment, ...(overrides.enrollment || {}) },
+    relationship: { personId: "responsible-1", relatedPersonId: "student-1", status: "active", ...(overrides.relationship || {}) },
+    progress: overrides.progress === null ? null : { completedSteps: [], currentStep: "RESPONSIBLE_DATA", enrollmentId: "enrollment-1", responsibleRelationshipId: "relationship-1", revision: 1, status: "NOT_STARTED", ...(overrides.progress || {}) },
+    people: {
+      "responsible-1": { address: {}, contact: { email: "r@example.test", phone: "62999990000" }, name: { fullName: "Responsavel" } },
+      "student-1": { address: {}, birthDate: null, contact: {}, name: { fullName: "Aluno" } },
+    },
   };
-  return new DigitalEnrollmentFormGateway({
-    enrollmentRepository: {
-      async findById() {
-        return enrollment;
+  const queryRunner = async (sql, params) => {
+    if (!sql.startsWith("UPDATE people SET")) throw new Error("Unexpected SQL");
+    const personId = params.at(-1);
+    const person = state.people[personId];
+    const columns = [...sql.slice(0, sql.indexOf(" WHERE ")).matchAll(/([a-z_]+) = \?/g)].map((match) => match[1]);
+    columns.forEach((column, index) => applyColumn(person, column, params[index]));
+    return { affectedRows: person ? 1 : 0 };
+  };
+  const context = {
+    queryRunner,
+    enrollmentRepository: { async findById() { return state.enrollment; } },
+    personProfileRepository: { async findById(id) { return id === "responsible-profile-1" ? { personId: "responsible-1" } : id === "student-profile-1" ? { personId: "student-1" } : null; } },
+    personRelationshipRepository: { async findById() { return state.relationship; } },
+    personRepository: { async findById(id) { return state.people[id] || null; } },
+    digitalEnrollmentProgressRepository: {
+      async findByEnrollmentId() { return state.progress; },
+      async updateIfRevisionMatches(input) {
+        if (!state.progress || state.progress.revision !== input.expectedRevision) { const error = new Error("conflict"); error.code = "DIGITAL_ENROLLMENT_PROGRESS_CONFLICT"; error.statusCode = 409; throw error; }
+        state.progress = { ...state.progress, ...input.patch, revision: state.progress.revision + 1 };
+        return state.progress;
       },
     },
-    progressRepository: {
-      async findByEnrollmentId() {
-        return {
-          enrollmentId: "enrollment-1",
-          responsibleRelationshipId: "relationship-1",
-          revision: 1,
-        };
-      },
-    },
-    relationshipRepository: {
-      async findById() {
-        return {
-          personId: "responsible-1",
-          relatedPersonId: "student-1",
-          status: "active",
-        };
-      },
-    },
-    transactionRunner: async (callback) => callback(async () => []),
-  });
+  };
+  return { gateway: new DigitalEnrollmentFormGateway({ transactionRunner: async (callback) => callback(context) }), state };
+}
+function applyColumn(person, column, value) {
+  const map = { nome: ["name", "fullName"], email: ["contact", "email"], telefone: ["contact", "phone"], data_nascimento: ["birthDate"], cep: ["address", "zipCode"], logradouro: ["address", "street"], numero: ["address", "number"], bairro: ["address", "district"], cidade: ["address", "city"], estado: ["address", "state"], complemento: ["address", "complement"] };
+  const path = map[column];
+  if (path.length === 1) person[path[0]] = value; else person[path[0]][path[1]] = value;
 }

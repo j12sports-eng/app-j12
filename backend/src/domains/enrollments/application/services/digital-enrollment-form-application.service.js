@@ -18,7 +18,7 @@ const OPERATION_FIELD_ALLOWLISTS = Object.freeze({
     "complement",
     "district",
     "number",
-    "postalCode",
+    "zipCode",
     "state",
     "street",
   ]),
@@ -120,12 +120,24 @@ function sanitizeCommandEnvelope(operation, command) {
   const allowlist = OPERATION_FIELD_ALLOWLISTS[operation] || new Set();
   const unexpectedFields = Object.keys(sourceFields).filter((field) => !allowlist.has(field));
   if (unexpectedFields.length > 0) throw blocked();
+  const isWrite = !new Set(["getForm", "getReview"]).has(operation);
+  if (isWrite && (!Number.isSafeInteger(source.revision) || source.revision < 1)) {
+    throw invalidCommand("revision is required.");
+  }
   return Object.freeze({
     fields: Object.freeze(
       Object.fromEntries(Object.entries(sourceFields).filter(([field]) => allowlist.has(field))),
     ),
     revision: Number.isSafeInteger(source.revision) ? source.revision : null,
   });
+}
+
+function invalidCommand(message) {
+  const error = new Error(message);
+  error.code = "DIGITAL_ENROLLMENT_INVALID_COMMAND";
+  error.statusCode = 400;
+  error.expose = true;
+  return error;
 }
 
 function blocked() {
@@ -142,5 +154,6 @@ module.exports = {
   OPERATION_FIELD_ALLOWLISTS,
   PUBLIC_OPERATIONS,
   blocked,
+  invalidCommand,
   sanitizeCommandEnvelope,
 };

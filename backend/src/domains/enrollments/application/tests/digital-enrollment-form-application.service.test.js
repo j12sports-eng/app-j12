@@ -107,3 +107,21 @@ test("digital enrollment foundation rejects unexpected fields inside a step", as
     { code: DIGITAL_ENROLLMENT_FOUNDATION_BLOCKED_CODE },
   );
 });
+test("digital enrollment writes require a positive revision", async () => {
+  const service = new DigitalEnrollmentFormApplicationService({
+    aggregateGateway: { async executeDigitalEnrollmentOperation() { assert.fail("gateway must not run"); } },
+    invitationResolver: { async resolveInvitationByRawToken() { return { enrollmentId: "enrollment-1", invitationId: "invitation-1" }; } },
+  });
+  await assert.rejects(() => service.updateStudent("A".repeat(43), { fields: { name: "Aluno" } }), {
+    code: "DIGITAL_ENROLLMENT_INVALID_COMMAND",
+    statusCode: 400,
+  });
+});
+
+test("expired invitation stops the operation before the aggregate transaction", async () => {
+  const service = new DigitalEnrollmentFormApplicationService({
+    aggregateGateway: { async executeDigitalEnrollmentOperation() { assert.fail("gateway must not run"); } },
+    invitationResolver: { async resolveInvitationByRawToken() { throw Object.assign(new Error("unavailable"), { code: "ENROLLMENT_INVITATION_NOT_AVAILABLE" }); } },
+  });
+  await assert.rejects(() => service.getForm("A".repeat(43)), { code: "ENROLLMENT_INVITATION_NOT_AVAILABLE" });
+});

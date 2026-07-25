@@ -1,78 +1,211 @@
 const { EnrollmentStatus } = require("../domain/enums/enrollment-status.enum.js");
+const { normalizeEmail, normalizePhone } = require("../../pessoas/person-identity-normalizer.js");
+const { DIGITAL_ENROLLMENT_STEPS } = require("../domain/entities/digital-enrollment-progress.entity.js");
+
+const PERSON_FIELD_COLUMNS = Object.freeze({
+  birthDate: "data_nascimento",
+  city: "cidade",
+  complement: "complemento",
+  district: "bairro",
+  email: "email",
+  name: "nome",
+  number: "numero",
+  phone: "telefone",
+  state: "estado",
+  street: "logradouro",
+  zipCode: "cep",
+});
+const OPERATION_STEP = Object.freeze({
+  updateResponsible: "RESPONSIBLE_DATA",
+  updateStudent: "STUDENT_DATA",
+  updateAddress: "ADDRESS",
+  updateAdditionalInformation: "ADDITIONAL_INFORMATION",
+});
 
 class DigitalEnrollmentFormGateway {
-  constructor({
-    enrollmentRepository,
-    invitationRepository,
-    progressRepository,
-    relationshipRepository,
-    transactionRunner,
-  } = {}) {
+  constructor({ enrollmentRepository, progressRepository, relationshipRepository, transactionRunner } = {}) {
     this.enrollmentRepository = enrollmentRepository;
-    this.invitationRepository = invitationRepository;
     this.progressRepository = progressRepository;
     this.relationshipRepository = relationshipRepository;
     this.transactionRunner = transactionRunner;
   }
 
-  async loadFormAggregate(enrollmentId, queryRunner) {
-    const enrollment = await this.enrollmentRepository.findById(enrollmentId, queryRunner);
+  async loadFormAggregate(enrollmentId, context) {
+    const repositories = resolveRepositories(this, context);
+    const enrollment = await repositories.enrollmentRepository.findById(enrollmentId, context.queryRunner);
     if (!enrollment || enrollment.status !== EnrollmentStatus.DRAFT) throw unavailable();
-    const relationshipId = enrollment.responsibleRelationshipId;
-    if (!relationshipId) throw unavailable();
-    const relationship = await this.relationshipRepository.findById(relationshipId, queryRunner);
-    if (
-      !relationship ||
-      relationship.status !== "active" ||
-      relationship.personId !== enrollment.responsiblePersonId ||
-      relationship.relatedPersonId !== enrollment.studentPersonId
-    ) {
-      throw unavailable();
-    }
-    const progress = await this.progressRepository.findByEnrollmentId(enrollmentId, queryRunner);
-    if (!progress || progress.responsibleRelationshipId !== relationshipId) throw unavailable();
-    return Object.freeze({ enrollment, progress, relationship });
+    if (!enrollment.responsiblePersonId || !enrollment.responsibleProfileId || !enrollment.responsibleRelationshipId || !enrollment.studentPersonId || !enrollment.studentProfileId) throw unavailable();
+    const [relationship, responsibleProfile, studentProfile, responsible, student, progress] = await Promise.all([
+      repositories.relationshipRepository.findById(enrollment.responsibleRelationshipId),
+      repositories.personProfileRepository.findById(enrollment.responsibleProfileId),
+      repositories.personProfileRepository.findById(enrollment.studentProfileId),
+      repositories.personRepository.findById(enrollment.responsiblePersonId),
+      repositories.personRepository.findById(enrollment.studentPersonId),
+      repositories.progressRepository.findByEnrollmentId(enrollmentId, context.queryRunner),
+    ]);
+    if (!relationship || relationship.status !== "active" || relationship.personId !== enrollment.responsiblePersonId || relationship.relatedPersonId !== enrollment.studentPersonId) throw unavailable();
+    if (!responsibleProfile || responsibleProfile.personId !== enrollment.responsiblePersonId || !studentProfile || studentProfile.personId !== enrollment.studentPersonId) throw unavailable();
+    if (!responsible || !student || !progress || progress.responsibleRelationshipId !== enrollment.responsibleRelationshipId) throw unavailable();
+    return { enrollment, progress, relationship, responsible, student };
   }
 
-  async executeDigitalEnrollmentOperation({ operation, invitation }) {
-    if (operation !== "getForm") throw unavailable();
+  async executeDigitalEnrollmentOperation({ command = {}, invitation, operation }) {
     const enrollmentId = invitation?.enrollmentId;
-    if (!enrollmentId) throw unavailable();
-    return this.transaction((queryRunner) => this.loadFormAggregate(enrollmentId, queryRunner));
+    if (!enrollmentId || !invitation?.invitationId) throw unavailable();
+    return this.transaction(async (context) => {
+      const aggregate = await this.loadFormAggregate(enrollmentId, context);
+      if (operation === "getForm") return toFormDto(aggregate);
+      if (operation === "getReview") return toReviewDto(aggregate);
+      if (operation === "advanceStep") return this.advance(aggregate, command, invitation, context);
+      if (!Object.prototype.hasOwnProperty.call(OPERATION_STEP, operation)) throw unavailable();
+      return this.updateStep(aggregate, operation, command, invitation, context);
+    });
+  }
+
+  async updateStep(aggregate, operation, command, invitation, context) {
+    if (aggregate.progress.revision !== command.revision) throw conflict();
+    const personId = operation === "updateResponsible" ? aggregate.enrollment.responsiblePersonId : aggregate.enrollment.studentPersonId;
+    await updatePerson(context.queryRunner, personId, command.fields);
+    const progress = await context.digitalEnrollmentProgressRepository.updateIfRevisionMatches({
+      enrollmentId: aggregate.enrollment.id,
+      expectedRevision: command.revision,
+      responsibleRelationshipId: aggregate.enrollment.responsibleRelationshipId,
+      patch: {
+        lastSavedAt: new Date(),
+        startedAt: aggregate.progress.startedAt || new Date(),
+        status: "IN_PROGRESS",
+        updatedByInvitationId: invitation.invitationId,
+      },
+    });
+    const refreshed = await this.loadFormAggregate(aggregate.enrollment.id, context);
+    return { ...toFormDto(refreshed), progress: toProgressDto(progress), savedStep: OPERATION_STEP[operation] };
+  }
+
+  async advance(aggregate, command, invitation, context) {
+    if (aggregate.progress.revision !== command.revision) throw conflict();
+    const targetStep = command.fields.targetStep;
+    const currentIndex = DIGITAL_ENROLLMENT_STEPS.indexOf(aggregate.progress.currentStep);
+    if (DIGITAL_ENROLLMENT_STEPS[currentIndex + 1] !== targetStep) throw invalidStep();
+    const completedSteps = [...new Set([...aggregate.progress.completedSteps, aggregate.progress.currentStep])];
+    const ready = targetStep === "REVIEW";
+    const progress = await context.digitalEnrollmentProgressRepository.updateIfRevisionMatches({
+      enrollmentId: aggregate.enrollment.id,
+      expectedRevision: command.revision,
+      responsibleRelationshipId: aggregate.enrollment.responsibleRelationshipId,
+      patch: {
+        completedSteps,
+        currentStep: targetStep,
+        lastSavedAt: new Date(),
+        readyForReviewAt: ready ? new Date() : null,
+        startedAt: aggregate.progress.startedAt || new Date(),
+        status: ready ? "READY_FOR_REVIEW" : "IN_PROGRESS",
+        updatedByInvitationId: invitation.invitationId,
+      },
+    });
+    return { currentStep: progress.currentStep, progress: toProgressDto(progress) };
   }
 
   async ensureProgress(enrollmentId, relationshipId, invitationId) {
-    return this.transaction(async (queryRunner) => {
-      const enrollment = await this.enrollmentRepository.findById(enrollmentId, queryRunner);
-      if (
-        !enrollment ||
-        enrollment.status !== EnrollmentStatus.DRAFT ||
-        enrollment.responsibleRelationshipId !== relationshipId
-      ) {
-        throw unavailable();
-      }
-      return this.progressRepository.ensureProgressForEnrollment(
-        {
-          enrollmentId,
-          responsibleRelationshipId: relationshipId,
-          updatedByInvitationId: invitationId,
-        },
-        queryRunner,
-      );
+    return this.transaction(async (context) => {
+      const repositories = resolveRepositories(this, context);
+      const enrollment = await repositories.enrollmentRepository.findById(enrollmentId, context.queryRunner);
+      if (!enrollment || enrollment.status !== EnrollmentStatus.DRAFT || enrollment.responsibleRelationshipId !== relationshipId) throw unavailable();
+      return repositories.progressRepository.ensureProgressForEnrollment({ enrollmentId, responsibleRelationshipId: relationshipId, updatedByInvitationId: invitationId }, context.queryRunner);
     });
   }
 
   async transaction(callback) {
     if (typeof this.transactionRunner !== "function") throw unavailable();
-    return this.transactionRunner(callback);
+    return this.transactionRunner((value) => callback(normalizeContext(value)));
   }
 }
 
+function resolveRepositories(gateway, context) {
+  return {
+    enrollmentRepository: context.enrollmentRepository || gateway.enrollmentRepository,
+    personProfileRepository: context.personProfileRepository,
+    personRepository: context.personRepository,
+    progressRepository: context.digitalEnrollmentProgressRepository || gateway.progressRepository,
+    relationshipRepository: context.personRelationshipRepository || gateway.relationshipRepository,
+  };
+}
+function normalizeContext(value) {
+  if (typeof value === "function") return { queryRunner: value };
+  return value || {};
+}
+async function updatePerson(queryRunner, personId, fields) {
+  const entries = Object.entries(fields || {});
+  if (entries.length === 0) return;
+  const assignments = [];
+  const params = [];
+  for (const [field, value] of entries) {
+    const column = PERSON_FIELD_COLUMNS[field];
+    if (!column) throw invalidStep();
+    const normalized = normalizePersonField(field, value);
+    assignments.push(`${column} = ?`);
+    params.push(normalized);
+    if (field === "email") {
+      assignments.push("email_normalized = ?");
+      params.push(normalized ? normalizeEmail(normalized) : null);
+    }
+    if (field === "phone") {
+      assignments.push("telefone_normalized = ?");
+      params.push(normalized ? normalizePhone(normalized) : null);
+    }
+  }
+  params.push(personId);
+  const result = await queryRunner(`UPDATE people SET ${assignments.join(", ")} WHERE id = ?`, params);
+  if (Number(result?.affectedRows) !== 1) throw unavailable();
+}
+function normalizePersonField(field, value) {
+  const limits = { birthDate: 10, city: 191, complement: 191, district: 191, email: 191, name: 191, number: 30, phone: 50, state: 50, street: 191, zipCode: 20 };
+  const normalized = String(value ?? "").trim().slice(0, limits[field]);
+  if (field === "name" && !normalized) throw invalidStep();
+  if (field === "birthDate" && normalized && !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) throw invalidStep();
+  try {
+    if (field === "email" && normalized) normalizeEmail(normalized);
+    if (field === "phone" && normalized) normalizePhone(normalized);
+  } catch {
+    throw invalidStep();
+  }
+  return normalized || null;
+}
+
+function toFormDto({ progress, responsible, student }) {
+  return Object.freeze({
+    address: Object.freeze({ ...(student.address || {}) }),
+    additionalInformation: Object.freeze({}),
+    progress: toProgressDto(progress),
+    responsible: Object.freeze({ email: responsible.contact?.email || "", name: responsible.name?.fullName || "", phone: responsible.contact?.phone || "" }),
+    student: Object.freeze({ birthDate: student.birthDate || "", name: student.name?.fullName || "" }),
+  });
+}
+function toReviewDto(aggregate) {
+  if (aggregate.progress.currentStep !== "REVIEW" || aggregate.progress.status !== "READY_FOR_REVIEW") throw invalidStep();
+  return toFormDto(aggregate);
+}
+function toProgressDto(progress) {
+  return Object.freeze({ completedSteps: [...progress.completedSteps], currentStep: progress.currentStep, revision: progress.revision, status: progress.status });
+}
 function unavailable() {
   const error = new Error("Digital enrollment ownership is not available.");
   error.code = "DIGITAL_ENROLLMENT_OWNERSHIP_NOT_AVAILABLE";
   error.statusCode = 404;
   return error;
 }
+function conflict() {
+  const error = new Error("Digital enrollment progress conflict.");
+  error.code = "DIGITAL_ENROLLMENT_PROGRESS_CONFLICT";
+  error.statusCode = 409;
+  error.expose = true;
+  return error;
+}
+function invalidStep() {
+  const error = new Error("Digital enrollment step is invalid.");
+  error.code = "DIGITAL_ENROLLMENT_INVALID_STEP";
+  error.statusCode = 400;
+  error.expose = true;
+  return error;
+}
 
-module.exports = { DigitalEnrollmentFormGateway, unavailable };
+module.exports = { DigitalEnrollmentFormGateway, PERSON_FIELD_COLUMNS, conflict, invalidStep, unavailable };
