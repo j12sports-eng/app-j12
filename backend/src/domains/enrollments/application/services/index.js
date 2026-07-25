@@ -1,4 +1,5 @@
 module.exports = Object.freeze({
+  ...require("./digital-enrollment-form-application.service.js"),
   ...require("./enrollment-digital-invitation.service.js"),
   ...require("./enrollment-invitation-admin-application.service.js"),
   ...require("./enrollment-application.service.js"),
