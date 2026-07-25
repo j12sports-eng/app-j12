@@ -1,5 +1,6 @@
 const { createHash } = require("node:crypto");
 const { logger: defaultLogger } = require("../observability/structured-logger.js");
+const { sanitizeSensitivePath } = require("../observability/http-observability.middleware.js");
 
 const SECURITY_EVENTS = Object.freeze({
   ACCESS_DENIED: "ACCESS_DENIED",
@@ -17,7 +18,7 @@ const SECURITY_EVENTS = Object.freeze({
 function securityMetadata(req, metadata = {}) {
   return {
     method: req?.method || null,
-    path: req?.route?.path || req?.path || null,
+    path: sanitizeSensitivePath(req?.route?.path || req?.path || null),
     user: req?.user ? { id: req.user.id || null, role: req.user.role || null } : undefined,
     ...metadata,
   };
@@ -210,7 +211,10 @@ function defaultPolicies() {
     },
     {
       name: "public-sensitive",
-      match: (req) => /(?:\/public\/|\/enrollments\/public)/.test(req.path || ""),
+      match: (req) =>
+        /(?:\/public\/|\/enrollments\/public|\/enrollments\/digital-invitations\/public(?:\/|$))/.test(
+          req.path || "",
+        ),
       max: positive(null, process.env.PUBLIC_RATE_LIMIT_MAX, 90),
       windowMs: positive(null, process.env.PUBLIC_RATE_LIMIT_WINDOW_MS, 60_000),
     },
@@ -239,6 +243,9 @@ function isHealthPath(path) {
 function isSensitiveRequest(req) {
   return (
     /^\/(?:api\/)?auth(?:\/|$)/.test(req.path || req.originalUrl || "") ||
+    /^\/(?:api\/)?enrollments\/digital-invitations\/public(?:\/|$)/.test(
+      req.path || req.originalUrl || "",
+    ) ||
     Boolean(req.headers?.authorization)
   );
 }

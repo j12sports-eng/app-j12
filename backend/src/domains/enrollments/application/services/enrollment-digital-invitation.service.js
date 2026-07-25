@@ -290,12 +290,7 @@ class EnrollmentDigitalInvitationService {
     if (status === EnrollmentDigitalInvitationStatus.REVOKED) throw genericNotAvailable();
     if (status !== EnrollmentDigitalInvitationStatus.ACTIVE) throw genericNotAvailable();
     if (isExpired(readProperty(invitation, "expiresAt"), this.nowDate())) {
-      if (typeof repository.expireInvitation === "function") {
-        await repository.expireInvitation({
-          expiredAt: this.nowSql(),
-          invitationId: readProperty(invitation, "id"),
-        });
-      }
+      // Public resolution is deliberately read-only; maintenance owns expiry persistence.
       throw genericNotAvailable();
     }
 

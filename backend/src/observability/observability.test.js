@@ -6,7 +6,9 @@ const { observeAsyncOperation } = require("./async-observability.js");
 const { runWithObservabilityContext } = require("./context.js");
 const {
   createRequestObservabilityMiddleware,
+  logHttpError,
   readId,
+  sanitizeSensitivePath,
 } = require("./http-observability.middleware.js");
 const { createStructuredLogger } = require("./structured-logger.js");
 
@@ -53,6 +55,20 @@ test("request middleware propagates ids, duration, status and authenticated user
   assert.equal(res["X-Correlation-Id"], "corr-2");
   assert.equal(entries[1].metadata.durationMs, 25);
   assert.deepEqual(entries[1].metadata.user, { id: "user-1", role: "ADMIN" });
+});
+
+test("sensitive invitation paths redact only the path token", () => {
+  const token = "A".repeat(43);
+  assert.equal(
+    sanitizeSensitivePath(`/api/enrollments/digital-invitations/public/${token}?source=email`),
+    "/api/enrollments/digital-invitations/public/[REDACTED]?source=email",
+  );
+  assert.equal(sanitizeSensitivePath("/api/alunos/123"), "/api/alunos/123");
+
+  const entries = [];
+  const error = new Error(`failed at /api/enrollments/digital-invitations/public/${token}`);
+  logHttpError(error, { method: "GET", originalUrl: `/api/enrollments/digital-invitations/public/${token}` }, { rawToken: token }, collectingLogger(entries));
+  assert.equal(JSON.stringify(entries).includes(token), false);
 });
 
 test("request ids reject unsafe input and async operations log success and failure", async () => {

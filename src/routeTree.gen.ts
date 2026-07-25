@@ -57,6 +57,7 @@ import { Route as PortalAlunoConfiguracoesRouteImport } from './routes/portal-al
 import { Route as PortalAlunoCarteirinhaRouteImport } from './routes/portal-aluno/carteirinha'
 import { Route as PortalAlunoAvaliacoesRouteImport } from './routes/portal-aluno/avaliacoes'
 import { Route as PortalAlunoAgendaRouteImport } from './routes/portal-aluno/agenda'
+import { Route as MatriculaTokenRouteImport } from './routes/matricula.$token'
 import { Route as CampeonatosChampionshipIdRouteImport } from './routes/campeonatos.$championshipId'
 import { Route as AdminQuadrasRouteImport } from './routes/admin/quadras'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin/financeiro'
@@ -342,6 +343,11 @@ const PortalAlunoAgendaRoute = PortalAlunoAgendaRouteImport.update({
   path: '/portal-aluno/agenda',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MatriculaTokenRoute = MatriculaTokenRouteImport.update({
+  id: '/$token',
+  path: '/$token',
+  getParentRoute: () => MatriculaRoute,
+} as any)
 const CampeonatosChampionshipIdRoute =
   CampeonatosChampionshipIdRouteImport.update({
     id: '/$championshipId',
@@ -554,7 +560,7 @@ export interface FileRoutesByFullPath {
   '/financeiro': typeof FinanceiroRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
-  '/matricula': typeof MatriculaRoute
+  '/matricula': typeof MatriculaRouteWithChildren
   '/meu-plano': typeof MeuPlanoRoute
   '/notificacoes': typeof NotificacoesRoute
   '/perfil': typeof PerfilRoute
@@ -581,6 +587,7 @@ export interface FileRoutesByFullPath {
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
   '/admin/quadras': typeof AdminQuadrasRoute
   '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
+  '/matricula/$token': typeof MatriculaTokenRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
   '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
@@ -640,7 +647,7 @@ export interface FileRoutesByTo {
   '/financeiro': typeof FinanceiroRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
-  '/matricula': typeof MatriculaRoute
+  '/matricula': typeof MatriculaRouteWithChildren
   '/meu-plano': typeof MeuPlanoRoute
   '/notificacoes': typeof NotificacoesRoute
   '/perfil': typeof PerfilRoute
@@ -667,6 +674,7 @@ export interface FileRoutesByTo {
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
   '/admin/quadras': typeof AdminQuadrasRoute
   '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
+  '/matricula/$token': typeof MatriculaTokenRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
   '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
@@ -727,7 +735,7 @@ export interface FileRoutesById {
   '/financeiro': typeof FinanceiroRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
-  '/matricula': typeof MatriculaRoute
+  '/matricula': typeof MatriculaRouteWithChildren
   '/meu-plano': typeof MeuPlanoRoute
   '/notificacoes': typeof NotificacoesRoute
   '/perfil': typeof PerfilRoute
@@ -754,6 +762,7 @@ export interface FileRoutesById {
   '/admin/financeiro': typeof AdminFinanceiroRouteWithChildren
   '/admin/quadras': typeof AdminQuadrasRoute
   '/campeonatos/$championshipId': typeof CampeonatosChampionshipIdRoute
+  '/matricula/$token': typeof MatriculaTokenRoute
   '/portal-aluno/agenda': typeof PortalAlunoAgendaRoute
   '/portal-aluno/avaliacoes': typeof PortalAlunoAvaliacoesRoute
   '/portal-aluno/carteirinha': typeof PortalAlunoCarteirinhaRoute
@@ -842,6 +851,7 @@ export interface FileRouteTypes {
     | '/admin/financeiro'
     | '/admin/quadras'
     | '/campeonatos/$championshipId'
+    | '/matricula/$token'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
     | '/portal-aluno/carteirinha'
@@ -928,6 +938,7 @@ export interface FileRouteTypes {
     | '/admin/financeiro'
     | '/admin/quadras'
     | '/campeonatos/$championshipId'
+    | '/matricula/$token'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
     | '/portal-aluno/carteirinha'
@@ -1014,6 +1025,7 @@ export interface FileRouteTypes {
     | '/admin/financeiro'
     | '/admin/quadras'
     | '/campeonatos/$championshipId'
+    | '/matricula/$token'
     | '/portal-aluno/agenda'
     | '/portal-aluno/avaliacoes'
     | '/portal-aluno/carteirinha'
@@ -1074,7 +1086,7 @@ export interface RootRouteChildren {
   FinanceiroRoute: typeof FinanceiroRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
-  MatriculaRoute: typeof MatriculaRoute
+  MatriculaRoute: typeof MatriculaRouteWithChildren
   MeuPlanoRoute: typeof MeuPlanoRoute
   NotificacoesRoute: typeof NotificacoesRoute
   PerfilRoute: typeof PerfilRoute
@@ -1468,6 +1480,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAlunoAgendaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/matricula/$token': {
+      id: '/matricula/$token'
+      path: '/$token'
+      fullPath: '/matricula/$token'
+      preLoaderRoute: typeof MatriculaTokenRouteImport
+      parentRoute: typeof MatriculaRoute
+    }
     '/campeonatos/$championshipId': {
       id: '/campeonatos/$championshipId'
       path: '/$championshipId'
@@ -1747,6 +1766,18 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
   DashboardRouteChildren,
 )
 
+interface MatriculaRouteChildren {
+  MatriculaTokenRoute: typeof MatriculaTokenRoute
+}
+
+const MatriculaRouteChildren: MatriculaRouteChildren = {
+  MatriculaTokenRoute: MatriculaTokenRoute,
+}
+
+const MatriculaRouteWithChildren = MatriculaRoute._addFileChildren(
+  MatriculaRouteChildren,
+)
+
 interface AdminBiRouteChildren {
   AdminBiAlunosRoute: typeof AdminBiAlunosRoute
   AdminBiCampeonatosRoute: typeof AdminBiCampeonatosRoute
@@ -1841,7 +1872,7 @@ const rootRouteChildren: RootRouteChildren = {
   FinanceiroRoute: FinanceiroRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
-  MatriculaRoute: MatriculaRoute,
+  MatriculaRoute: MatriculaRouteWithChildren,
   MeuPlanoRoute: MeuPlanoRoute,
   NotificacoesRoute: NotificacoesRoute,
   PerfilRoute: PerfilRoute,

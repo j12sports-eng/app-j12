@@ -17,15 +17,13 @@ test("ResolveEnrollmentInvitationApplicationService resolves a valid token with 
   const result = await fixture.publicResolver.resolveByToken({ rawToken: fixture.rawToken });
 
   assert.deepEqual(result, {
-    enrollment: {
-      enrollmentId: "enrollment-draft",
-      status: "DRAFT",
+    available: true,
+    capabilities: {
+      canContinue: false,
+      requiresAuthentication: false,
     },
-    enrollmentId: "enrollment-draft",
     expiresAt: "2026-07-24 12:05:00",
-    invitationId: fixture.invitationId,
-    status: "ACTIVE",
-    unitId: "unit-1",
+    nextStep: "WAIT_FOR_ENROLLMENT_FORM",
   });
   assert.equal(JSON.stringify(result).includes(fixture.rawToken), false);
   assert.equal(JSON.stringify(result).includes("tokenHash"), false);
@@ -113,6 +111,8 @@ test("ResolveEnrollmentInvitationApplicationService keeps enumeration responses 
   const expired = await captureFailure(() =>
     expiredFixture.publicResolver.resolveByToken({ rawToken: expiredFixture.rawToken }),
   );
+  const storedExpired = await expiredFixture.repository.findById(expiredFixture.invitationId);
+  assert.equal(storedExpired.status, "ACTIVE");
 
   assert.deepEqual(malformed, missing);
   assert.deepEqual(missing, expired);
@@ -166,6 +166,7 @@ async function createFixture() {
     invitationId: created.invitationId,
     invitationService,
     publicResolver,
+    repository,
     rawToken: created.rawToken,
   };
 }

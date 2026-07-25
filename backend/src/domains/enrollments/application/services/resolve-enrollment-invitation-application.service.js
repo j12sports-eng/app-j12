@@ -57,18 +57,14 @@ class ResolveEnrollmentInvitationApplicationService {
 }
 
 function toPublicInvitationDto(result = {}) {
-  const enrollment = readObject(readProperty(result, "enrollment"));
-
   return Object.freeze({
-    enrollment: Object.freeze({
-      enrollmentId: nullableText(readProperty(enrollment, "enrollmentId"), 64),
-      status: nullableText(readProperty(enrollment, "status"), 32),
+    available: true,
+    capabilities: Object.freeze({
+      canContinue: false,
+      requiresAuthentication: false,
     }),
-    enrollmentId: nullableText(readProperty(result, "enrollmentId"), 64),
     expiresAt: nullableText(readProperty(result, "expiresAt"), 32),
-    invitationId: nullableText(readProperty(result, "invitationId"), 64),
-    status: nullableText(readProperty(result, "status"), 32),
-    unitId: nullableText(readProperty(result, "unitId"), 64),
+    nextStep: "WAIT_FOR_ENROLLMENT_FORM",
   });
 }
 

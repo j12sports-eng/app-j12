@@ -54,6 +54,14 @@ class EnrollmentInvitationPublicController {
   }
 }
 
+function applyPublicInvitationResponseHeaders(_req, res, next) {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  next();
+}
+
 function sendGenericNotAvailable(res) {
   return res.status(404).json({
     code: RESOLVE_ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE,
@@ -79,6 +87,7 @@ function nullableText(value, max = 65535) {
 module.exports = {
   ENROLLMENT_INVITATION_PUBLIC_ERROR_MESSAGE,
   EnrollmentInvitationPublicController,
+  applyPublicInvitationResponseHeaders,
   readTokenParam,
   sendGenericNotAvailable,
 };

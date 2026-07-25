@@ -25,6 +25,17 @@ test("security headers include CSP, cross-origin policies and no-store for auth"
   assert.match(headers["Strict-Transport-Security"], /max-age=31536000/);
 });
 
+test("public invitation receives no-store and a redacted security path", () => {
+  const token = "A".repeat(43);
+  const headers = {};
+  createSecurityHeadersMiddleware({ logger: collectingLogger([]), production: false })(
+    { headers: {}, path: `/api/enrollments/digital-invitations/public/${token}` },
+    { setHeader: (name, value) => (headers[name] = value) },
+    () => {},
+  );
+  assert.equal(headers["Cache-Control"], "no-store");
+});
+
 test("sliding rate limiter is configurable and emits structured event", () => {
   const entries = [];
   const limiter = createSlidingWindowRateLimiter({

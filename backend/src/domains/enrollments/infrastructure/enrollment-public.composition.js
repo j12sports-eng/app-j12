@@ -4,6 +4,7 @@ const {
   ResolveEnrollmentInvitationApplicationService,
 } = require("../application/services/resolve-enrollment-invitation-application.service.js");
 const {
+  applyPublicInvitationResponseHeaders,
   EnrollmentInvitationPublicController,
 } = require("../presentation/controllers/enrollment-invitation-public.controller.js");
 const { EnrollmentFacade } = require("../application/facades/enrollment.facade.js");
@@ -15,7 +16,9 @@ const {
 } = require("./repositories/mysql-enrollment-digital-invitation.repository.js");
 const { MySqlEnrollmentRepository } = require("./repositories/mysql-enrollment.repository.js");
 
-const ENROLLMENT_INVITATION_PUBLIC_ROUTE_PATH = "/matricula/:token";
+const ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH =
+  "/enrollments/digital-invitations/public";
+const ENROLLMENT_INVITATION_PUBLIC_ROUTE_PATH = "/:token";
 
 function createEnrollmentInvitationPublicComposition(options = {}) {
   const enrollmentRepository =
@@ -51,6 +54,7 @@ function createEnrollmentInvitationPublicComposition(options = {}) {
     invitationRepository,
     invitationResolver,
     resolveEnrollmentInvitationService,
+    routeBasePath: ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH,
     routePath: ENROLLMENT_INVITATION_PUBLIC_ROUTE_PATH,
   });
 }
@@ -59,12 +63,17 @@ function createEnrollmentInvitationPublicRouter(options = {}) {
   const router = express.Router();
   const composition = createEnrollmentInvitationPublicComposition(options);
 
-  router.get(ENROLLMENT_INVITATION_PUBLIC_ROUTE_PATH, composition.controller.getByToken);
+  router.get(
+    ENROLLMENT_INVITATION_PUBLIC_ROUTE_PATH,
+    applyPublicInvitationResponseHeaders,
+    composition.controller.getByToken,
+  );
 
   return router;
 }
 
 module.exports = {
+  ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH,
   ENROLLMENT_INVITATION_PUBLIC_ROUTE_PATH,
   createEnrollmentInvitationPublicComposition,
   createEnrollmentInvitationPublicRouter,

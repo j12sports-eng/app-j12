@@ -39,10 +39,10 @@ function logHttpError(error, req, metadata = {}, logger = defaultLogger) {
   return logger.error("http.request.failed", {
     ...requestMetadata(req),
     code: error?.code || error?.errorCode || "INTERNAL_ERROR",
-    error,
+    error: sanitizeSensitiveError(error),
     statusCode: Number(error?.statusCode || error?.status || 500),
     user: authenticatedUserContext(req?.user),
-    ...metadata,
+    ...sanitizeSensitiveMetadata(metadata),
   });
 }
 
@@ -50,7 +50,7 @@ function requestMetadata(req = {}) {
   return {
     correlationId: req.correlationId || null,
     method: req.method || null,
-    path: req.originalUrl || req.url || "/",
+    path: sanitizeSensitivePath(req.originalUrl || req.url || "/"),
     requestId: req.id || null,
   };
 }
@@ -70,9 +70,43 @@ function readId(value) {
     : null;
 }
 
+const SENSITIVE_PATH_PATTERN =
+  /((?:\/api)?\/enrollments\/digital-invitations\/public)\/[^/?#\s]+/gi;
+
+function sanitizeSensitivePath(value) {
+  return String(value ?? "").replace(SENSITIVE_PATH_PATTERN, "$1/[REDACTED]");
+}
+
+function sanitizeSensitiveMetadata(value, seen = new WeakSet()) {
+  if (typeof value === "string") return sanitizeSensitivePath(value);
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[CIRCULAR]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeSensitiveMetadata(item, seen));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      /^(?:raw)?token(?:hash)?$/i.test(key)
+        ? "[REDACTED]"
+        : sanitizeSensitiveMetadata(item, seen),
+    ]),
+  );
+}
+
+function sanitizeSensitiveError(error) {
+  if (!error || typeof error !== "object") return sanitizeSensitiveMetadata(error);
+  return {
+    code: error.code || error.errorCode || null,
+    message: sanitizeSensitivePath(error.message || "Request failed"),
+    name: error.name || "Error",
+  };
+}
+
 module.exports = {
   authenticatedUserContext,
   createRequestObservabilityMiddleware,
   logHttpError,
   readId,
+  sanitizeSensitiveMetadata,
+  sanitizeSensitivePath,
 };
