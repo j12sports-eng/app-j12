@@ -6,6 +6,36 @@ const { buildMigrationCatalog, discoverMigrationCatalog } = require("./migration
 const { assertExplicitDatabaseTarget, parseArguments } = require("./cli.js");
 const { LEDGER_TABLE, MySqlMigrationLedger } = require("./mysql-migration-ledger.js");
 
+const EXPECTED_CANONICAL_MIGRATION_IDS = Object.freeze([
+  "20260712183000_create_people_domain_tables",
+  "20260629134546_create_enrollments_table",
+  "20260629190607_add_active_draft_unique_constraint_to_enrollments",
+  "20260629232350_add_enrollment_confirmation_audit_columns",
+  "20260713100000_create_classes_foundation_table",
+  "20260701103000_add_enrollment_class_links_table",
+  "20260713101500_reconcile_enrollment_class_links_indexes",
+  "20260701120000_add_enrollment_class_links_table",
+  "20260702120000_create_enrollment_financial_obligations_table",
+  "20260702133000_create_enrollment_agenda_items_table",
+  "20260703130000_create_agenda_recurrence_tables",
+  "20260703143000_create_agenda_notification_tables",
+  "20260709220000_create_financial_automation_execution_history",
+  "20260712184500_create_auth_runtime_tables",
+  "20260715143000_create_enrollment_financial_bridges_table",
+  "20260715210000_add_p0_database_performance_indexes",
+  "20260715223000_add_p1_database_performance_indexes",
+  "20260717150000_create_crm_foundation_tables",
+  "20260717180000_create_crm_activities_table",
+  "20260717220000_add_people_normalized_identity_columns",
+  "20260718200000_create_crm_lead_student_conversions",
+  "20260718220000_create_crm_lead_enrollment_conversions",
+  "20260719200000_add_pre_enrollment_integrity_constraints",
+  "20260720120000_create_enrollment_digital_invitations_table",
+  "20260724120000_create_auth_identities_table",
+  "20260724123000_create_user_unit_memberships_table",
+  "20260724150000_create_digital_enrollment_progress",
+]);
+
 function catalog(...names) {
   return buildMigrationCatalog(
     names.map((fileName) => ({ content: `-- ${fileName}`, fileName, path: fileName })),
@@ -24,23 +54,10 @@ test("catalog orders migrations deterministically and calculates stable SHA-256 
 
 test("default catalog discovers every current versioned migration", async () => {
   const result = await discoverMigrationCatalog();
-  assert.equal(result.length, 23);
-  assert.equal(result[0].id, "20260712183000_create_people_domain_tables");
-  assert.ok(
-    result.findIndex((item) => item.id === "20260712183000_create_people_domain_tables") <
-      result.findIndex((item) => item.id === "20260629134546_create_enrollments_table"),
+  assert.deepEqual(
+    result.map((item) => item.id),
+    EXPECTED_CANONICAL_MIGRATION_IDS,
   );
-  assert.ok(
-    result.findIndex((item) => item.id === "20260713100000_create_classes_foundation_table") <
-      result.findIndex((item) => item.id === "20260701103000_add_enrollment_class_links_table"),
-  );
-  assert.ok(
-    result.findIndex((item) => item.id === "20260712183000_create_people_domain_tables") <
-      result.findIndex(
-        (item) => item.id === "20260719200000_add_pre_enrollment_integrity_constraints",
-      ),
-  );
-  assert.equal(result.at(-1).id, "20260719200000_add_pre_enrollment_integrity_constraints");
 });
 
 test("catalog resolves explicit dependencies without changing content checksums", () => {

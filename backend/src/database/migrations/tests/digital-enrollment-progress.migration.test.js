@@ -3,6 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
+const { MIGRATION_DEPENDENCIES } = require("../../migration-runner/migration-dependencies.js");
+
 const migrationPath = path.resolve(
   __dirname,
   "../20260724150000_create_digital_enrollment_progress.js",
@@ -25,4 +27,14 @@ test("digital enrollment progress migration has safe topology", () => {
   assert.doesNotMatch(source, /j12_|cpf|email|telefone|phone|nome/i);
   assert.doesNotMatch(source, /ORDER BY|LIMIT 1/i);
   assert.match(source, /if \(!existing\.has\(column\)\)/);
+});
+
+test("digital enrollment progress migration has canonical dependency ordering", () => {
+  assert.deepEqual(
+    MIGRATION_DEPENDENCIES["20260724150000_create_digital_enrollment_progress"],
+    [
+      "20260712183000_create_people_domain_tables",
+      "20260720120000_create_enrollment_digital_invitations_table",
+    ],
+  );
 });

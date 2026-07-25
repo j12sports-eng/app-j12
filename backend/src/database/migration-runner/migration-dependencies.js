@@ -58,5 +58,11 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260724123000_create_user_unit_memberships_table": Object.freeze([
     "20260724120000_create_auth_identities_table",
   ]),
+  // People owns people/person_profiles/person_relationships; invitations owns
+  // the transitive enrollment dependency required by the progress foreign keys.
+  "20260724150000_create_digital_enrollment_progress": Object.freeze([
+    "20260712183000_create_people_domain_tables",
+    "20260720120000_create_enrollment_digital_invitations_table",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };
