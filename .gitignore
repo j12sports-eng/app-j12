@@ -45,3 +45,5 @@ artifacts/
 *.njsproj
 *.sln
 *.sw?
+
+scripts/temp/banco-compartilhado-contagens.txt
