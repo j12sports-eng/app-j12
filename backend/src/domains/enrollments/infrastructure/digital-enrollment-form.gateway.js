@@ -1,6 +1,7 @@
 const { EnrollmentStatus } = require("../domain/enums/enrollment-status.enum.js");
 const { normalizeEmail, normalizePhone } = require("../../pessoas/person-identity-normalizer.js");
 const { DIGITAL_ENROLLMENT_STEPS } = require("../domain/entities/digital-enrollment-progress.entity.js");
+const { FOUNDATION_BLOCKER, PUBLIC_ERROR_CODE } = require("../application/services/digital-enrollment-contract.service.js");
 
 const PERSON_FIELD_COLUMNS = Object.freeze({
   birthDate: "data_nascimento",
@@ -84,6 +85,8 @@ class DigitalEnrollmentFormGateway {
   async advance(aggregate, command, invitation, context) {
     if (aggregate.progress.revision !== command.revision) throw conflict();
     const targetStep = command.fields.targetStep;
+    // REVIEW remains unavailable until the canonical digital contract flow is operational.
+    if (targetStep === "REVIEW") throw contractUnavailable();
     const currentIndex = DIGITAL_ENROLLMENT_STEPS.indexOf(aggregate.progress.currentStep);
     if (DIGITAL_ENROLLMENT_STEPS[currentIndex + 1] !== targetStep) throw invalidStep();
     const completedSteps = [...new Set([...aggregate.progress.completedSteps, aggregate.progress.currentStep])];
@@ -105,6 +108,23 @@ class DigitalEnrollmentFormGateway {
     return { currentStep: progress.currentStep, progress: toProgressDto(progress) };
   }
 
+  async inspectDigitalEnrollmentAdvance({ command = {}, invitation } = {}) {
+    const enrollmentId = invitation?.enrollmentId;
+    if (!enrollmentId || !invitation?.invitationId) throw unavailable();
+    return this.transaction(async (context) => {
+      const aggregate = await this.loadFormAggregate(enrollmentId, context);
+      if (aggregate.progress.revision !== command.revision) throw conflict();
+      const targetStep = command.fields?.targetStep;
+      const currentIndex = DIGITAL_ENROLLMENT_STEPS.indexOf(aggregate.progress.currentStep);
+      if (DIGITAL_ENROLLMENT_STEPS[currentIndex + 1] !== targetStep) throw invalidStep();
+      return Object.freeze({
+        currentStep: aggregate.progress.currentStep,
+        enrollmentId: aggregate.enrollment.id,
+        responsibleRelationshipId: aggregate.enrollment.responsibleRelationshipId,
+        revision: aggregate.progress.revision,
+      });
+    });
+  }
   async ensureProgress(enrollmentId, relationshipId, invitationId) {
     return this.transaction(async (context) => {
       const repositories = resolveRepositories(this, context);
@@ -211,6 +231,14 @@ function conflict() {
   error.code = "DIGITAL_ENROLLMENT_PROGRESS_CONFLICT";
   error.statusCode = 409;
   error.expose = true;
+  return error;
+}
+function contractUnavailable() {
+  const error = new Error("Digital enrollment contract is not available.");
+  error.code = PUBLIC_ERROR_CODE;
+  error.blocker = FOUNDATION_BLOCKER;
+  error.statusCode = 503;
+  error.expose = false;
   return error;
 }
 function invalidStep() {

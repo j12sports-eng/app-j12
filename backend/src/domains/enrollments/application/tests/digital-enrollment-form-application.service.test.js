@@ -6,6 +6,15 @@ const {
   DigitalEnrollmentFormApplicationService,
 } = require("../services/digital-enrollment-form-application.service.js");
 
+const {
+  DigitalEnrollmentContractService,
+  FOUNDATION_BLOCKER,
+  PUBLIC_ERROR_CODE,
+} = require("../services/digital-enrollment-contract.service.js");
+const {
+  EvaluateDigitalEnrollmentDocumentCompletionService,
+} = require("../services/evaluate-digital-enrollment-document-completion.service.js");
+
 test("digital enrollment foundation fails closed without exposing or persisting the token", async () => {
   const rawToken = "A".repeat(43);
   const logs = [];
@@ -125,3 +134,166 @@ test("expired invitation stops the operation before the aggregate transaction", 
   });
   await assert.rejects(() => service.getForm("A".repeat(43)), { code: "ENROLLMENT_INVITATION_NOT_AVAILABLE" });
 });
+test("non-REVIEW advances keep the existing delegation path", async () => {
+  const { calls, service } = reviewFixture();
+  await service.advanceStep("raw-token", { fields: { targetStep: "DOCUMENTS" }, revision: 4 });
+  assert.equal(calls.execute, 1);
+  assert.equal(calls.inspect, 0);
+});
+
+test("REVIEW revalidates invitation, inspects without writing and never forwards rawToken", async () => {
+  const { calls, progress, service } = reviewFixture({ completion: { complete: false } });
+  const before = structuredClone(progress);
+  await assert.rejects(() => service.advanceStep("raw-token-secret", { fields: { targetStep: "REVIEW" }, revision: 5 }), {
+    code: "DIGITAL_ENROLLMENT_DOCUMENTS_INCOMPLETE",
+  });
+  assert.equal(calls.resolve, 1);
+  assert.equal(calls.inspect, 1);
+  assert.equal(calls.execute, 0);
+  assert.equal(calls.progressWrites, 0);
+  assert.deepEqual(progress, before);
+  assert.doesNotMatch(JSON.stringify(calls.providerContext), /raw-token-secret|storageKey|cpf|email/i);
+});
+
+test("inspection conflicts and non-DOCUMENTS context stop before document evaluation", async (t) => {
+  await t.test("revision conflict", async () => {
+    const conflict = Object.assign(new Error("conflict"), { code: "DIGITAL_ENROLLMENT_PROGRESS_CONFLICT", statusCode: 409 });
+    const { calls, service } = reviewFixture({ inspectError: conflict });
+    await assert.rejects(() => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 4 }), { code: conflict.code });
+    assert.equal(calls.provider, 0);
+    assert.equal(calls.completion, 0);
+  });
+  await t.test("wrong current step", async () => {
+    const { calls, service } = reviewFixture({ context: { currentStep: "ADDITIONAL_INFORMATION", revision: 5 } });
+    await assert.rejects(() => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 5 }), { code: "DIGITAL_ENROLLMENT_INVALID_COMMAND" });
+    assert.equal(calls.provider, 0);
+  });
+});
+
+test("missing or invalid document requirement provider fails closed", async (t) => {
+  await t.test("provider absent", async () => {
+    const { service } = reviewFixture({ provider: null });
+    await assert.rejects(() => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 5 }), { code: "DIGITAL_ENROLLMENT_DOCUMENT_POLICY_NOT_CONFIGURED", statusCode: 503 });
+  });
+  await t.test("provider returns undefined", async () => {
+    const { service } = reviewFixture({ requiredDocumentTypes: undefined });
+    await assert.rejects(() => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 5 }), { code: "DIGITAL_ENROLLMENT_DOCUMENT_POLICY_NOT_CONFIGURED" });
+  });
+});
+
+test("an explicitly empty requirement is valid and reaches the canonical contract blocker", async () => {
+  const { calls, service } = reviewFixture({ completion: { complete: true }, requiredDocumentTypes: [] });
+  await assert.rejects(
+    () => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 5 }),
+    (error) => error.code === PUBLIC_ERROR_CODE && error.blocker === FOUNDATION_BLOCKER,
+  );
+  assert.deepEqual(calls.completionInput.requiredDocumentTypes, []);
+  assert.equal(calls.execute, 0);
+});
+
+test("missing document repository fails closed before contract evaluation", async () => {
+  const { calls, service } = reviewFixture({
+    completionService: new EvaluateDigitalEnrollmentDocumentCompletionService(),
+    requiredDocumentTypes: [],
+  });
+  await assert.rejects(() => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 5 }), {
+    code: "DIGITAL_ENROLLMENT_DOCUMENT_REPOSITORY_UNAVAILABLE",
+    expose: false,
+  });
+  assert.equal(calls.contract, 0);
+});
+
+for (const [name, completion] of [
+  ["required document missing", { complete: false, missingTypes: ["CPF"], rejectedTypes: [] }],
+  ["required document rejected", { complete: false, missingTypes: ["CPF"], rejectedTypes: ["CPF"] }],
+]) {
+  test(`${name} blocks REVIEW without exposing document internals`, async () => {
+    const { calls, progress, service } = reviewFixture({ completion });
+    await assert.rejects(
+      () => service.advanceStep("raw-secret", { fields: { targetStep: "REVIEW" }, revision: 5 }),
+      (error) => {
+        assert.equal(error.code, "DIGITAL_ENROLLMENT_DOCUMENTS_INCOMPLETE");
+        assert.equal(error.statusCode, 409);
+        assert.equal(error.expose, true);
+        assert.doesNotMatch(JSON.stringify(error), /raw-secret|storageKey|sha256|originalName|CPF/);
+        return true;
+      },
+    );
+    assert.equal(calls.contract, 0);
+    assert.equal(calls.execute, 0);
+    assert.equal(progress.revision, 5);
+    assert.equal(progress.currentStep, "DOCUMENTS");
+    assert.equal(progress.status, "IN_PROGRESS");
+  });
+}
+
+test("complete documents reach only contract availability and create no contract or financial data", async () => {
+  const { calls, progress, service } = reviewFixture({ completion: { complete: true } });
+  const before = structuredClone(progress);
+  await assert.rejects(() => service.advanceStep("token", { fields: { targetStep: "REVIEW" }, revision: 5 }), {
+    code: PUBLIC_ERROR_CODE,
+    blocker: FOUNDATION_BLOCKER,
+  });
+  assert.equal(calls.contract, 1);
+  assert.equal(calls.execute, 0);
+  assert.equal(calls.progressWrites, 0);
+  assert.equal(calls.contractCreates, 0);
+  assert.equal(calls.financialWrites, 0);
+  assert.deepEqual(progress, before);
+});
+
+function reviewFixture(overrides = {}) {
+  const progress = {
+    completedSteps: ["RESPONSIBLE_DATA", "STUDENT_DATA", "ADDRESS", "ADDITIONAL_INFORMATION"],
+    currentStep: "DOCUMENTS",
+    readyForReviewAt: null,
+    revision: 5,
+    status: "IN_PROGRESS",
+  };
+  const calls = { completion: 0, contract: 0, contractCreates: 0, execute: 0, financialWrites: 0, inspect: 0, progressWrites: 0, provider: 0, resolve: 0 };
+  const baseContext = { currentStep: "DOCUMENTS", enrollmentId: "enrollment-1", responsibleRelationshipId: "relationship-1", revision: 5 };
+  const context = Object.freeze({ ...baseContext, ...(overrides.context || {}) });
+  const aggregateGateway = {
+    async executeDigitalEnrollmentOperation() { calls.execute += 1; return { ok: true }; },
+    async inspectDigitalEnrollmentAdvance() {
+      calls.inspect += 1;
+      if (overrides.inspectError) throw overrides.inspectError;
+      return context;
+    },
+  };
+  const hasRequiredTypes = Object.prototype.hasOwnProperty.call(overrides, "requiredDocumentTypes");
+  const documentRequirementProvider = overrides.provider === null ? null : {
+    async getRequiredDocumentTypes(providerContext) {
+      calls.provider += 1;
+      calls.providerContext = providerContext;
+      return hasRequiredTypes ? overrides.requiredDocumentTypes : ["CPF"];
+    },
+  };
+  const documentCompletionService = overrides.completionService || {
+    async execute(input) {
+      calls.completion += 1;
+      calls.completionInput = input;
+      return overrides.completion || { complete: true };
+    },
+  };
+  const canonicalContractService = new DigitalEnrollmentContractService();
+  const contractService = {
+    async getContract() {
+      calls.contract += 1;
+      return canonicalContractService.getContract();
+    },
+  };
+  const service = new DigitalEnrollmentFormApplicationService({
+    aggregateGateway,
+    contractService,
+    documentCompletionService,
+    documentRequirementProvider,
+    invitationResolver: {
+      async resolveInvitationByRawToken() {
+        calls.resolve += 1;
+        return { enrollmentId: "enrollment-1", invitationId: "invitation-1" };
+      },
+    },
+  });
+  return { calls, progress, service };
+}
