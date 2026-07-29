@@ -3,6 +3,7 @@ module.exports = Object.freeze({
   ...require("./digital-enrollment-administrative-review.composition.js"),
   ...require("./enrollment-invitation-admin.composition.js"),
   ...require("./enrollment-public.composition.js"),
+  ...require("./enrollment-route-context.composition.js"),
   layer: "infrastructure",
   ...require("./enrollment-class-link.composition.js"),
   ...require("./repositories/index.js"),

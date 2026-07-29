@@ -52,6 +52,7 @@ function createUnitContextComposition(options = {}) {
       actorContextFactory,
       authIdentityResolver: authenticatedAuthIdentityResolver,
       headerName: options.headerName,
+      requestedUnitIdReader: options.requestedUnitIdReader,
       unitContextResolver,
     }),
     authenticatedAuthIdentityResolver,
@@ -59,6 +60,7 @@ function createUnitContextComposition(options = {}) {
     unitContextMiddleware: createUnitContextMiddleware({
       authIdentityResolver: authenticatedAuthIdentityResolver,
       headerName: options.headerName,
+      requestedUnitIdReader: options.requestedUnitIdReader,
       unitContextResolver,
     }),
     unitContextResolver,

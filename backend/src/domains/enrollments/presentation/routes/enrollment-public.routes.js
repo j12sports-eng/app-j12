@@ -5,6 +5,9 @@ const {
   MySqlEnrollmentRepository,
 } = require("../../infrastructure/repositories/mysql-enrollment.repository.js");
 const {
+  createEnrollmentActorContextMiddleware,
+} = require("../../infrastructure/enrollment-route-context.composition.js");
+const {
   EnrollmentPublicController,
 } = require("../controllers/enrollment-public.controller.js");
 
@@ -17,6 +20,7 @@ const ENROLLMENT_PUBLIC_ROUTE_BASE_PATH = "/enrollments";
  * by the existing authenticated management pattern: requireAuth + canManageSystem.
  *
  * @param {Object} [options]
+ * @param {Function} [options.actorContextMiddleware]
  * @param {EnrollmentPublicController} [options.controller]
  * @param {EnrollmentFacade} [options.enrollmentFacade]
  * @param {Function} [options.authMiddleware]
@@ -32,9 +36,11 @@ function createEnrollmentPublicRouter(options = {}) {
   });
   const authMiddleware = options.authMiddleware || requireAuth;
   const accessMiddleware = options.accessMiddleware || ensureEnrollmentPublicAccess;
+  const actorContextMiddleware = createEnrollmentActorContextMiddleware(options);
 
   router.use(authMiddleware);
   router.use(accessMiddleware);
+  router.use(actorContextMiddleware);
 
   router.get("/status", controller.getStatus);
   router.get("/current-draft", controller.getCurrentDraft);

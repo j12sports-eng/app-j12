@@ -1,6 +1,3 @@
-const {
-  createUnitContextComposition,
-} = require("../../auth/infrastructure/unit-context.composition.js");
 const { EnrollmentFacade } = require("../application/facades/enrollment.facade.js");
 const {
   EnrollmentInvitationAdminApplicationService,
@@ -15,6 +12,9 @@ const {
   createEnrollmentInvitationAdminRouter,
 } = require("../presentation/routes/enrollment-invitation-admin.routes.js");
 const {
+  createEnrollmentRouteContextComposition,
+} = require("./enrollment-route-context.composition.js");
+const {
   MySqlEnrollmentDigitalInvitationRepository,
 } = require("./repositories/mysql-enrollment-digital-invitation.repository.js");
 const { MySqlEnrollmentRepository } = require("./repositories/mysql-enrollment.repository.js");
@@ -28,7 +28,7 @@ function createEnrollmentInvitationAdminComposition(options = {}) {
     options.invitationRepository ||
     new MySqlEnrollmentDigitalInvitationRepository(options.invitationRepositoryOptions || {});
   const unitContextComposition =
-    options.unitContextComposition || createUnitContextComposition(options);
+    options.unitContextComposition || createEnrollmentRouteContextComposition(options);
   const invitationService =
     options.invitationService ||
     new EnrollmentDigitalInvitationService({

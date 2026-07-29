@@ -14,6 +14,7 @@ function createUnitContextMiddleware(options = {}) {
   const authIdentityResolver = getAuthIdentityResolver(options);
   const unitContextResolver = getUnitContextResolver(options);
   const headerName = normalizeHeaderName(options.headerName || DEFAULT_UNIT_HEADER_NAME);
+  const requestedUnitIdReader = getRequestedUnitIdReader(options);
 
   return async function attachUnitContext(req, _res, next) {
     try {
@@ -23,7 +24,7 @@ function createUnitContextMiddleware(options = {}) {
         readAuthIdentityInput(auth),
         runtimeContext,
       );
-      const requestedUnitId = readRequestedUnitId(req, headerName);
+      const requestedUnitId = requestedUnitIdReader(req, headerName);
       const unitContext = await unitContextResolver.resolveUnitContext(
         {
           authIdentityId: authIdentity.authIdentityId,
@@ -49,6 +50,7 @@ function createActorContextMiddleware(options = {}) {
   const unitContextResolver = getUnitContextResolver(options);
   const actorContextFactory = getActorContextFactory(options);
   const headerName = normalizeHeaderName(options.headerName || DEFAULT_UNIT_HEADER_NAME);
+  const requestedUnitIdReader = getRequestedUnitIdReader(options);
 
   return async function attachActorContext(req, _res, next) {
     try {
@@ -65,7 +67,7 @@ function createActorContextMiddleware(options = {}) {
         (await unitContextResolver.resolveUnitContext(
           {
             authIdentityId: authIdentity.authIdentityId,
-            requestedUnitId: readRequestedUnitId(req, headerName),
+            requestedUnitId: requestedUnitIdReader(req, headerName),
           },
           {
             ...runtimeContext,
@@ -117,6 +119,14 @@ function getActorContextFactory(options = {}) {
     throw new TypeError("Actor context middleware requires actor context factory.");
   }
   return factory;
+}
+
+function getRequestedUnitIdReader(options = {}) {
+  const reader = options.requestedUnitIdReader || readRequestedUnitId;
+  if (typeof reader !== "function") {
+    throw new TypeError("Context middleware requestedUnitIdReader must be a function.");
+  }
+  return reader;
 }
 
 function requireAuthenticatedRequest(req = {}) {

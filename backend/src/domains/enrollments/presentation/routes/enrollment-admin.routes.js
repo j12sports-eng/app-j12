@@ -5,6 +5,9 @@ const {
   MySqlEnrollmentRepository,
 } = require("../../infrastructure/repositories/mysql-enrollment.repository.js");
 const {
+  createEnrollmentActorContextMiddleware,
+} = require("../../infrastructure/enrollment-route-context.composition.js");
+const {
   EnrollmentAdminController,
 } = require("../controllers/enrollment-admin.controller.js");
 
@@ -17,6 +20,7 @@ const ENROLLMENT_ADMIN_ROUTE_BASE_PATH = "/admin/enrollments";
  * requireAuth + canManageSystem.
  *
  * @param {Object} [options]
+ * @param {Function} [options.actorContextMiddleware]
  * @param {EnrollmentAdminController} [options.controller]
  * @param {EnrollmentFacade} [options.enrollmentFacade]
  * @param {Function} [options.authMiddleware]
@@ -32,9 +36,11 @@ function createEnrollmentAdminRouter(options = {}) {
   });
   const authMiddleware = options.authMiddleware || requireAuth;
   const accessMiddleware = options.accessMiddleware || ensureEnrollmentAdminAccess;
+  const actorContextMiddleware = createEnrollmentActorContextMiddleware(options);
 
   router.use(authMiddleware);
   router.use(accessMiddleware);
+  router.use(actorContextMiddleware);
 
   router.get("/students/search", controller.searchStudentScopes);
   router.get("/status", controller.getStatus);

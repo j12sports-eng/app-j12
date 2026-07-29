@@ -90,6 +90,43 @@ test("x-unit-id is only a requested context and is validated before resolver cal
   assert.throws(() => readRequestedUnitId({ headers: { "x-unit-id": "abc" } }), /Unit context/i);
 });
 
+test("context middleware supports a route-specific reader that ignores client unit headers", async () => {
+  const calls = [];
+  const unitContext = createUnitContext();
+  const middleware = createUnitContextMiddleware({
+    authIdentityResolver: {
+      resolveAuthenticatedAuthIdentity: async () => ({
+        authIdentityId: "identity-1",
+        source: "users",
+        sourceUserId: "usr-admin",
+      }),
+    },
+    requestedUnitIdReader(req, headerName) {
+      calls.push({ headerName, receivedHeader: req.headers?.[headerName] });
+      return null;
+    },
+    unitContextResolver: {
+      resolveUnitContext: async (command) => {
+        calls.push(command);
+        return unitContext;
+      },
+    },
+  });
+  const req = {
+    auth: { id: "usr-admin", source: "users" },
+    correlationId: "corr-1",
+    headers: { "x-unit-id": "999" },
+    id: "req-1",
+  };
+
+  assert.equal(await runMiddleware(middleware, req), null);
+  assert.deepEqual(calls, [
+    { headerName: "x-unit-id", receivedHeader: "999" },
+    { authIdentityId: "identity-1", requestedUnitId: null },
+  ]);
+  assert.equal(req.unitContext, unitContext);
+});
+
 test("context middleware helpers derive identity and runtime context from canonical request fields", () => {
   assert.deepEqual(
     readAuthIdentityInput({ id: "usr-admin", source: "users" }),
