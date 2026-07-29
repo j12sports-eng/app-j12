@@ -133,20 +133,33 @@ class EnrollmentDigitalInvitationService {
     const invitationId = nullableText(safeCommand.invitationId, 64);
     const contextData = this.readTrustedContext(context);
 
-    if (unexpectedFields.length > 0 || !invitationId || !contextData.actorId || !contextData.unitId) {
-      throw controlledError("revokeInvitation requires invitationId, actorId and unitId.", ENROLLMENT_INVITATION_INVALID_INPUT_CODE, {
-        hasActorId: Boolean(contextData.actorId),
-        hasInvitationId: Boolean(invitationId),
-        hasUnitId: Boolean(contextData.unitId),
-        unexpectedFields,
-      });
+    if (
+      unexpectedFields.length > 0 ||
+      !invitationId ||
+      !contextData.actorId ||
+      !contextData.unitId
+    ) {
+      throw controlledError(
+        "revokeInvitation requires invitationId, actorId and unitId.",
+        ENROLLMENT_INVITATION_INVALID_INPUT_CODE,
+        {
+          hasActorId: Boolean(contextData.actorId),
+          hasInvitationId: Boolean(invitationId),
+          hasUnitId: Boolean(contextData.unitId),
+          unexpectedFields,
+        },
+      );
     }
 
     const repository = this.getInvitationRepository();
     const current = await repository.findById(invitationId);
 
     if (!current) {
-      return Object.freeze({ changed: false, invitationId, status: EnrollmentDigitalInvitationStatus.REVOKED });
+      return Object.freeze({
+        changed: false,
+        invitationId,
+        status: EnrollmentDigitalInvitationStatus.REVOKED,
+      });
     }
 
     await this.assertAuthorized({
@@ -159,8 +172,15 @@ class EnrollmentDigitalInvitationService {
     });
     this.assertUnitMatches(current, contextData.unitId);
 
-    if (normalizeEnrollmentDigitalInvitationStatus(readProperty(current, "status")) === EnrollmentDigitalInvitationStatus.REVOKED) {
-      return Object.freeze({ changed: false, invitationId, status: EnrollmentDigitalInvitationStatus.REVOKED });
+    if (
+      normalizeEnrollmentDigitalInvitationStatus(readProperty(current, "status")) ===
+      EnrollmentDigitalInvitationStatus.REVOKED
+    ) {
+      return Object.freeze({
+        changed: false,
+        invitationId,
+        status: EnrollmentDigitalInvitationStatus.REVOKED,
+      });
     }
 
     const result = await repository.revokeInvitation({
@@ -181,7 +201,8 @@ class EnrollmentDigitalInvitationService {
     return Object.freeze({
       changed: Boolean(result.changed),
       invitationId,
-      status: normalizeEnrollmentDigitalInvitationStatus(readProperty(invitation, "status")) ||
+      status:
+        normalizeEnrollmentDigitalInvitationStatus(readProperty(invitation, "status")) ||
         EnrollmentDigitalInvitationStatus.REVOKED,
     });
   }
@@ -195,13 +216,22 @@ class EnrollmentDigitalInvitationService {
       safeCommand.durationSeconds ?? this.defaultDurationSeconds,
     );
 
-    if (unexpectedFields.length > 0 || !enrollmentId || !contextData.actorId || !contextData.unitId) {
-      throw controlledError("renewInvitation requires enrollmentId, actorId and unitId.", ENROLLMENT_INVITATION_INVALID_INPUT_CODE, {
-        hasActorId: Boolean(contextData.actorId),
-        hasEnrollmentId: Boolean(enrollmentId),
-        hasUnitId: Boolean(contextData.unitId),
-        unexpectedFields,
-      });
+    if (
+      unexpectedFields.length > 0 ||
+      !enrollmentId ||
+      !contextData.actorId ||
+      !contextData.unitId
+    ) {
+      throw controlledError(
+        "renewInvitation requires enrollmentId, actorId and unitId.",
+        ENROLLMENT_INVITATION_INVALID_INPUT_CODE,
+        {
+          hasActorId: Boolean(contextData.actorId),
+          hasEnrollmentId: Boolean(enrollmentId),
+          hasUnitId: Boolean(contextData.unitId),
+          unexpectedFields,
+        },
+      );
     }
 
     await this.assertAuthorized({
@@ -294,7 +324,10 @@ class EnrollmentDigitalInvitationService {
       throw genericNotAvailable();
     }
 
-    const enrollment = await this.findDraftEnrollment(readProperty(invitation, "enrollmentId"), readProperty(invitation, "unitId"));
+    const enrollment = await this.findDraftEnrollment(
+      readProperty(invitation, "enrollmentId"),
+      readProperty(invitation, "unitId"),
+    );
 
     this.logAudit("ENROLLMENT_INVITATION_RESOLVED", {
       enrollmentId: readProperty(invitation, "enrollmentId"),
@@ -317,10 +350,16 @@ class EnrollmentDigitalInvitationService {
     const invitationId = nullableText(readProperty(command, "invitationId"), 64);
     const contextData = this.readTrustedContext(context);
     if (!invitationId || !contextData.actorId) {
-      throw controlledError("markInvitationUsed requires invitationId and actorId.", ENROLLMENT_INVITATION_INVALID_INPUT_CODE);
+      throw controlledError(
+        "markInvitationUsed requires invitationId and actorId.",
+        ENROLLMENT_INVITATION_INVALID_INPUT_CODE,
+      );
     }
     if (typeof this.getInvitationRepository().markUsed !== "function") {
-      throw controlledError("Invitation usage persistence is not available.", ENROLLMENT_INVITATION_STATE_CONFLICT_CODE);
+      throw controlledError(
+        "Invitation usage persistence is not available.",
+        ENROLLMENT_INVITATION_STATE_CONFLICT_CODE,
+      );
     }
     return this.getInvitationRepository().markUsed({
       invitationId,
@@ -344,10 +383,14 @@ class EnrollmentDigitalInvitationService {
       }
     }
 
-    throw controlledError("Enrollment already has an active invitation.", ENROLLMENT_INVITATION_ALREADY_ACTIVE_CODE, {
-      enrollmentId,
-      invitationId: readProperty(active, "id"),
-    });
+    throw controlledError(
+      "Enrollment already has an active invitation.",
+      ENROLLMENT_INVITATION_ALREADY_ACTIVE_CODE,
+      {
+        enrollmentId,
+        invitationId: readProperty(active, "id"),
+      },
+    );
   }
 
   async createPersistedInvitation(input) {
@@ -355,9 +398,13 @@ class EnrollmentDigitalInvitationService {
       return await this.getInvitationRepository().create(input);
     } catch (error) {
       if (isDuplicateEntry(error)) {
-        throw controlledError("Enrollment already has an active invitation.", ENROLLMENT_INVITATION_ALREADY_ACTIVE_CODE, {
-          enrollmentId: input.enrollmentId,
-        });
+        throw controlledError(
+          "Enrollment already has an active invitation.",
+          ENROLLMENT_INVITATION_ALREADY_ACTIVE_CODE,
+          {
+            enrollmentId: input.enrollmentId,
+          },
+        );
       }
       throw error;
     }
@@ -366,25 +413,40 @@ class EnrollmentDigitalInvitationService {
   async findDraftEnrollment(enrollmentId, unitId) {
     const enrollment = await this.readEnrollment(enrollmentId);
     if (!enrollment) {
-      throw controlledError("Enrollment invitation is not available.", ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE, { enrollmentId });
+      throw controlledError(
+        "Enrollment invitation is not available.",
+        ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE,
+        { enrollmentId },
+      );
     }
     const status = normalizeEnrollmentStatus(readProperty(enrollment, "status"));
     if (status !== EnrollmentStatus.DRAFT) {
-      throw controlledError("Enrollment must remain DRAFT for invitation use.", ENROLLMENT_INVITATION_STATE_CONFLICT_CODE, {
-        enrollmentId,
-        status,
-      });
+      throw controlledError(
+        "Enrollment must remain DRAFT for invitation use.",
+        ENROLLMENT_INVITATION_STATE_CONFLICT_CODE,
+        {
+          enrollmentId,
+          status,
+        },
+      );
     }
     this.assertUnitMatches(enrollment, unitId);
     return enrollment;
   }
 
   assertUnitMatches(record, unitId) {
-    const recordUnitId = nullableText(readProperty(record, "unitId") ?? readProperty(record, "unit_id"), 64);
-    if (recordUnitId && recordUnitId !== unitId) {
-      throw controlledError("Enrollment invitation unit scope does not match.", ENROLLMENT_INVITATION_FORBIDDEN_CODE, {
-        unitMatches: false,
-      });
+    const recordUnitId = nullableText(
+      readProperty(record, "unitId") ?? readProperty(record, "unit_id"),
+      64,
+    );
+    if (!recordUnitId || !unitId || recordUnitId !== unitId) {
+      throw controlledError(
+        "Enrollment invitation unit scope does not match.",
+        ENROLLMENT_INVITATION_FORBIDDEN_CODE,
+        {
+          unitMatches: false,
+        },
+      );
     }
   }
 
@@ -400,15 +462,24 @@ class EnrollmentDigitalInvitationService {
 
   async assertAuthorized(input) {
     if (!this.authorizeEnrollmentInvitation) {
-      throw controlledError("Enrollment invitation authorization is not configured.", ENROLLMENT_INVITATION_FORBIDDEN_CODE);
+      throw controlledError(
+        "Enrollment invitation authorization is not configured.",
+        ENROLLMENT_INVITATION_FORBIDDEN_CODE,
+      );
     }
     try {
       const authorized = await this.authorizeEnrollmentInvitation(Object.freeze({ ...input }));
       if (authorized === true) return;
     } catch {
-      throw controlledError("Enrollment invitation authorization failed closed.", ENROLLMENT_INVITATION_FORBIDDEN_CODE);
+      throw controlledError(
+        "Enrollment invitation authorization failed closed.",
+        ENROLLMENT_INVITATION_FORBIDDEN_CODE,
+      );
     }
-    throw controlledError("Actor is not authorized for Enrollment invitation.", ENROLLMENT_INVITATION_FORBIDDEN_CODE);
+    throw controlledError(
+      "Actor is not authorized for Enrollment invitation.",
+      ENROLLMENT_INVITATION_FORBIDDEN_CODE,
+    );
   }
 
   readTrustedContext(context = {}) {
@@ -425,7 +496,10 @@ class EnrollmentDigitalInvitationService {
   createRawToken() {
     const token = this.tokenGenerator();
     if (!isValidRawToken(token)) {
-      throw controlledError("Generated invitation token is invalid.", ENROLLMENT_INVITATION_PERSISTENCE_ERROR_CODE);
+      throw controlledError(
+        "Generated invitation token is invalid.",
+        ENROLLMENT_INVITATION_PERSISTENCE_ERROR_CODE,
+      );
     }
     return token;
   }
@@ -449,7 +523,10 @@ class EnrollmentDigitalInvitationService {
 
   mapUnexpectedError(error) {
     if (isControlledError(error)) return error;
-    return controlledError("Enrollment invitation persistence failed.", ENROLLMENT_INVITATION_PERSISTENCE_ERROR_CODE);
+    return controlledError(
+      "Enrollment invitation persistence failed.",
+      ENROLLMENT_INVITATION_PERSISTENCE_ERROR_CODE,
+    );
   }
 
   logAudit(action, context = {}) {
@@ -505,17 +582,26 @@ function toInternalEnrollmentDto(enrollment) {
   return Object.freeze({
     enrollmentId: readProperty(enrollment, "id"),
     status: normalizeEnrollmentStatus(readProperty(enrollment, "status")),
+    unitId: readProperty(enrollment, "unitId") ?? readProperty(enrollment, "unit_id"),
   });
 }
 
 function normalizeDurationSeconds(value, { allowDefault = false } = {}) {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < MIN_INVITATION_TTL_SECONDS || parsed > MAX_INVITATION_TTL_SECONDS) {
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < MIN_INVITATION_TTL_SECONDS ||
+    parsed > MAX_INVITATION_TTL_SECONDS
+  ) {
     if (allowDefault) return DEFAULT_INVITATION_TTL_SECONDS;
-    throw controlledError("Invalid invitation duration.", ENROLLMENT_INVITATION_INVALID_INPUT_CODE, {
-      maxSeconds: MAX_INVITATION_TTL_SECONDS,
-      minSeconds: MIN_INVITATION_TTL_SECONDS,
-    });
+    throw controlledError(
+      "Invalid invitation duration.",
+      ENROLLMENT_INVITATION_INVALID_INPUT_CODE,
+      {
+        maxSeconds: MAX_INVITATION_TTL_SECONDS,
+        minSeconds: MIN_INVITATION_TTL_SECONDS,
+      },
+    );
   }
   return Math.trunc(parsed);
 }
@@ -549,11 +635,13 @@ function readObject(value) {
 }
 
 function readProperty(value, property) {
-  return value && typeof value === "object" ? value[property] ?? null : null;
+  return value && typeof value === "object" ? (value[property] ?? null) : null;
 }
 
 function nullableText(value, max = 65535) {
-  const normalized = String(value ?? "").trim().slice(0, max);
+  const normalized = String(value ?? "")
+    .trim()
+    .slice(0, max);
   return normalized || null;
 }
 

@@ -1,4 +1,7 @@
-const { Enrollment } = require("../../domain/entities/enrollment.entity.js");
+const {
+  Enrollment,
+  normalizeCanonicalUnitId,
+} = require("../../domain/entities/enrollment.entity.js");
 const { EnrollmentFactory } = require("../../domain/factories/enrollment.factory.js");
 const {
   EnrollmentStatus,
@@ -144,6 +147,7 @@ class EnrollmentApplicationService {
     const existingEnrollment = await this.findCurrentDraftEnrollment({
       studentPersonId: enrollment.studentPersonId,
       studentProfileId: enrollment.studentProfileId,
+      unitId: enrollment.unitId,
     });
 
     if (existingEnrollment) {
@@ -171,19 +175,22 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<unknown|null>}
    */
   async findCurrentDraftEnrollment(input = {}) {
     const studentPersonId = nullableText(input.studentPersonId, 64);
     const studentProfileId = nullableText(input.studentProfileId, 64);
+    const unitId = normalizeCanonicalUnitId(input.unitId, { nullable: true });
 
-    if (!studentPersonId || !studentProfileId) {
+    if (!studentPersonId || !studentProfileId || !unitId) {
       return null;
     }
 
     return this.getEnrollmentDraftReader().findDraftByStudent({
       studentPersonId,
       studentProfileId,
+      unitId,
     });
   }
 
@@ -193,6 +200,7 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<unknown|null>}
    */
   async findDraftEnrollment(input = {}) {
@@ -207,19 +215,22 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<unknown|null>}
    */
   async findCurrentActiveEnrollment(input = {}) {
     const studentPersonId = nullableText(input.studentPersonId, 64);
     const studentProfileId = nullableText(input.studentProfileId, 64);
+    const unitId = normalizeCanonicalUnitId(input.unitId, { nullable: true });
 
-    if (!studentPersonId || !studentProfileId) {
+    if (!studentPersonId || !studentProfileId || !unitId) {
       return null;
     }
 
     return this.getEnrollmentActiveReader().findActiveByStudent({
       studentPersonId,
       studentProfileId,
+      unitId,
     });
   }
 
@@ -248,19 +259,21 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<{ hasDraftEnrollment: boolean, hasActiveEnrollment: boolean, draftEnrollment: unknown|null, activeEnrollment: unknown|null, status: "NONE"|"DRAFT"|"ACTIVE"|"CONFLICT" }|null>}
    */
   async getEnrollmentStatusSummary(input = {}) {
     const studentPersonId = nullableText(input.studentPersonId, 64);
     const studentProfileId = nullableText(input.studentProfileId, 64);
+    const unitId = normalizeCanonicalUnitId(input.unitId, { nullable: true });
 
-    if (!studentPersonId || !studentProfileId) {
+    if (!studentPersonId || !studentProfileId || !unitId) {
       return null;
     }
 
     const [draftEnrollment, activeEnrollment] = await Promise.all([
-      this.findCurrentDraftEnrollment({ studentPersonId, studentProfileId }),
-      this.findCurrentActiveEnrollment({ studentPersonId, studentProfileId }),
+      this.findCurrentDraftEnrollment({ studentPersonId, studentProfileId, unitId }),
+      this.findCurrentActiveEnrollment({ studentPersonId, studentProfileId, unitId }),
     ]);
     const hasDraftEnrollment = Boolean(draftEnrollment);
     const hasActiveEnrollment = Boolean(activeEnrollment);
@@ -316,20 +329,23 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @param {string[]} [input.allowedStatuses]
    * @returns {Promise<{ allowed: boolean, allowedStatuses: string[], status: "NONE"|"DRAFT"|"ACTIVE", statusSummary: unknown, studentPersonId: string, studentProfileId: string }>}
    */
   async ensureEnrollmentCanProceed(input = {}) {
     const studentPersonId = nullableText(input.studentPersonId, 64);
     const studentProfileId = nullableText(input.studentProfileId, 64);
+    const unitId = normalizeCanonicalUnitId(input.unitId, { nullable: true });
 
-    if (!studentPersonId || !studentProfileId) {
+    if (!studentPersonId || !studentProfileId || !unitId) {
       throw controlledError(
-        "ensureEnrollmentCanProceed requires studentPersonId and studentProfileId.",
+        "ensureEnrollmentCanProceed requires studentPersonId, studentProfileId and unitId.",
         ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED_CODE,
         {
           hasStudentPersonId: Boolean(studentPersonId),
           hasStudentProfileId: Boolean(studentProfileId),
+          hasUnitId: Boolean(unitId),
         },
       );
     }
@@ -338,6 +354,7 @@ class EnrollmentApplicationService {
     const statusSummary = await this.getEnrollmentStatusSummary({
       studentPersonId,
       studentProfileId,
+      unitId,
     });
     const currentStatus = statusSummary?.status ?? null;
 
@@ -388,19 +405,22 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<{ activeEnrollment: null, allowed: boolean, studentPersonId: string, studentProfileId: string }>}
    */
   async ensureNoActiveEnrollment(input = {}) {
     const studentPersonId = nullableText(input.studentPersonId, 64);
     const studentProfileId = nullableText(input.studentProfileId, 64);
+    const unitId = normalizeCanonicalUnitId(input.unitId, { nullable: true });
 
-    if (!studentPersonId || !studentProfileId) {
+    if (!studentPersonId || !studentProfileId || !unitId) {
       throw controlledError(
-        "ensureNoActiveEnrollment requires studentPersonId and studentProfileId.",
+        "ensureNoActiveEnrollment requires studentPersonId, studentProfileId and unitId.",
         ACTIVE_ENROLLMENT_GUARD_INPUT_REQUIRED_CODE,
         {
           hasStudentPersonId: Boolean(studentPersonId),
           hasStudentProfileId: Boolean(studentProfileId),
+          hasUnitId: Boolean(unitId),
         },
       );
     }
@@ -408,6 +428,7 @@ class EnrollmentApplicationService {
     const activeEnrollment = await this.findCurrentActiveEnrollment({
       studentPersonId,
       studentProfileId,
+      unitId,
     });
 
     if (activeEnrollment) {
@@ -607,6 +628,7 @@ class EnrollmentApplicationService {
       );
     }
 
+    const unitId = requirePersistedEnrollmentUnit(currentEnrollment);
     const currentStatus = normalizeEnrollmentStatus(readProperty(currentEnrollment, "status"));
     const confirmedAt = normalizeTimestamp(input.confirmedAt);
     const confirmedBy = nullableText(input.confirmedBy, 191);
@@ -643,6 +665,7 @@ class EnrollmentApplicationService {
     await this.ensureNoActiveEnrollment({
       studentPersonId,
       studentProfileId,
+      unitId,
     });
 
     const confirmedEnrollment = await repository.updateStatus(
@@ -815,6 +838,25 @@ function ensureSameEnrollmentUnit(requestedEnrollment, existingEnrollment) {
         existingUnitId,
         requestedUnitId,
       },
+    );
+  }
+}
+
+/**
+ * Confirmation never adopts a legacy or malformed Enrollment ownership.
+ *
+ * @param {unknown} enrollment
+ * @returns {string}
+ */
+function requirePersistedEnrollmentUnit(enrollment) {
+  try {
+    return normalizeCanonicalUnitId(
+      readProperty(enrollment, "unitId") ?? readProperty(enrollment, "unit_id"),
+    );
+  } catch {
+    throw controlledError(
+      "Enrollment unit ownership is required for confirmation.",
+      ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE,
     );
   }
 }

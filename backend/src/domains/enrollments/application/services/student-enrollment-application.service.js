@@ -1,4 +1,5 @@
 const { AppError } = require("../../../../errors/app-error.js");
+const { normalizeCanonicalUnitId } = require("../../domain/entities/enrollment.entity.js");
 
 const STUDENT_ENROLLMENT_ERROR_CODES = Object.freeze({
   ACTIVE_EXISTS: "ENROLLMENT_ACTIVE_EXISTS",
@@ -34,15 +35,17 @@ class StudentEnrollmentApplicationService {
   }
 
   /** Creates or reuses a DRAFT after Pessoa and Aluno profile were resolved upstream. */
-  async resolveOrCreateDraftEnrollmentForResolvedStudent(input = {}, _context = {}) {
+  async resolveOrCreateDraftEnrollmentForResolvedStudent(input = {}, context = {}) {
     const source = normalizeObject(input);
     const personId = nullableText(source.personId);
     const personProfileId = nullableText(source.personProfileId);
     const startDate = nullableText(source.startDate);
+    const unitId = readCanonicalUnitId(context);
     const missing = [
       ["personId", personId],
       ["personProfileId", personProfileId],
       ["startDate", startDate],
+      ["unitId", unitId],
     ]
       .filter(([, value]) => !value)
       .map(([field]) => field);
@@ -58,6 +61,7 @@ class StudentEnrollmentApplicationService {
     const scope = {
       studentPersonId: personId,
       studentProfileId: personProfileId,
+      unitId,
     };
     const enrollmentService = this.getEnrollmentApplicationService();
     let summary;
@@ -93,7 +97,7 @@ class StudentEnrollmentApplicationService {
       );
     }
     if (summary.status === "DRAFT")
-      return buildEnrollmentResult(summary.draftEnrollment, false, true);
+      return buildEnrollmentResult(summary.draftEnrollment, false, true, unitId);
 
     let creation;
     try {
@@ -118,6 +122,7 @@ class StudentEnrollmentApplicationService {
       draftEnrollment,
       Boolean(creation.created),
       Boolean(creation.reused),
+      unitId,
     );
   }
 
@@ -144,9 +149,10 @@ class StudentEnrollmentApplicationService {
   }
 }
 
-function buildEnrollmentResult(enrollment, created, reused) {
+function buildEnrollmentResult(enrollment, created, reused, unitId) {
   const enrollmentId = nullableText(readProperty(enrollment, "id"));
-  if (!enrollmentId)
+  const enrollmentUnitId = readCanonicalUnitId(enrollment);
+  if (!enrollmentId || !enrollmentUnitId || enrollmentUnitId !== unitId)
     throw applicationError(
       "Draft Enrollment creation failed.",
       STUDENT_ENROLLMENT_ERROR_CODES.DRAFT_CREATION_FAILED,
@@ -191,6 +197,14 @@ function nullableText(value) {
 }
 function readProperty(value, property) {
   return value && typeof value === "object" ? (value[property] ?? null) : null;
+}
+
+function readCanonicalUnitId(value) {
+  try {
+    return normalizeCanonicalUnitId(readProperty(value, "unitId"), { nullable: true });
+  } catch {
+    return null;
+  }
 }
 
 module.exports = { STUDENT_ENROLLMENT_ERROR_CODES, StudentEnrollmentApplicationService };

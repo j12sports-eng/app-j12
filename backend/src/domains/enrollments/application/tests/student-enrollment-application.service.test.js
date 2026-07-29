@@ -29,6 +29,7 @@ test("creates one canonical DRAFT and reuses it sequentially", async () => {
   assert.equal(second.reused.enrollment, true);
   assert.equal(fixture.repository.records.length, 1);
   assert.equal(fixture.repository.records[0].startDate, "2026-07-18");
+  assert.equal(fixture.repository.records[0].unitId, "1");
   assert.equal(fixture.contexts[0], fixture.context);
   assert.equal("cpf" in first, false);
   assert.equal("studentId" in first, false);
@@ -37,7 +38,10 @@ test("creates one canonical DRAFT and reuses it sequentially", async () => {
 test("reuses existing DRAFT without updating or creating", async () => {
   const fixture = createFixture();
   fixture.repository.seed("DRAFT", "existing", "2025-01-01");
-  const result = await fixture.service.resolveStudentAndCreateDraftEnrollment(validInput());
+  const result = await fixture.service.resolveStudentAndCreateDraftEnrollment(
+    validInput(),
+    fixture.context,
+  );
   assert.equal(result.enrollmentId, "existing");
   assert.equal(result.reused.enrollment, true);
   assert.equal(fixture.repository.createCalls, 0);
@@ -52,9 +56,12 @@ for (const [status, code] of [
     const fixture = createFixture();
     fixture.repository.seed("ACTIVE", "active");
     if (status === "CONFLICT") fixture.repository.seed("DRAFT", "draft");
-    await assert.rejects(fixture.service.resolveStudentAndCreateDraftEnrollment(validInput()), {
-      code,
-    });
+    await assert.rejects(
+      fixture.service.resolveStudentAndCreateDraftEnrollment(validInput(), fixture.context),
+      {
+        code,
+      },
+    );
     assert.equal(fixture.repository.createCalls, 0);
   });
 }
@@ -77,10 +84,13 @@ test("student failures stop before Enrollment and preserve canonical error", asy
 test("missing startDate is explicit after student resolution", async () => {
   const fixture = createFixture();
   await assert.rejects(
-    fixture.service.resolveStudentAndCreateDraftEnrollment({
-      enrollment: {},
-      student: validInput().student,
-    }),
+    fixture.service.resolveStudentAndCreateDraftEnrollment(
+      {
+        enrollment: {},
+        student: validInput().student,
+      },
+      fixture.context,
+    ),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
       error.details.fields[0] === "startDate",
@@ -92,7 +102,7 @@ test("missing startDate is explicit after student resolution", async () => {
 test("read and write infrastructure failures are sanitized without PII", async () => {
   const read = createFixture({ readError: new Error("CPF 52998224725") });
   await assert.rejects(
-    read.service.resolveStudentAndCreateDraftEnrollment(validInput()),
+    read.service.resolveStudentAndCreateDraftEnrollment(validInput(), read.context),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.RESOLUTION_FAILED &&
       !error.message.includes("52998224725") &&
@@ -100,7 +110,7 @@ test("read and write infrastructure failures are sanitized without PII", async (
   );
   const write = createFixture({ createError: new Error("CPF 52998224725") });
   await assert.rejects(
-    write.service.resolveStudentAndCreateDraftEnrollment(validInput()),
+    write.service.resolveStudentAndCreateDraftEnrollment(validInput(), write.context),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.DRAFT_CREATION_FAILED &&
       !error.message.includes("52998224725") &&
@@ -110,10 +120,16 @@ test("read and write infrastructure failures are sanitized without PII", async (
 
 test("retry after write failure is safe and performs no compensation", async () => {
   const fixture = createFixture({ failOnce: true });
-  await assert.rejects(fixture.service.resolveStudentAndCreateDraftEnrollment(validInput()), {
-    code: "ENROLLMENT_DRAFT_CREATION_FAILED",
-  });
-  const result = await fixture.service.resolveStudentAndCreateDraftEnrollment(validInput());
+  await assert.rejects(
+    fixture.service.resolveStudentAndCreateDraftEnrollment(validInput(), fixture.context),
+    {
+      code: "ENROLLMENT_DRAFT_CREATION_FAILED",
+    },
+  );
+  const result = await fixture.service.resolveStudentAndCreateDraftEnrollment(
+    validInput(),
+    fixture.context,
+  );
   assert.equal(result.enrollmentId, "draft-1");
   assert.equal(fixture.studentCalls, 2);
   assert.deepEqual(fixture.destructiveCalls, []);
@@ -137,11 +153,14 @@ test("resolved-student boundary creates DRAFT without resolving Pessoa/Profile a
 test("resolved-student boundary reuses DRAFT and preserves blocking states", async () => {
   const draft = createFixture();
   draft.repository.seed("DRAFT", "existing");
-  const reused = await draft.service.resolveOrCreateDraftEnrollmentForResolvedStudent({
-    personId: "person-1",
-    personProfileId: "profile-1",
-    startDate: "2030-01-01",
-  });
+  const reused = await draft.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
+    {
+      personId: "person-1",
+      personProfileId: "profile-1",
+      startDate: "2030-01-01",
+    },
+    draft.context,
+  );
   assert.deepEqual(reused, {
     enrollmentId: "existing",
     enrollmentStatus: "DRAFT",
@@ -153,25 +172,47 @@ test("resolved-student boundary reuses DRAFT and preserves blocking states", asy
   const active = createFixture();
   active.repository.seed("ACTIVE", "active");
   await assert.rejects(
-    active.service.resolveOrCreateDraftEnrollmentForResolvedStudent({
-      personId: "person-1",
-      personProfileId: "profile-1",
-      startDate: "2026-07-18",
-    }),
+    active.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
+      {
+        personId: "person-1",
+        personProfileId: "profile-1",
+        startDate: "2026-07-18",
+      },
+      active.context,
+    ),
     { code: "ENROLLMENT_ACTIVE_EXISTS" },
   );
 });
 
-test("resolved-student boundary requires only canonical ids and startDate", async () => {
+test("resolved-student boundary requires canonical ids, startDate and trusted unitId", async () => {
   const fixture = createFixture();
   await assert.rejects(
-    fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent({ personId: "person-1" }),
+    fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
+      { personId: "person-1" },
+      fixture.context,
+    ),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
       error.details.fields.join(",") === "personProfileId,startDate",
   );
   assert.equal(fixture.studentCalls, 0);
   assert.equal(fixture.repository.readCalls, 0);
+});
+
+test("missing trusted unitId fails closed before Enrollment lookup or creation", async () => {
+  const fixture = createFixture();
+
+  await assert.rejects(
+    fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
+      { personId: "person-1", personProfileId: "profile-1", startDate: "2026-07-18" },
+      { userId: "user-1" },
+    ),
+    (error) =>
+      error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
+      error.details.fields.join(",") === "unitId",
+  );
+  assert.equal(fixture.repository.readCalls, 0);
+  assert.equal(fixture.repository.createCalls, 0);
 });
 
 test("public exports remain additive", async () => {
@@ -195,7 +236,7 @@ function createFixture(options = {}) {
     context: Object.freeze({
       authorization: Object.freeze({ allowed: true }),
       correlationId: "corr-1",
-      unitId: "unit-1",
+      unitId: "1",
       userId: "user-1",
     }),
     contexts,
@@ -242,18 +283,25 @@ class FakeEnrollmentRepository {
       id,
       startDate,
       status,
+      unitId: "1",
       studentPersonId: "person-1",
       studentProfileId: "profile-1",
     });
   }
-  async findDraftByStudent() {
+  async findDraftByStudent(input) {
     this.readCalls += 1;
     if (this.options.readError) throw this.options.readError;
-    return this.records.find((record) => record.status === "DRAFT") || null;
+    return (
+      this.records.find((record) => record.status === "DRAFT" && record.unitId === input.unitId) ||
+      null
+    );
   }
-  async findActiveByStudent() {
+  async findActiveByStudent(input) {
     this.readCalls += 1;
-    return this.records.find((record) => record.status === "ACTIVE") || null;
+    return (
+      this.records.find((record) => record.status === "ACTIVE" && record.unitId === input.unitId) ||
+      null
+    );
   }
   async createDraftIfNotExists(enrollment) {
     this.createCalls += 1;
@@ -262,7 +310,9 @@ class FakeEnrollmentRepository {
       this.options.failOnce = false;
       throw new Error("temporary");
     }
-    const existing = this.records.find((record) => record.status === "DRAFT");
+    const existing = this.records.find(
+      (record) => record.status === "DRAFT" && record.unitId === enrollment.unitId,
+    );
     if (existing) return { created: false, enrollment: existing, reused: true };
     const record = { ...enrollment, id: `draft-${this.records.length + 1}` };
     this.records.push(record);

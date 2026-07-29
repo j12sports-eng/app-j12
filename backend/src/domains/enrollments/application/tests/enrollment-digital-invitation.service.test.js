@@ -49,11 +49,22 @@ test("EnrollmentDigitalInvitationService creates a draft invitation with raw tok
   assert.match(result.rawToken, RAW_TOKEN_PATTERN);
   assert.match(result.enrollmentId, /^enrollment-draft$/);
   assert.match(result.invitationId, /^[A-Za-z0-9-]{36}$/);
-  assert.equal((await service.resolveInvitationByRawToken({ rawToken: result.rawToken })).invitationId, result.invitationId);
+  assert.equal(
+    (await service.resolveInvitationByRawToken({ rawToken: result.rawToken })).invitationId,
+    result.invitationId,
+  );
   assert.equal("tokenHash" in result, false);
   assert.equal(result.enrollment.status, "DRAFT");
-  assert.equal(logs.some((entry) => JSON.stringify(entry).includes("A".repeat(43))), false);
-  assert.equal(logs.some((entry) => JSON.stringify(entry).includes("tokenHash")), false);
+  assert.equal(result.enrollment.unitId, "unit-1");
+  assert.equal(result.unitId, "unit-1");
+  assert.equal(
+    logs.some((entry) => JSON.stringify(entry).includes("A".repeat(43))),
+    false,
+  );
+  assert.equal(
+    logs.some((entry) => JSON.stringify(entry).includes("tokenHash")),
+    false,
+  );
   assert.match(
     (await service.getInvitationRepository().findById(result.invitationId)).tokenHash,
     TOKEN_HASH_PATTERN,
@@ -113,7 +124,11 @@ test("EnrollmentDigitalInvitationService rejects invalid command, authorization 
     const repository = new MemoryEnrollmentDigitalInvitationRepository();
     const service = new EnrollmentDigitalInvitationService({
       authorizeEnrollmentInvitation: async () => true,
-      enrollmentReader: new FakeEnrollmentReader({ id: "enrollment-draft", status: "DRAFT" }),
+      enrollmentReader: new FakeEnrollmentReader({
+        id: "enrollment-draft",
+        status: "DRAFT",
+        unitId: "unit-1",
+      }),
       invitationRepository: repository,
       tokenGenerator: () => "C".repeat(43),
     });
@@ -132,11 +147,36 @@ test("EnrollmentDigitalInvitationService rejects invalid command, authorization 
       { code: ENROLLMENT_INVITATION_ALREADY_ACTIVE_CODE },
     );
   });
+
+  await t.test("legacy draft without unit ownership", async () => {
+    const service = new EnrollmentDigitalInvitationService({
+      authorizeEnrollmentInvitation: async () => true,
+      enrollmentReader: new FakeEnrollmentReader({
+        id: "enrollment-legacy",
+        status: "DRAFT",
+        unitId: null,
+      }),
+      invitationRepository: new MemoryEnrollmentDigitalInvitationRepository(),
+    });
+
+    await assert.rejects(
+      () =>
+        service.createInvitation(
+          { enrollmentId: "enrollment-legacy" },
+          { actorId: "actor-1", unitId: "unit-1" },
+        ),
+      { code: ENROLLMENT_INVITATION_FORBIDDEN_CODE },
+    );
+  });
 });
 
 test("EnrollmentDigitalInvitationService revokes, renews and resolves tokens safely", async () => {
   const repository = new MemoryEnrollmentDigitalInvitationRepository();
-  const reader = new FakeEnrollmentReader({ id: "enrollment-draft", status: "DRAFT", unitId: "unit-1" });
+  const reader = new FakeEnrollmentReader({
+    id: "enrollment-draft",
+    status: "DRAFT",
+    unitId: "unit-1",
+  });
   const service = new EnrollmentDigitalInvitationService({
     authorizeEnrollmentInvitation: async () => true,
     clock: (() => {
@@ -161,10 +201,9 @@ test("EnrollmentDigitalInvitationService revokes, renews and resolves tokens saf
   );
 
   assert.equal(revoked.changed, true);
-  await assert.rejects(
-    () => service.resolveInvitationByRawToken({ rawToken: created.rawToken }),
-    { code: ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE },
-  );
+  await assert.rejects(() => service.resolveInvitationByRawToken({ rawToken: created.rawToken }), {
+    code: ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE,
+  });
 
   const renewed = await service.renewInvitation(
     { enrollmentId: "enrollment-draft", durationSeconds: 300 },
@@ -172,12 +211,14 @@ test("EnrollmentDigitalInvitationService revokes, renews and resolves tokens saf
   );
 
   assert.notEqual(renewed.rawToken, created.rawToken);
-  assert.equal((await service.resolveInvitationByRawToken({ rawToken: renewed.rawToken })).invitationId, renewed.invitationId);
-  reader.record.status = "ACTIVE";
-  await assert.rejects(
-    () => service.resolveInvitationByRawToken({ rawToken: renewed.rawToken }),
-    { code: ENROLLMENT_INVITATION_STATE_CONFLICT_CODE },
+  assert.equal(
+    (await service.resolveInvitationByRawToken({ rawToken: renewed.rawToken })).invitationId,
+    renewed.invitationId,
   );
+  reader.record.status = "ACTIVE";
+  await assert.rejects(() => service.resolveInvitationByRawToken({ rawToken: renewed.rawToken }), {
+    code: ENROLLMENT_INVITATION_STATE_CONFLICT_CODE,
+  });
 });
 
 test("EnrollmentDigitalInvitationService rejects malformed tokens before repository lookup and expires stale tokens", async () => {
@@ -185,7 +226,11 @@ test("EnrollmentDigitalInvitationService rejects malformed tokens before reposit
   const service = new EnrollmentDigitalInvitationService({
     authorizeEnrollmentInvitation: async () => true,
     clock: () => new Date("2026-07-24T12:00:00.000Z"),
-    enrollmentReader: new FakeEnrollmentReader({ id: "enrollment-expire", status: "DRAFT" }),
+    enrollmentReader: new FakeEnrollmentReader({
+      id: "enrollment-expire",
+      status: "DRAFT",
+      unitId: "unit-1",
+    }),
     invitationRepository: {
       async create(input) {
         return {
@@ -223,9 +268,12 @@ test("EnrollmentDigitalInvitationService rejects malformed tokens before reposit
   );
   service.clock = () => new Date("2026-07-24T12:06:00.000Z");
 
-  await assert.rejects(() => service.resolveInvitationByRawToken({ rawToken: invitation.rawToken }), {
-    code: ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE,
-  });
+  await assert.rejects(
+    () => service.resolveInvitationByRawToken({ rawToken: invitation.rawToken }),
+    {
+      code: ENROLLMENT_INVITATION_NOT_AVAILABLE_CODE,
+    },
+  );
 });
 
 class FakeEnrollmentReader {

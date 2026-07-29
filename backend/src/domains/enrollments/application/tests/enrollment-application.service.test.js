@@ -17,12 +17,14 @@ test("EnrollmentApplicationService creates and reuses a persisted DRAFT in memor
     startDate: "2026-06-30",
     studentPersonId: "person-1",
     studentProfileId: "profile-1",
+    unitId: "1",
   });
   const second = await service.createDraftEnrollmentIdempotently({
     id: "draft-2",
     startDate: "2026-06-30",
     studentPersonId: "person-1",
     studentProfileId: "profile-1",
+    unitId: "1",
   });
 
   assert.equal(first.created, true);
@@ -55,14 +57,17 @@ test("EnrollmentApplicationService reads current DRAFT and ACTIVE enrollments", 
   const draft = await service.findCurrentDraftEnrollment({
     studentPersonId: "person-2",
     studentProfileId: "profile-2",
+    unitId: "1",
   });
   const active = await service.findCurrentActiveEnrollment({
     studentPersonId: "person-3",
     studentProfileId: "profile-3",
+    unitId: "1",
   });
   const invalid = await service.findCurrentDraftEnrollment({
     studentPersonId: "",
     studentProfileId: "profile-2",
+    unitId: "1",
   });
 
   assert.equal(draft.id, "draft-read");
@@ -111,6 +116,7 @@ test("EnrollmentApplicationService confirms DRAFT to ACTIVE with audit metadata"
   assert.equal(result.alreadyConfirmed, false);
   assert.equal(result.status, "ACTIVE");
   assert.equal(result.enrollment.status, "ACTIVE");
+  assert.equal(result.enrollment.unitId, "1");
   assert.equal(result.confirmedAt, "2026-06-30 10:15:30");
   assert.equal(result.confirmedBy, "admin@j12.local");
   assert.deepEqual(repository.updateCalls, [
@@ -143,10 +149,27 @@ test("EnrollmentApplicationService blocks confirmation when ACTIVE already exist
   });
   const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
 
-  await assert.rejects(
-    () => service.confirmDraftEnrollment({ enrollmentId: "draft-blocked" }),
-    { code: ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE },
-  );
+  await assert.rejects(() => service.confirmDraftEnrollment({ enrollmentId: "draft-blocked" }), {
+    code: ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
+  });
+  assert.equal(repository.updateCalls.length, 0);
+});
+
+test("EnrollmentApplicationService blocks confirmation without persisted unit ownership", async () => {
+  const repository = new FakeEnrollmentRepository();
+  repository.seed({
+    id: "legacy-draft",
+    startDate: "2026-06-30",
+    status: "DRAFT",
+    studentPersonId: "legacy-person",
+    studentProfileId: "legacy-profile",
+    unitId: null,
+  });
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+
+  await assert.rejects(() => service.confirmDraftEnrollment({ enrollmentId: "legacy-draft" }), {
+    code: "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT",
+  });
   assert.equal(repository.updateCalls.length, 0);
 });
 
@@ -155,10 +178,13 @@ test("EnrollmentApplicationService summarizes NONE, DRAFT, ACTIVE and CONFLICT s
     enrollmentRepository: new FakeEnrollmentRepository(),
   });
   assert.equal(
-    (await noneService.getEnrollmentStatusSummary({
-      studentPersonId: "person-none",
-      studentProfileId: "profile-none",
-    })).status,
+    (
+      await noneService.getEnrollmentStatusSummary({
+        studentPersonId: "person-none",
+        studentProfileId: "profile-none",
+        unitId: "1",
+      })
+    ).status,
     "NONE",
   );
 
@@ -172,10 +198,13 @@ test("EnrollmentApplicationService summarizes NONE, DRAFT, ACTIVE and CONFLICT s
   });
   const draftService = new EnrollmentApplicationService({ enrollmentRepository: draftRepository });
   assert.equal(
-    (await draftService.getEnrollmentStatusSummary({
-      studentPersonId: "person-draft",
-      studentProfileId: "profile-draft",
-    })).status,
+    (
+      await draftService.getEnrollmentStatusSummary({
+        studentPersonId: "person-draft",
+        studentProfileId: "profile-draft",
+        unitId: "1",
+      })
+    ).status,
     "DRAFT",
   );
 
@@ -187,12 +216,17 @@ test("EnrollmentApplicationService summarizes NONE, DRAFT, ACTIVE and CONFLICT s
     studentPersonId: "person-active",
     studentProfileId: "profile-active",
   });
-  const activeService = new EnrollmentApplicationService({ enrollmentRepository: activeRepository });
+  const activeService = new EnrollmentApplicationService({
+    enrollmentRepository: activeRepository,
+  });
   assert.equal(
-    (await activeService.getEnrollmentStatusSummary({
-      studentPersonId: "person-active",
-      studentProfileId: "profile-active",
-    })).status,
+    (
+      await activeService.getEnrollmentStatusSummary({
+        studentPersonId: "person-active",
+        studentProfileId: "profile-active",
+        unitId: "1",
+      })
+    ).status,
     "ACTIVE",
   );
 
@@ -215,10 +249,13 @@ test("EnrollmentApplicationService summarizes NONE, DRAFT, ACTIVE and CONFLICT s
     enrollmentRepository: conflictRepository,
   });
   assert.equal(
-    (await conflictService.getEnrollmentStatusSummary({
-      studentPersonId: "person-conflict",
-      studentProfileId: "profile-conflict",
-    })).status,
+    (
+      await conflictService.getEnrollmentStatusSummary({
+        studentPersonId: "person-conflict",
+        studentProfileId: "profile-conflict",
+        unitId: "1",
+      })
+    ).status,
     "CONFLICT",
   );
 });
@@ -262,6 +299,7 @@ test("EnrollmentApplicationService guards allowed, ACTIVE blocked and CONFLICT b
   const allowed = await draftService.ensureEnrollmentCanProceed({
     studentPersonId: "person-guard-draft",
     studentProfileId: "profile-guard-draft",
+    unitId: "1",
   });
   assert.equal(allowed.allowed, true);
   assert.equal(allowed.status, "DRAFT");
@@ -274,12 +312,15 @@ test("EnrollmentApplicationService guards allowed, ACTIVE blocked and CONFLICT b
     studentPersonId: "person-guard-active",
     studentProfileId: "profile-guard-active",
   });
-  const activeService = new EnrollmentApplicationService({ enrollmentRepository: activeRepository });
+  const activeService = new EnrollmentApplicationService({
+    enrollmentRepository: activeRepository,
+  });
   await assert.rejects(
     () =>
       activeService.ensureEnrollmentCanProceed({
         studentPersonId: "person-guard-active",
         studentProfileId: "profile-guard-active",
+        unitId: "1",
       }),
     { code: ENROLLMENT_PROCEED_BLOCKED_CODE },
   );
@@ -308,6 +349,7 @@ test("EnrollmentApplicationService guards allowed, ACTIVE blocked and CONFLICT b
         allowedStatuses: ["NONE", "DRAFT", "ACTIVE", "CONFLICT"],
         studentPersonId: "person-guard-conflict",
         studentProfileId: "profile-guard-conflict",
+        unitId: "1",
       }),
     { code: ENROLLMENT_PROCEED_CONFLICT_CODE },
   );
@@ -322,7 +364,7 @@ class FakeEnrollmentRepository {
   }
 
   seed(record) {
-    this.records.set(record.id, { ...record });
+    this.records.set(record.id, { unitId: "1", ...record });
     return this.records.get(record.id);
   }
 
@@ -336,6 +378,7 @@ class FakeEnrollmentRepository {
     const existing = await this.findDraftByStudent({
       studentPersonId: enrollment.studentPersonId,
       studentProfileId: enrollment.studentProfileId,
+      unitId: enrollment.unitId,
     });
 
     if (existing) {
@@ -405,7 +448,8 @@ class FakeEnrollmentRepository {
         return (
           record.status === status &&
           record.studentPersonId === input.studentPersonId &&
-          record.studentProfileId === input.studentProfileId
+          record.studentProfileId === input.studentProfileId &&
+          record.unitId === input.unitId
         );
       }) || null
     );

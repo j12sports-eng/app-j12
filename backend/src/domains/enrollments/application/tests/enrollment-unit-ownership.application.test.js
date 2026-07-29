@@ -100,6 +100,7 @@ test("fallback idempotency allows reuse inside the same unit", async () => {
         assert.deepEqual(input, {
           studentPersonId: "person-1",
           studentProfileId: "profile-1",
+          unitId: "12",
         });
         return existing;
       },
