@@ -3,6 +3,8 @@ const {
   normalizeEnrollmentStatus,
 } = require("../enums/enrollment-status.enum.js");
 
+const CANONICAL_UNIT_ID_PATTERN = /^[1-9][0-9]{0,19}$/;
+
 /**
  * Aggregate Root for the Enrollment domain.
  *
@@ -13,6 +15,7 @@ class Enrollment {
   /**
    * @param {Object} [data]
    * @param {string|null} [data.id]
+   * @param {string|null} [data.unitId]
    * @param {string|null} [data.studentPersonId]
    * @param {string|null} [data.studentProfileId]
    * @param {string|null} [data.status]
@@ -23,6 +26,9 @@ class Enrollment {
    */
   constructor(data = {}) {
     this.id = nullableText(data.id);
+    // A reconstituiÃ§Ã£o tolera ownership ausente em registros legados.
+    // A criaÃ§Ã£o moderna Ã© validada de forma estrita pela EnrollmentFactory.
+    this.unitId = normalizeCanonicalUnitId(data.unitId, { nullable: true });
     this.studentPersonId = nullableText(data.studentPersonId);
     this.studentProfileId = nullableText(data.studentProfileId);
     this.status = normalizeEnrollmentStatus(data.status) || EnrollmentStatus.DRAFT;
@@ -112,9 +118,33 @@ class Enrollment {
       status: this.status,
       studentPersonId: this.studentPersonId,
       studentProfileId: this.studentProfileId,
+      unitId: this.unitId,
       updatedAt: this.updatedAt,
     };
   }
+}
+
+/**
+ * Preserva identificadores BIGINT canÃ´nicos como strings decimais exatas.
+ *
+ * @param {unknown} value
+ * @param {{ nullable?: boolean }} [options]
+ * @returns {string|null}
+ */
+function normalizeCanonicalUnitId(value, { nullable = false } = {}) {
+  if (value === null || value === undefined) {
+    if (nullable) {
+      return null;
+    }
+
+    throw new TypeError("Enrollment requires unitId.");
+  }
+
+  if (typeof value !== "string" || !CANONICAL_UNIT_ID_PATTERN.test(value)) {
+    throw new TypeError("Enrollment unitId has an invalid format.");
+  }
+
+  return value;
 }
 
 /**
@@ -127,6 +157,8 @@ function nullableText(value) {
 }
 
 module.exports = {
+  CANONICAL_UNIT_ID_PATTERN,
   Enrollment,
+  normalizeCanonicalUnitId,
   nullableText,
 };

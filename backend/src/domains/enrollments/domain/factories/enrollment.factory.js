@@ -1,4 +1,4 @@
-const { Enrollment } = require("../entities/enrollment.entity.js");
+const { Enrollment, normalizeCanonicalUnitId } = require("../entities/enrollment.entity.js");
 const { EnrollmentStatus } = require("../enums/enrollment-status.enum.js");
 
 /**
@@ -16,6 +16,7 @@ class EnrollmentFactory {
    * @param {string} input.studentPersonId
    * @param {string} input.studentProfileId
    * @param {string} input.startDate
+   * @param {string} input.unitId
    * @param {string|null} [input.createdAt]
    * @param {string|null} [input.updatedAt]
    * @returns {Enrollment}
@@ -44,6 +45,7 @@ function normalizeCreateDraftInput(input = {}) {
     startDate: requiredText(source.startDate, "startDate"),
     studentPersonId: requiredText(source.studentPersonId, "studentPersonId"),
     studentProfileId: requiredText(source.studentProfileId, "studentProfileId"),
+    unitId: normalizeCanonicalUnitId(source.unitId),
     updatedAt: nullableText(source.updatedAt),
   };
 }

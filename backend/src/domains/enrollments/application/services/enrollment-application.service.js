@@ -20,6 +20,7 @@ const ENROLLMENT_CANCEL_INPUT_INVALID_CODE = "ENROLLMENT_CANCEL_INPUT_INVALID";
 const ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE = "ENROLLMENT_CANCEL_INPUT_REQUIRED";
 const ENROLLMENT_CANCEL_NOT_FOUND_CODE = "ENROLLMENT_CANCEL_NOT_FOUND";
 const ENROLLMENT_STATE_CONFLICT_CODE = "ENROLLMENT_STATE_CONFLICT";
+const ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE = "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT";
 const ENROLLMENT_CANCEL_COMMAND_FIELDS = new Set(["enrollmentId"]);
 
 /**
@@ -62,7 +63,9 @@ class EnrollmentApplicationService {
     enrollmentRepository = null,
   } = {}) {
     this.authorizeEnrollmentCancellation =
-      typeof authorizeEnrollmentCancellation === "function" ? authorizeEnrollmentCancellation : null;
+      typeof authorizeEnrollmentCancellation === "function"
+        ? authorizeEnrollmentCancellation
+        : null;
     this.enrollmentFactory = enrollmentFactory;
     this.enrollmentRepository = enrollmentRepository;
   }
@@ -75,6 +78,7 @@ class EnrollmentApplicationService {
    * @param {string} input.studentPersonId
    * @param {string} input.studentProfileId
    * @param {string} input.startDate
+   * @param {string} input.unitId
    * @param {string|null} [input.createdAt]
    * @param {string|null} [input.updatedAt]
    * @returns {unknown}
@@ -93,6 +97,7 @@ class EnrollmentApplicationService {
    * @param {string} input.studentPersonId
    * @param {string} input.studentProfileId
    * @param {string} input.startDate
+   * @param {string} input.unitId
    * @param {string|null} [input.createdAt]
    * @param {string|null} [input.updatedAt]
    * @returns {Promise<unknown>}
@@ -112,6 +117,7 @@ class EnrollmentApplicationService {
    * @param {string} input.studentPersonId
    * @param {string} input.studentProfileId
    * @param {string} input.startDate
+   * @param {string} input.unitId
    * @param {string|null} [input.createdAt]
    * @param {string|null} [input.updatedAt]
    * @returns {Promise<{ draftEnrollment: unknown|null, created: boolean, reused: boolean }>}
@@ -122,10 +128,15 @@ class EnrollmentApplicationService {
 
     if (typeof repository.createDraftIfNotExists === "function") {
       const result = await repository.createDraftIfNotExists(enrollment);
+      const draftEnrollment = result?.enrollment ?? null;
+
+      if (Boolean(result?.reused) && draftEnrollment) {
+        ensureSameEnrollmentUnit(enrollment, draftEnrollment);
+      }
 
       return {
         created: Boolean(result?.created),
-        draftEnrollment: result?.enrollment ?? null,
+        draftEnrollment,
         reused: Boolean(result?.reused),
       };
     }
@@ -136,6 +147,8 @@ class EnrollmentApplicationService {
     });
 
     if (existingEnrollment) {
+      ensureSameEnrollmentUnit(enrollment, existingEnrollment);
+
       return {
         created: false,
         draftEnrollment: existingEnrollment,
@@ -434,9 +447,13 @@ class EnrollmentApplicationService {
     const actorId = nullableText(readProperty(context, "actorId"), 191);
 
     if (unexpectedFields.length > 0) {
-      throw controlledError("cancelEnrollment accepts only enrollmentId.", ENROLLMENT_CANCEL_INPUT_INVALID_CODE, {
-        unexpectedFields,
-      });
+      throw controlledError(
+        "cancelEnrollment accepts only enrollmentId.",
+        ENROLLMENT_CANCEL_INPUT_INVALID_CODE,
+        {
+          unexpectedFields,
+        },
+      );
     }
 
     if (!enrollmentId || !actorId) {
@@ -616,20 +633,26 @@ class EnrollmentApplicationService {
       );
     }
 
-    const studentPersonId = readProperty(currentEnrollment, "studentPersonId")
-      || readProperty(currentEnrollment, "student_person_id");
-    const studentProfileId = readProperty(currentEnrollment, "studentProfileId")
-      || readProperty(currentEnrollment, "student_profile_id");
+    const studentPersonId =
+      readProperty(currentEnrollment, "studentPersonId") ||
+      readProperty(currentEnrollment, "student_person_id");
+    const studentProfileId =
+      readProperty(currentEnrollment, "studentProfileId") ||
+      readProperty(currentEnrollment, "student_profile_id");
 
     await this.ensureNoActiveEnrollment({
       studentPersonId,
       studentProfileId,
     });
 
-    const confirmedEnrollment = await repository.updateStatus(enrollmentId, EnrollmentStatus.ACTIVE, {
-      confirmedAt,
-      confirmedBy,
-    });
+    const confirmedEnrollment = await repository.updateStatus(
+      enrollmentId,
+      EnrollmentStatus.ACTIVE,
+      {
+        confirmedAt,
+        confirmedBy,
+      },
+    );
 
     return {
       alreadyConfirmed: false,
@@ -646,7 +669,9 @@ class EnrollmentApplicationService {
    */
   getEnrollmentFactory() {
     if (typeof this.enrollmentFactory?.createDraft !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentFactory.createDraft function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentFactory.createDraft function.",
+      );
     }
 
     return this.enrollmentFactory;
@@ -657,7 +682,9 @@ class EnrollmentApplicationService {
    */
   getEnrollmentRepository() {
     if (typeof this.enrollmentRepository?.create !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.create function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.create function.",
+      );
     }
 
     return this.enrollmentRepository;
@@ -668,7 +695,9 @@ class EnrollmentApplicationService {
    */
   getEnrollmentDraftReader() {
     if (typeof this.enrollmentRepository?.findDraftByStudent !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.findDraftByStudent function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.findDraftByStudent function.",
+      );
     }
 
     return this.enrollmentRepository;
@@ -679,7 +708,9 @@ class EnrollmentApplicationService {
    */
   getEnrollmentActiveReader() {
     if (typeof this.enrollmentRepository?.findActiveByStudent !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.findActiveByStudent function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.findActiveByStudent function.",
+      );
     }
 
     return this.enrollmentRepository;
@@ -690,7 +721,9 @@ class EnrollmentApplicationService {
    */
   getEnrollmentByIdReader() {
     if (typeof this.enrollmentRepository?.findById !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.findById function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.findById function.",
+      );
     }
 
     return this.enrollmentRepository;
@@ -701,11 +734,15 @@ class EnrollmentApplicationService {
    */
   getEnrollmentConfirmationRepository() {
     if (typeof this.enrollmentRepository?.findById !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.findById function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.findById function.",
+      );
     }
 
     if (typeof this.enrollmentRepository?.updateStatus !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.updateStatus function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.updateStatus function.",
+      );
     }
 
     return this.enrollmentRepository;
@@ -719,7 +756,9 @@ class EnrollmentApplicationService {
    */
   getEnrollmentCancellationRepository() {
     if (typeof this.enrollmentRepository?.findById !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.findById function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.findById function.",
+      );
     }
 
     if (typeof this.enrollmentRepository?.cancelActiveEnrollment !== "function") {
@@ -732,7 +771,9 @@ class EnrollmentApplicationService {
   }
   getEnrollmentStudentScopeSearchReader() {
     if (typeof this.enrollmentRepository?.searchStudentScopes !== "function") {
-      throw new TypeError("EnrollmentApplicationService requires an enrollmentRepository.searchStudentScopes function.");
+      throw new TypeError(
+        "EnrollmentApplicationService requires an enrollmentRepository.searchStudentScopes function.",
+      );
     }
 
     return this.enrollmentRepository;
@@ -745,7 +786,37 @@ class EnrollmentApplicationService {
  * @returns {unknown|null}
  */
 function readProperty(value, property) {
-  return value && typeof value === "object" ? value[property] ?? null : null;
+  return value && typeof value === "object" ? (value[property] ?? null) : null;
+}
+
+/**
+ * Bloqueia reutilizaÃ§Ã£o idempotente quando o DRAFT existente pertence a outra
+ * unidade ou nÃ£o possui ownership persistido.
+ *
+ * @param {unknown} requestedEnrollment
+ * @param {unknown} existingEnrollment
+ * @returns {void}
+ */
+function ensureSameEnrollmentUnit(requestedEnrollment, existingEnrollment) {
+  const requestedUnitId = nullableText(
+    readProperty(requestedEnrollment, "unitId") ?? readProperty(requestedEnrollment, "unit_id"),
+    20,
+  );
+  const existingUnitId = nullableText(
+    readProperty(existingEnrollment, "unitId") ?? readProperty(existingEnrollment, "unit_id"),
+    20,
+  );
+
+  if (!requestedUnitId || !existingUnitId || requestedUnitId !== existingUnitId) {
+    throw controlledError(
+      "Enrollment unit ownership conflict blocks idempotent reuse.",
+      ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE,
+      {
+        existingUnitId,
+        requestedUnitId,
+      },
+    );
+  }
 }
 
 /**
@@ -787,11 +858,15 @@ function isValidEnrollmentId(value) {
 }
 
 function enrollmentCancellationStateConflict(enrollmentId, currentStatus) {
-  return controlledError("Only ACTIVE Enrollment can be cancelled in this sprint.", ENROLLMENT_STATE_CONFLICT_CODE, {
-    currentStatus,
-    enrollmentId,
-    requiredStatus: EnrollmentStatus.ACTIVE,
-  });
+  return controlledError(
+    "Only ACTIVE Enrollment can be cancelled in this sprint.",
+    ENROLLMENT_STATE_CONFLICT_CODE,
+    {
+      currentStatus,
+      enrollmentId,
+      requiredStatus: EnrollmentStatus.ACTIVE,
+    },
+  );
 }
 
 function toEnrollmentCancellationDto({ changed, enrollmentId, previousStatus }) {
@@ -841,11 +916,19 @@ function normalizeProceedAllowedStatuses(statuses = ["NONE", "DRAFT"]) {
     return [];
   }
 
-  return [...new Set(
-    statuses
-      .map((status) => String(status ?? "").trim().toUpperCase())
-      .filter((status) => ENROLLMENT_PROCEED_STATUS_VALUES.includes(status) && status !== "CONFLICT"),
-  )];
+  return [
+    ...new Set(
+      statuses
+        .map((status) =>
+          String(status ?? "")
+            .trim()
+            .toUpperCase(),
+        )
+        .filter(
+          (status) => ENROLLMENT_PROCEED_STATUS_VALUES.includes(status) && status !== "CONFLICT",
+        ),
+    ),
+  ];
 }
 
 /**
@@ -893,6 +976,9 @@ module.exports = {
   ENROLLMENT_CANCEL_INPUT_INVALID_CODE,
   ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE,
   ENROLLMENT_CANCEL_NOT_FOUND_CODE,
-  ENROLLMENT_STATE_CONFLICT_CODE,  EnrollmentApplicationService,
+  ENROLLMENT_STATE_CONFLICT_CODE,
+  ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE,
+  EnrollmentApplicationService,
+  ensureSameEnrollmentUnit,
   normalizeSearchLimit,
 };
