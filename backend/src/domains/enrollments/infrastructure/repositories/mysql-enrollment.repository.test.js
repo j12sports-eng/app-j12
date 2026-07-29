@@ -103,6 +103,49 @@ test("findDraftByStudent requires and filters the exact unitId", async () => {
   assert.match(calls[0].sql, /AND unit_id = \?/u);
 });
 
+test("auxiliary DRAFT lookups by Pessoa and Profile require the exact unitId", async (t) => {
+  const cases = [
+    {
+      expectedParams: ["DRAFT", UNIT_ID, "person-1"],
+      expectedSql: SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PERSON_SQL,
+      invoke: (repository) => repository.findDraftByStudentPersonId("person-1", UNIT_ID),
+      name: "Pessoa",
+    },
+    {
+      expectedParams: ["DRAFT", UNIT_ID, "profile-1"],
+      expectedSql: SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL,
+      invoke: (repository) => repository.findDraftByStudentProfileId("profile-1", UNIT_ID),
+      name: "Profile",
+    },
+  ];
+
+  for (const lookup of cases) {
+    await t.test(lookup.name, async () => {
+      const calls = [];
+      const repository = new MySqlEnrollmentRepository({
+        queryRunner: async (sql, params) => {
+          calls.push({ params, sql });
+          return [row({ unit_id: UNIT_ID })];
+        },
+      });
+
+      assert.equal((await lookup.invoke(repository)).unitId, UNIT_ID);
+      assert.deepEqual(calls, [{ params: lookup.expectedParams, sql: lookup.expectedSql }]);
+    });
+  }
+});
+
+test("auxiliary DRAFT lookups fail closed for cross-unit and legacy rows", async () => {
+  for (const storedUnitId of [OTHER_UNIT_ID, null]) {
+    const repository = new MySqlEnrollmentRepository({
+      queryRunner: async () => [row({ unit_id: storedUnitId })],
+    });
+
+    assert.equal(await repository.findDraftByStudentPersonId("person-1", UNIT_ID), null);
+    assert.equal(await repository.findDraftByStudentProfileId("profile-1", UNIT_ID), null);
+  }
+});
+
 test("findDraftByStudent ignores cross-unit and legacy NULL drafts", async () => {
   for (const storedUnitId of [OTHER_UNIT_ID, null]) {
     let queryCount = 0;
