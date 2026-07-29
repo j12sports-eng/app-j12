@@ -15,6 +15,9 @@ class EnrollmentFactory {
    * @param {string|null} [input.id]
    * @param {string} input.studentPersonId
    * @param {string} input.studentProfileId
+   * @param {string} input.responsiblePersonId
+   * @param {string} input.responsibleProfileId
+   * @param {string} input.responsibleRelationshipId
    * @param {string} input.startDate
    * @param {string} input.unitId
    * @param {string|null} [input.createdAt]
@@ -42,6 +45,12 @@ function normalizeCreateDraftInput(input = {}) {
   return {
     createdAt: nullableText(source.createdAt),
     id: nullableText(source.id),
+    responsiblePersonId: requiredText(source.responsiblePersonId, "responsiblePersonId"),
+    responsibleProfileId: requiredText(source.responsibleProfileId, "responsibleProfileId"),
+    responsibleRelationshipId: requiredText(
+      source.responsibleRelationshipId,
+      "responsibleRelationshipId",
+    ),
     startDate: requiredText(source.startDate, "startDate"),
     studentPersonId: requiredText(source.studentPersonId, "studentPersonId"),
     studentProfileId: requiredText(source.studentProfileId, "studentProfileId"),

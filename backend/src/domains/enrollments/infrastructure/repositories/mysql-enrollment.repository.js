@@ -7,7 +7,10 @@ const {
 
 const TABLE_NAME = "enrollments";
 const ACTIVE_DRAFT_UNIQUE_INDEX_NAME = "ux_enrollments_active_draft_student_profile";
+const ACTIVE_ENROLLMENT_UNIQUE_INDEX_NAME = "ux_enrollments_current_unit_student_profile";
 const DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE = "DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT";
+const ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE = "ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT";
+const ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE = "ENROLLMENT_DRAFT_OWNERSHIP_INVALID";
 const MYSQL_DUPLICATE_ENTRY_CODE = "ER_DUP_ENTRY";
 const MYSQL_DUPLICATE_ENTRY_ERRNO = 1062;
 
@@ -91,7 +94,45 @@ const UPDATE_ENROLLMENT_STATUS_SQL = `
       END,
       updated_at = CURRENT_TIMESTAMP
   WHERE id = ?
+    AND unit_id = ?
+    AND status = ?
+    AND deleted_at IS NULL
   LIMIT 1
+`;
+
+const SELECT_VALID_DRAFT_OWNERSHIP_SQL = `
+  SELECT
+    CAST(unit_scope.id AS CHAR) AS unit_id,
+    responsible_person.id AS responsible_person_id,
+    responsible_profile.id AS responsible_profile_id,
+    responsible_relationship.id AS responsible_relationship_id,
+    student_person.id AS student_person_id,
+    student_profile.id AS student_profile_id
+  FROM j12_unidades unit_scope
+  INNER JOIN people responsible_person
+    ON responsible_person.id = ?
+   AND responsible_person.ativo = 1
+  INNER JOIN person_profiles responsible_profile
+    ON responsible_profile.id = ?
+   AND responsible_profile.person_id = responsible_person.id
+   AND LOWER(responsible_profile.profile_type) = 'responsavel'
+   AND LOWER(responsible_profile.status) IN ('active', 'ativo')
+  INNER JOIN people student_person
+    ON student_person.id = ?
+   AND student_person.ativo = 1
+  INNER JOIN person_profiles student_profile
+    ON student_profile.id = ?
+   AND student_profile.person_id = student_person.id
+   AND LOWER(student_profile.profile_type) = 'aluno'
+   AND LOWER(student_profile.status) IN ('active', 'ativo')
+  INNER JOIN person_relationships responsible_relationship
+    ON responsible_relationship.id = ?
+   AND responsible_relationship.person_id = responsible_person.id
+   AND responsible_relationship.related_person_id = student_person.id
+   AND LOWER(responsible_relationship.status) = 'active'
+  WHERE unit_scope.id = ?
+  LIMIT 1
+  LOCK IN SHARE MODE
 `;
 
 const SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL = `
@@ -185,6 +226,9 @@ const DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED_CODE =
   "DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED";
 const GET_DRAFT_ENROLLMENT_LOCK_SQL = "SELECT GET_LOCK(?, ?) AS locked";
 const RELEASE_DRAFT_ENROLLMENT_LOCK_SQL = "SELECT RELEASE_LOCK(?) AS released";
+const START_TRANSACTION_SQL = "START TRANSACTION";
+const COMMIT_TRANSACTION_SQL = "COMMIT";
+const ROLLBACK_TRANSACTION_SQL = "ROLLBACK";
 
 /**
  * MySQL repository for Enrollment persistence.
@@ -218,10 +262,17 @@ class MySqlEnrollmentRepository {
    * @param {import("../../domain/entities/enrollment.entity.js").Enrollment|Record<string, unknown>} enrollment
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async create(enrollment, queryRunner = this.query) {
+  async create(enrollment, queryRunner = this.query, { ownershipValidated = false } = {}) {
     const input = toEnrollmentData(enrollment);
     const id = nullableText(input.id, 64) || randomUUID();
     const values = toEnrollmentRowValues({ ...input, id });
+
+    if (
+      !ownershipValidated &&
+      [EnrollmentStatus.DRAFT, EnrollmentStatus.ACTIVE].includes(values.status)
+    ) {
+      await this.validateDraftOwnership(values, queryRunner);
+    }
 
     await queryRunner(INSERT_ENROLLMENT_SQL, [
       values.id,
@@ -325,7 +376,11 @@ class MySqlEnrollmentRepository {
    * @param {{ confirmedAt?: string|null, confirmedBy?: string|null }} [options]
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async updateStatus(id, status, { confirmedAt = null, confirmedBy = null } = {}) {
+  async updateStatus(
+    id,
+    status,
+    { confirmedAt = null, confirmedBy = null, expectedStatus = null, unitId = null } = {},
+  ) {
     const enrollmentId = requiredText(id, "id", 64);
     const normalizedStatus = normalizeEnrollmentStatus(status);
 
@@ -333,18 +388,72 @@ class MySqlEnrollmentRepository {
       throw new TypeError("MySqlEnrollmentRepository.updateStatus requires a valid status.");
     }
 
-    await this.query(UPDATE_ENROLLMENT_STATUS_SQL, [
-      normalizedStatus,
-      normalizedStatus,
-      EnrollmentStatus.ACTIVE,
-      nullableText(confirmedAt, 32),
-      normalizedStatus,
-      EnrollmentStatus.ACTIVE,
-      nullableText(confirmedBy, 191),
-      enrollmentId,
-    ]);
+    const canonicalUnitId = requiredCanonicalUnitId(unitId);
+    const normalizedExpectedStatus = normalizeEnrollmentStatus(expectedStatus);
+    if (!normalizedExpectedStatus) {
+      throw new TypeError("MySqlEnrollmentRepository.updateStatus requires expectedStatus.");
+    }
 
-    return this.findById(enrollmentId);
+    let transitionChanged = false;
+    try {
+      const updateResult = await this.query(UPDATE_ENROLLMENT_STATUS_SQL, [
+        normalizedStatus,
+        normalizedStatus,
+        EnrollmentStatus.ACTIVE,
+        nullableText(confirmedAt, 32),
+        normalizedStatus,
+        EnrollmentStatus.ACTIVE,
+        nullableText(confirmedBy, 191),
+        enrollmentId,
+        canonicalUnitId,
+        normalizedExpectedStatus,
+      ]);
+      transitionChanged = readAffectedRows(updateResult) > 0;
+    } catch (error) {
+      if (!isActiveEnrollmentDuplicateEntryError(error)) throw error;
+      const conflict = new Error(
+        "Active Enrollment uniqueness constraint rejected the transition.",
+      );
+      conflict.code = ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE;
+      conflict.cause = error;
+      throw conflict;
+    }
+
+    const enrollment = await this.findById(enrollmentId);
+    return enrollment?.unitId === canonicalUnitId ? { ...enrollment, transitionChanged } : null;
+  }
+
+  /**
+   * Validates the complete modern Enrollment ownership against canonical
+   * People/Profile/relationship/unit rows. No legacy table is used as fallback.
+   */
+  async validateDraftOwnership(enrollment, queryRunner = this.query) {
+    const input = toEnrollmentData(enrollment);
+    const values = toEnrollmentRowValues({ ...input, id: input.id || "ownership-validation" });
+    const rows = await queryRunner(SELECT_VALID_DRAFT_OWNERSHIP_SQL, [
+      values.responsible_person_id,
+      values.responsible_profile_id,
+      values.student_person_id,
+      values.student_profile_id,
+      values.responsible_relationship_id,
+      values.unit_id,
+    ]);
+    const row = readFirstRow(rows);
+    if (
+      !row ||
+      String(row.unit_id ?? "") !== values.unit_id ||
+      row.responsible_person_id !== values.responsible_person_id ||
+      row.responsible_profile_id !== values.responsible_profile_id ||
+      row.responsible_relationship_id !== values.responsible_relationship_id ||
+      row.student_person_id !== values.student_person_id ||
+      row.student_profile_id !== values.student_profile_id
+    ) {
+      const error = new Error(
+        "Enrollment DRAFT ownership does not match canonical active records.",
+      );
+      error.code = ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE;
+      throw error;
+    }
   }
 
   /**
@@ -365,6 +474,8 @@ class MySqlEnrollmentRepository {
     let lockAcquired = false;
     let operationError = null;
     let cleanupError = null;
+    let transactionStarted = false;
+    let transactionCompleted = false;
 
     try {
       connection = await this.getDedicatedConnection();
@@ -376,6 +487,9 @@ class MySqlEnrollmentRepository {
         studentPersonId: values.student_person_id,
         studentProfileId: values.student_profile_id,
       });
+      await dedicatedQuery(START_TRANSACTION_SQL);
+      transactionStarted = true;
+      await this.validateDraftOwnership(values, dedicatedQuery);
 
       const existingEnrollment = await this.findDraftByStudent(
         {
@@ -387,6 +501,7 @@ class MySqlEnrollmentRepository {
       );
 
       if (existingEnrollment) {
+        assertSameDraftOwnership(values, existingEnrollment);
         this.logInfo("[enrollments] Reusing existing draft Enrollment inside idempotency lock.", {
           enrollmentId: existingEnrollment.id ?? null,
           lockName,
@@ -394,6 +509,8 @@ class MySqlEnrollmentRepository {
           studentProfileId: values.student_profile_id,
         });
 
+        await dedicatedQuery(COMMIT_TRANSACTION_SQL);
+        transactionCompleted = true;
         return {
           created: false,
           enrollment: existingEnrollment,
@@ -409,6 +526,7 @@ class MySqlEnrollmentRepository {
             status: EnrollmentStatus.DRAFT,
           },
           dedicatedQuery,
+          { ownershipValidated: true },
         );
         this.logInfo("[enrollments] Created new draft Enrollment inside idempotency lock.", {
           enrollmentId: createdEnrollment?.id ?? null,
@@ -417,6 +535,8 @@ class MySqlEnrollmentRepository {
           studentProfileId: values.student_profile_id,
         });
 
+        await dedicatedQuery(COMMIT_TRANSACTION_SQL);
+        transactionCompleted = true;
         return {
           created: true,
           enrollment: createdEnrollment,
@@ -450,6 +570,7 @@ class MySqlEnrollmentRepository {
           );
           throw createError;
         }
+        assertSameDraftOwnership(values, recoveredEnrollment);
 
         this.logWarn(
           "[enrollments] Draft Enrollment duplicate constraint hit; reusing existing draft.",
@@ -464,6 +585,8 @@ class MySqlEnrollmentRepository {
           },
         );
 
+        await dedicatedQuery(COMMIT_TRANSACTION_SQL);
+        transactionCompleted = true;
         return {
           created: false,
           enrollment: recoveredEnrollment,
@@ -472,6 +595,18 @@ class MySqlEnrollmentRepository {
       }
     } catch (error) {
       operationError = error;
+      if (transactionStarted && !transactionCompleted && dedicatedQuery) {
+        try {
+          await dedicatedQuery(ROLLBACK_TRANSACTION_SQL);
+          transactionCompleted = true;
+        } catch (rollbackError) {
+          this.logError("[enrollments] Draft Enrollment transaction rollback failed.", {
+            code: rollbackError?.code ?? null,
+            lockName,
+          });
+          error.rollbackError = rollbackError;
+        }
+      }
       throw error;
     } finally {
       if (lockAcquired) {
@@ -859,16 +994,19 @@ function toEnrollmentRowValues(enrollment = {}) {
       64,
     ),
     unit_id: requiredCanonicalUnitId(enrollment.unitId ?? enrollment.unit_id),
-    responsible_person_id: nullableText(
+    responsible_person_id: requiredText(
       enrollment.responsiblePersonId ?? enrollment.responsible_person_id,
+      "responsiblePersonId",
       64,
     ),
-    responsible_profile_id: nullableText(
+    responsible_profile_id: requiredText(
       enrollment.responsibleProfileId ?? enrollment.responsible_profile_id,
+      "responsibleProfileId",
       64,
     ),
-    responsible_relationship_id: nullableText(
+    responsible_relationship_id: requiredText(
       enrollment.responsibleRelationshipId ?? enrollment.responsible_relationship_id,
+      "responsibleRelationshipId",
       64,
     ),
     updated_at: nullableText(enrollment.updatedAt ?? enrollment.updated_at, 32),
@@ -1045,6 +1183,39 @@ function isActiveDraftDuplicateEntryError(error) {
   return message.includes(ACTIVE_DRAFT_UNIQUE_INDEX_NAME);
 }
 
+function assertSameDraftOwnership(requested, existing) {
+  const pairs = [
+    ["student_person_id", "studentPersonId"],
+    ["student_profile_id", "studentProfileId"],
+    ["responsible_person_id", "responsiblePersonId"],
+    ["responsible_profile_id", "responsibleProfileId"],
+    ["responsible_relationship_id", "responsibleRelationshipId"],
+  ];
+  const mismatches = pairs
+    .filter(
+      ([rowField, dataField]) => requested[rowField] !== nullableText(existing[dataField], 64),
+    )
+    .map(([, dataField]) => dataField);
+  if (requested.unit_id !== nullableCanonicalUnitId(existing.unitId)) mismatches.push("unitId");
+  if (mismatches.length === 0) return;
+
+  const error = new Error("Existing DRAFT ownership conflicts with the requested Enrollment.");
+  error.code = DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE;
+  error.mismatches = mismatches;
+  throw error;
+}
+
+function isActiveEnrollmentDuplicateEntryError(error) {
+  if (!error || typeof error !== "object") return false;
+  const duplicateCode = String(error.code ?? "") === MYSQL_DUPLICATE_ENTRY_CODE;
+  const duplicateErrno = Number(error.errno ?? error.code) === MYSQL_DUPLICATE_ENTRY_ERRNO;
+  if (!duplicateCode && !duplicateErrno) return false;
+  return [error.message, error.sqlMessage, error.sql]
+    .filter(Boolean)
+    .join(" ")
+    .includes(ACTIVE_ENROLLMENT_UNIQUE_INDEX_NAME);
+}
+
 /**
  * @param {{ logger?: unknown }} owner
  * @param {"error"|"info"|"warn"} level
@@ -1145,6 +1316,8 @@ function requiredCanonicalUnitId(value) {
 
 module.exports = {
   ACTIVE_DRAFT_UNIQUE_INDEX_NAME,
+  ACTIVE_ENROLLMENT_UNIQUE_INDEX_NAME,
+  ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
   DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS,
   DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
   DRAFT_ENROLLMENT_CONNECTION_RELEASE_FAILED_CODE,
@@ -1155,6 +1328,7 @@ module.exports = {
   ENROLLMENTS_TABLE_NAME: TABLE_NAME,
   GET_DRAFT_ENROLLMENT_LOCK_SQL,
   INSERT_ENROLLMENT_SQL,
+  SELECT_VALID_DRAFT_OWNERSHIP_SQL,
   MySqlEnrollmentRepository,
   RELEASE_DRAFT_ENROLLMENT_LOCK_SQL,
   SEARCH_ENROLLMENT_STUDENT_SCOPES_SQL,
@@ -1164,10 +1338,15 @@ module.exports = {
   SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL,
   SELECT_ENROLLMENT_BY_ID_SQL,
   UPDATE_ENROLLMENT_STATUS_SQL,
+  START_TRANSACTION_SQL,
+  COMMIT_TRANSACTION_SQL,
+  ROLLBACK_TRANSACTION_SQL,
   buildDraftEnrollmentLockName,
+  assertSameDraftOwnership,
   createConnectionQueryRunner,
   escapeLikeTerm,
   isActiveDraftDuplicateEntryError,
+  isActiveEnrollmentDuplicateEntryError,
   normalizeLockTimeoutSeconds,
   normalizeSearchLimit,
   readAffectedRows,

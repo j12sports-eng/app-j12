@@ -16,6 +16,9 @@ class Enrollment {
    * @param {Object} [data]
    * @param {string|null} [data.id]
    * @param {string|null} [data.unitId]
+   * @param {string|null} [data.responsiblePersonId]
+   * @param {string|null} [data.responsibleProfileId]
+   * @param {string|null} [data.responsibleRelationshipId]
    * @param {string|null} [data.studentPersonId]
    * @param {string|null} [data.studentProfileId]
    * @param {string|null} [data.status]
@@ -29,6 +32,9 @@ class Enrollment {
     // A reconstituiÃ§Ã£o tolera ownership ausente em registros legados.
     // A criaÃ§Ã£o moderna Ã© validada de forma estrita pela EnrollmentFactory.
     this.unitId = normalizeCanonicalUnitId(data.unitId, { nullable: true });
+    this.responsiblePersonId = nullableText(data.responsiblePersonId);
+    this.responsibleProfileId = nullableText(data.responsibleProfileId);
+    this.responsibleRelationshipId = nullableText(data.responsibleRelationshipId);
     this.studentPersonId = nullableText(data.studentPersonId);
     this.studentProfileId = nullableText(data.studentProfileId);
     this.status = normalizeEnrollmentStatus(data.status) || EnrollmentStatus.DRAFT;
@@ -114,6 +120,9 @@ class Enrollment {
       createdAt: this.createdAt,
       endDate: this.endDate,
       id: this.id,
+      responsiblePersonId: this.responsiblePersonId,
+      responsibleProfileId: this.responsibleProfileId,
+      responsibleRelationshipId: this.responsibleRelationshipId,
       startDate: this.startDate,
       status: this.status,
       studentPersonId: this.studentPersonId,

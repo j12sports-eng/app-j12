@@ -6,6 +6,9 @@ const { EnrollmentFactory } = require("../factories/enrollment.factory.js");
 
 function draftInput(overrides = {}) {
   return {
+    responsiblePersonId: "responsible-person-1",
+    responsibleProfileId: "responsible-profile-1",
+    responsibleRelationshipId: "relationship-1",
     startDate: "2026-08-01",
     studentPersonId: "person-1",
     studentProfileId: "profile-1",
@@ -32,7 +35,19 @@ test("Enrollment serialization exposes unitId", () => {
   const enrollment = EnrollmentFactory.createDraft(draftInput({ unitId: "12" }));
 
   assert.equal(enrollment.toJSON().unitId, "12");
+  assert.equal(enrollment.toJSON().responsiblePersonId, "responsible-person-1");
+  assert.equal(enrollment.toJSON().responsibleProfileId, "responsible-profile-1");
+  assert.equal(enrollment.toJSON().responsibleRelationshipId, "relationship-1");
 });
+
+for (const field of ["responsiblePersonId", "responsibleProfileId", "responsibleRelationshipId"]) {
+  test(`modern DRAFT rejects missing ${field}`, () => {
+    assert.throws(
+      () => EnrollmentFactory.createDraft(draftInput({ [field]: undefined, unitId: "1" })),
+      new RegExp(`requires ${field}`),
+    );
+  });
+}
 
 test("legacy hydration accepts unitId null", () => {
   const enrollment = new Enrollment({

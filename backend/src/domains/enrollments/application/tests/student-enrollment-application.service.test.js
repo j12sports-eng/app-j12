@@ -93,7 +93,8 @@ test("missing startDate is explicit after student resolution", async () => {
     ),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
-      error.details.fields[0] === "startDate",
+      error.details.fields.join(",") ===
+        "responsiblePersonId,responsibleProfileId,responsibleRelationshipId,startDate",
   );
   assert.equal(fixture.studentCalls, 1);
   assert.equal(fixture.repository.readCalls, 0);
@@ -138,7 +139,7 @@ test("retry after write failure is safe and performs no compensation", async () 
 test("resolved-student boundary creates DRAFT without resolving Pessoa/Profile again", async () => {
   const fixture = createFixture();
   const result = await fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
-    { personId: "person-1", personProfileId: "profile-1", startDate: "2026-07-18" },
+    resolvedInput(),
     fixture.context,
   );
   assert.deepEqual(result, {
@@ -154,11 +155,7 @@ test("resolved-student boundary reuses DRAFT and preserves blocking states", asy
   const draft = createFixture();
   draft.repository.seed("DRAFT", "existing");
   const reused = await draft.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
-    {
-      personId: "person-1",
-      personProfileId: "profile-1",
-      startDate: "2030-01-01",
-    },
+    resolvedInput({ startDate: "2030-01-01" }),
     draft.context,
   );
   assert.deepEqual(reused, {
@@ -173,11 +170,7 @@ test("resolved-student boundary reuses DRAFT and preserves blocking states", asy
   active.repository.seed("ACTIVE", "active");
   await assert.rejects(
     active.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
-      {
-        personId: "person-1",
-        personProfileId: "profile-1",
-        startDate: "2026-07-18",
-      },
+      resolvedInput(),
       active.context,
     ),
     { code: "ENROLLMENT_ACTIVE_EXISTS" },
@@ -193,7 +186,8 @@ test("resolved-student boundary requires canonical ids, startDate and trusted un
     ),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
-      error.details.fields.join(",") === "personProfileId,startDate",
+      error.details.fields.join(",") ===
+        "personProfileId,responsiblePersonId,responsibleProfileId,responsibleRelationshipId,startDate",
   );
   assert.equal(fixture.studentCalls, 0);
   assert.equal(fixture.repository.readCalls, 0);
@@ -203,10 +197,9 @@ test("missing trusted unitId fails closed before Enrollment lookup or creation",
   const fixture = createFixture();
 
   await assert.rejects(
-    fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent(
-      { personId: "person-1", personProfileId: "profile-1", startDate: "2026-07-18" },
-      { userId: "user-1" },
-    ),
+    fixture.service.resolveOrCreateDraftEnrollmentForResolvedStudent(resolvedInput(), {
+      userId: "user-1",
+    }),
     (error) =>
       error.code === STUDENT_ENROLLMENT_ERROR_CODES.DATA_INCOMPLETE &&
       error.details.fields.join(",") === "unitId",
@@ -281,6 +274,9 @@ class FakeEnrollmentRepository {
   seed(status, id, startDate = "2026-07-18") {
     this.records.push({
       id,
+      responsiblePersonId: "responsible-person-1",
+      responsibleProfileId: "responsible-profile-1",
+      responsibleRelationshipId: "relationship-1",
       startDate,
       status,
       unitId: "1",
@@ -325,7 +321,12 @@ class FakeEnrollmentRepository {
 
 function validInput(startDate = "2026-07-18") {
   return {
-    enrollment: { startDate },
+    enrollment: {
+      responsiblePersonId: "responsible-person-1",
+      responsibleProfileId: "responsible-profile-1",
+      responsibleRelationshipId: "relationship-1",
+      startDate,
+    },
     student: {
       cpf: "52998224725",
       dataNascimento: "2012-03-04",
@@ -334,5 +335,17 @@ function validInput(startDate = "2026-07-18") {
       sexo: "M",
       telefone: "11999999999",
     },
+  };
+}
+
+function resolvedInput(overrides = {}) {
+  return {
+    personId: "person-1",
+    personProfileId: "profile-1",
+    responsiblePersonId: "responsible-person-1",
+    responsibleProfileId: "responsible-profile-1",
+    responsibleRelationshipId: "relationship-1",
+    startDate: "2026-07-18",
+    ...overrides,
   };
 }

@@ -8,13 +8,20 @@ const {
   ENROLLMENT_PROJECTION_SQL,
   GET_DRAFT_ENROLLMENT_LOCK_SQL,
   INSERT_ENROLLMENT_SQL,
+  ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
+  ACTIVE_ENROLLMENT_UNIQUE_INDEX_NAME,
   MySqlEnrollmentRepository,
+  COMMIT_TRANSACTION_SQL,
   RELEASE_DRAFT_ENROLLMENT_LOCK_SQL,
+  ROLLBACK_TRANSACTION_SQL,
+  SELECT_VALID_DRAFT_OWNERSHIP_SQL,
+  START_TRANSACTION_SQL,
   SELECT_ACTIVE_ENROLLMENT_BY_STUDENT_SQL,
   SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PERSON_SQL,
   SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL,
   SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL,
   SELECT_ENROLLMENT_BY_ID_SQL,
+  UPDATE_ENROLLMENT_STATUS_SQL,
   buildDraftEnrollmentLockName,
   toEnrollmentDataFromRow,
 } = require("./mysql-enrollment.repository.js");
@@ -91,6 +98,7 @@ test("create persists unit_id in the canonical INSERT parameter order", async ()
   const repository = new MySqlEnrollmentRepository({
     queryRunner: async (sql, params) => {
       calls.push({ params, sql });
+      if (sql === SELECT_VALID_DRAFT_OWNERSHIP_SQL) return [ownershipRow()];
       if (sql === INSERT_ENROLLMENT_SQL) return { affectedRows: 1 };
       return [row({ id: params[0], unit_id: UNIT_ID })];
     },
@@ -269,14 +277,17 @@ test("draft lock acquisition, operation and release use one dedicated connection
     fixture.connection.calls.map((call) => call.sql),
     [
       GET_DRAFT_ENROLLMENT_LOCK_SQL,
+      START_TRANSACTION_SQL,
+      SELECT_VALID_DRAFT_OWNERSHIP_SQL,
       SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL,
       INSERT_ENROLLMENT_SQL,
       SELECT_ENROLLMENT_BY_ID_SQL,
+      COMMIT_TRANSACTION_SQL,
       RELEASE_DRAFT_ENROLLMENT_LOCK_SQL,
     ],
   );
-  assert.equal(fixture.connection.calls[1].params[1], UNIT_ID);
-  assert.equal(fixture.connection.calls[2].params[3], UNIT_ID);
+  assert.equal(fixture.connection.calls[3].params[1], UNIT_ID);
+  assert.equal(fixture.connection.calls[4].params[3], UNIT_ID);
 });
 
 test("operation failure still releases the named lock and dedicated connection", async () => {
@@ -285,6 +296,10 @@ test("operation failure still releases the named lock and dedicated connection",
 
   await assert.rejects(repository.createDraftIfNotExists(enrollment()), /controlled operation/u);
   assert.equal(fixture.connection.released, true);
+  assert.equal(
+    fixture.connection.calls.some((call) => call.sql === ROLLBACK_TRANSACTION_SQL),
+    true,
+  );
   assert.equal(
     fixture.connection.calls.some((call) => call.sql === RELEASE_DRAFT_ENROLLMENT_LOCK_SQL),
     true,
@@ -460,6 +475,67 @@ test("cancelActiveEnrollment reports unchanged when no row is updated", async ()
   assert.deepEqual(result, { changed: false });
 });
 
+test("updateStatus scopes the conditional transition by unit and DRAFT status", async () => {
+  const calls = [];
+  const repository = new MySqlEnrollmentRepository({
+    queryRunner: async (sql, params) => {
+      calls.push({ params, sql });
+      if (sql === UPDATE_ENROLLMENT_STATUS_SQL) return { affectedRows: 1 };
+      if (sql === SELECT_ENROLLMENT_BY_ID_SQL) {
+        return [row({ id: "draft-confirm", status: "ACTIVE", unit_id: UNIT_ID })];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+  });
+
+  const result = await repository.updateStatus("draft-confirm", "ACTIVE", {
+    expectedStatus: "DRAFT",
+    unitId: UNIT_ID,
+  });
+
+  assert.equal(result.transitionChanged, true);
+  assert.deepEqual(calls[0].params.slice(-3), ["draft-confirm", UNIT_ID, "DRAFT"]);
+  assert.match(UPDATE_ENROLLMENT_STATUS_SQL, /AND unit_id = \?/u);
+  assert.match(UPDATE_ENROLLMENT_STATUS_SQL, /AND status = \?/u);
+});
+
+test("updateStatus maps only the current Enrollment unique index duplicate", async () => {
+  const duplicate = new Error(`Duplicate entry for key ${ACTIVE_ENROLLMENT_UNIQUE_INDEX_NAME}`);
+  duplicate.code = "ER_DUP_ENTRY";
+  duplicate.errno = 1062;
+  const repository = new MySqlEnrollmentRepository({
+    queryRunner: async () => {
+      throw duplicate;
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      repository.updateStatus("draft-confirm", "ACTIVE", {
+        expectedStatus: "DRAFT",
+        unitId: UNIT_ID,
+      }),
+    (error) => error.code === ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE,
+  );
+});
+
+test("canonical ownership mismatch is rejected before INSERT", async () => {
+  let insertCalls = 0;
+  const repository = new MySqlEnrollmentRepository({
+    queryRunner: async (sql) => {
+      if (sql === SELECT_VALID_DRAFT_OWNERSHIP_SQL) return [];
+      if (sql === INSERT_ENROLLMENT_SQL) insertCalls += 1;
+      return [];
+    },
+  });
+
+  await assert.rejects(
+    () => repository.create(enrollment()),
+    (error) => error.code === "ENROLLMENT_DRAFT_OWNERSHIP_INVALID",
+  );
+  assert.equal(insertCalls, 0);
+});
+
 function repositoryFor(fixture) {
   return new MySqlEnrollmentRepository({
     connectionProvider: async () => fixture.connection,
@@ -484,6 +560,10 @@ function connectionFixture({
       this.calls.push({ params, sql });
       if (sql === GET_DRAFT_ENROLLMENT_LOCK_SQL) return [[{ locked: lockValue }], []];
       if (sql === RELEASE_DRAFT_ENROLLMENT_LOCK_SQL) return [[{ released: releaseValue }], []];
+      if ([START_TRANSACTION_SQL, COMMIT_TRANSACTION_SQL, ROLLBACK_TRANSACTION_SQL].includes(sql)) {
+        return [{ affectedRows: 0 }, []];
+      }
+      if (sql === SELECT_VALID_DRAFT_OWNERSHIP_SQL) return [[ownershipRow()], []];
       if (sql === SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL) {
         const selected = draftSelectRecords
           ? draftSelectRecords[state.draftSelectIndex++]
@@ -535,6 +615,12 @@ function concurrentConnectionManager() {
           manager.waiters.shift()?.();
           return [[{ released: 1 }], []];
         }
+        if (
+          [START_TRANSACTION_SQL, COMMIT_TRANSACTION_SQL, ROLLBACK_TRANSACTION_SQL].includes(sql)
+        ) {
+          return [{ affectedRows: 0 }, []];
+        }
+        if (sql === SELECT_VALID_DRAFT_OWNERSHIP_SQL) return [[ownershipRow()], []];
         if (sql === SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL) {
           const record = manager.records.find(
             (candidate) =>
@@ -584,6 +670,9 @@ function rowFromInsert(params) {
 function enrollment(id = "draft-1", overrides = {}) {
   return {
     id,
+    responsiblePersonId: "responsible-person-1",
+    responsibleProfileId: "responsible-profile-1",
+    responsibleRelationshipId: "relationship-1",
     startDate: "2026-07-20",
     status: "DRAFT",
     studentPersonId: "person-1",
@@ -610,15 +699,27 @@ function row(overrides = {}) {
     deleted_at: null,
     end_date: null,
     id: "draft-1",
-    responsible_person_id: null,
-    responsible_profile_id: null,
-    responsible_relationship_id: null,
+    responsible_person_id: "responsible-person-1",
+    responsible_profile_id: "responsible-profile-1",
+    responsible_relationship_id: "relationship-1",
     start_date: "2026-07-20",
     status: "DRAFT",
     student_person_id: "person-1",
     student_profile_id: "profile-1",
     unit_id: UNIT_ID,
     updated_at: "2026-07-20 10:00:00",
+    ...overrides,
+  };
+}
+
+function ownershipRow(overrides = {}) {
+  return {
+    responsible_person_id: "responsible-person-1",
+    responsible_profile_id: "responsible-profile-1",
+    responsible_relationship_id: "relationship-1",
+    student_person_id: "person-1",
+    student_profile_id: "profile-1",
+    unit_id: UNIT_ID,
     ...overrides,
   };
 }

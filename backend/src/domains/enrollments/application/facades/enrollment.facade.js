@@ -144,34 +144,37 @@ class EnrollmentFacade {
    * @param {Object} input
    * @returns {unknown}
    */
-  createDraftEnrollment(input = {}) {
-    return this.getEnrollmentService().createDraftEnrollment(input);
+  createDraftEnrollment(input = {}, context = {}) {
+    return this.getEnrollmentService().createDraftEnrollment(input, context);
   }
 
   /**
    * @param {Object} input
    * @returns {Promise<unknown>}
    */
-  async createDraftEnrollmentAndPersist(input = {}) {
+  async createDraftEnrollmentAndPersist(input = {}, context = {}) {
     const service = this.getEnrollmentService();
 
     if (typeof service.createDraftEnrollmentIdempotently === "function") {
-      const result = await service.createDraftEnrollmentIdempotently(input);
+      const result = await service.createDraftEnrollmentIdempotently(input, context);
 
       await this.emitDraftCreatedEventWhenNeeded(result, "createDraftEnrollmentAndPersist");
 
       return result.draftEnrollment;
     }
 
-    return service.createDraftEnrollmentAndPersist(input);
+    return service.createDraftEnrollmentAndPersist(input, context);
   }
 
   /**
    * @param {Object} input
    * @returns {Promise<{ draftEnrollment: unknown|null, created: boolean, reused: boolean }>}
    */
-  async createDraftEnrollmentIdempotently(input = {}) {
-    const result = await this.getEnrollmentService().createDraftEnrollmentIdempotently(input);
+  async createDraftEnrollmentIdempotently(input = {}, context = {}) {
+    const result = await this.getEnrollmentService().createDraftEnrollmentIdempotently(
+      input,
+      context,
+    );
 
     await this.emitDraftCreatedEventWhenNeeded(result, "createDraftEnrollmentIdempotently");
 
@@ -486,7 +489,9 @@ class EnrollmentFacade {
     const service = this.getEnrollmentService();
 
     if (typeof service.cancelEnrollment !== "function") {
-      throw new TypeError("EnrollmentFacade requires an enrollmentService.cancelEnrollment function.");
+      throw new TypeError(
+        "EnrollmentFacade requires an enrollmentService.cancelEnrollment function.",
+      );
     }
 
     return service.cancelEnrollment(command, context);

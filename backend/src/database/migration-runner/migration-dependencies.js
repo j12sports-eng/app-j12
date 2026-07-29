@@ -74,5 +74,14 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260729120000_add_enrollment_unit_ownership_to_enrollments": Object.freeze([
     "20260629134546_create_enrollments_table",
   ]),
+  "20260729150000_add_enrollment_unit_foreign_key": Object.freeze([
+    "20260729120000_add_enrollment_unit_ownership_to_enrollments",
+  ]),
+  "20260729180000_enforce_enrollment_multiunit_invariants": Object.freeze([
+    "20260629190607_add_active_draft_unique_constraint_to_enrollments",
+    "20260719200000_add_pre_enrollment_integrity_constraints",
+    "20260724150000_create_digital_enrollment_progress",
+    "20260729150000_add_enrollment_unit_foreign_key",
+  ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };

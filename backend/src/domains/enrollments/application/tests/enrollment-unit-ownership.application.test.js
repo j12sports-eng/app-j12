@@ -8,6 +8,9 @@ const {
 
 function draftInput(overrides = {}) {
   return {
+    responsiblePersonId: "responsible-person-1",
+    responsibleProfileId: "responsible-profile-1",
+    responsibleRelationshipId: "relationship-1",
     startDate: "2026-08-01",
     studentPersonId: "person-1",
     studentProfileId: "profile-1",
@@ -25,7 +28,7 @@ test("createDraftEnrollment propagates canonical unitId", () => {
 });
 
 test("atomic idempotent reuse succeeds inside the same unit", async () => {
-  const existing = { id: "enrollment-1", unitId: "12" };
+  const existing = { id: "enrollment-1", ...draftInput() };
   const service = new EnrollmentApplicationService({
     enrollmentRepository: {
       async create() {
@@ -90,7 +93,7 @@ test("atomic idempotent reuse blocks legacy draft without ownership", async () =
 });
 
 test("fallback idempotency allows reuse inside the same unit", async () => {
-  const existing = { id: "enrollment-1", unitId: "12" };
+  const existing = { id: "enrollment-1", ...draftInput() };
   const service = new EnrollmentApplicationService({
     enrollmentRepository: {
       async create() {
@@ -156,6 +159,27 @@ test("new draft is persisted with its unit ownership", async () => {
   assert.equal(result.reused, false);
   assert.equal(persisted.unitId, "12");
   assert.equal(result.draftEnrollment.unitId, "12");
+  assert.equal(persisted.responsiblePersonId, "responsible-person-1");
+});
+
+test("trusted ActorContext overrides a hostile input unit selector", async () => {
+  let persisted = null;
+  const service = new EnrollmentApplicationService({
+    enrollmentRepository: {
+      async create(enrollment) {
+        persisted = enrollment;
+        return enrollment;
+      },
+      async findDraftByStudent() {
+        return null;
+      },
+    },
+  });
+
+  await service.createDraftEnrollmentIdempotently(draftInput({ unitId: "999" }), {
+    unitId: "12",
+  });
+  assert.equal(persisted.unitId, "12");
 });
 
 test("missing unitId is rejected before repository access", async () => {
@@ -177,4 +201,110 @@ test("missing unitId is rejected before repository access", async () => {
   );
 
   assert.equal(repositoryCalls, 0);
+});
+
+class MultiunitDraftRepository {
+  constructor() {
+    this.records = [];
+  }
+
+  async validateDraftOwnership(enrollment) {
+    if (enrollment.responsibleRelationshipId === "relationship-invalid") {
+      const error = new Error("Relationship ownership mismatch.");
+      error.code = "ENROLLMENT_DRAFT_OWNERSHIP_INVALID";
+      throw error;
+    }
+  }
+
+  async create(enrollment) {
+    return enrollment;
+  }
+
+  async createDraftIfNotExists(enrollment) {
+    const existing = this.findCurrent(enrollment, "DRAFT");
+    if (existing) {
+      return { created: false, enrollment: existing, reused: true };
+    }
+    const record = { ...enrollment, id: `draft-${this.records.length + 1}` };
+    this.records.push(record);
+    return { created: true, enrollment: record, reused: false };
+  }
+
+  async findActiveByStudent(input) {
+    return this.findCurrent(input, "ACTIVE");
+  }
+
+  findCurrent(input, status) {
+    for (const record of this.records) {
+      if (record.status !== status) continue;
+      if (record.unitId !== input.unitId) continue;
+      if (record.studentPersonId !== input.studentPersonId) continue;
+      if (record.studentProfileId !== input.studentProfileId) continue;
+      return record;
+    }
+    return null;
+  }
+}
+
+test("same student has independent DRAFTs in different units", async () => {
+  const repository = new MultiunitDraftRepository();
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+  const first = await service.createDraftEnrollmentIdempotently(draftInput({ unitId: "12" }));
+  const second = await service.createDraftEnrollmentIdempotently(draftInput({ unitId: "13" }));
+
+  assert.equal(first.created, true);
+  assert.equal(second.created, true);
+  assert.notEqual(first.draftEnrollment.id, second.draftEnrollment.id);
+});
+
+test("same responsible can create one DRAFT for each student", async () => {
+  const repository = new MultiunitDraftRepository();
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+  const first = await service.createDraftEnrollmentIdempotently(draftInput());
+  const second = await service.createDraftEnrollmentIdempotently(
+    draftInput({ studentPersonId: "person-2", studentProfileId: "profile-2" }),
+  );
+
+  assert.equal(first.created, true);
+  assert.equal(second.created, true);
+  assert.equal(repository.records.length, 2);
+});
+
+test("same functional DRAFT identity is reused", async () => {
+  const repository = new MultiunitDraftRepository();
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+  const first = await service.createDraftEnrollmentIdempotently(draftInput());
+  const second = await service.createDraftEnrollmentIdempotently(draftInput());
+
+  assert.equal(first.created, true);
+  assert.equal(second.reused, true);
+  assert.equal(second.draftEnrollment.id, first.draftEnrollment.id);
+});
+
+test("ACTIVE is scoped to unit when guarding DRAFT creation", async () => {
+  const repository = new MultiunitDraftRepository();
+  repository.records.push({ ...draftInput({ unitId: "13" }), id: "active-13", status: "ACTIVE" });
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+
+  const allowed = await service.ensureNoActiveEnrollment(draftInput({ unitId: "12" }));
+  assert.equal(allowed.allowed, true);
+
+  await assert.rejects(
+    () => service.ensureNoActiveEnrollment(draftInput({ unitId: "13" })),
+    (error) => error.code === "ACTIVE_ENROLLMENT_ALREADY_EXISTS",
+  );
+});
+
+test("invalid responsible-student relationship fails before persistence", async () => {
+  const repository = new MultiunitDraftRepository();
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+
+  await assert.rejects(
+    () =>
+      service.createDraftEnrollmentIdempotently(
+        draftInput({ responsibleRelationshipId: "relationship-invalid" }),
+      ),
+    (error) => error.code === "ENROLLMENT_DRAFT_OWNERSHIP_INVALID",
+  );
+  assert.equal(repository.records.length, 0);
 });

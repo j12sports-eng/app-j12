@@ -23,6 +23,19 @@ test("creates the initial canonical DRAFT without financial or activation effect
     studentProfile: false,
   });
   assert.equal(fixture.state.draftCreations, 1);
+  assert.deepEqual(fixture.state.draftBoundaryCalls, [
+    {
+      context: fixture.context,
+      input: {
+        personId: "student-person-1",
+        personProfileId: "student-profile-1",
+        responsiblePersonId: "responsible-person-1",
+        responsibleProfileId: "responsible-profile-1",
+        responsibleRelationshipId: "relationship-1",
+        startDate: "2026-07-20",
+      },
+    },
+  ]);
   assert.deepEqual(fixture.state.financialEffects, []);
   assert.deepEqual(fixture.state.activationEffects, []);
 });
@@ -164,6 +177,7 @@ function createFixture(options = {}) {
   const state = {
     activationEffects: [],
     draftCalls: 0,
+    draftBoundaryCalls: [],
     draftCreations: 0,
     draftExists: Boolean(options.existingDraft),
     financialEffects: [],
@@ -198,8 +212,9 @@ function createFixture(options = {}) {
         },
       };
     },
-    async resolveOrCreateDraftEnrollmentForResolvedStudent() {
+    async resolveOrCreateDraftEnrollmentForResolvedStudent(inputValue, contextValue) {
       state.draftCalls += 1;
+      state.draftBoundaryCalls.push({ context: contextValue, input: inputValue });
       await Promise.resolve();
       if (options.enrollmentError) {
         throw new AppError("Enrollment state blocks pre-enrollment.", {

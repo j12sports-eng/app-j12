@@ -19,8 +19,7 @@ const ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED_CODE = "ENROLLMENT_PROCEED_GUARD_I
 const ENROLLMENT_PROCEED_BLOCKED_CODE = "ENROLLMENT_PROCEED_BLOCKED";
 const ENROLLMENT_PROCEED_CONFLICT_CODE = "ENROLLMENT_PROCEED_CONFLICT";
 const ENROLLMENT_PROCEED_STATUS_VALUES = Object.freeze(["NONE", "DRAFT", "ACTIVE", "CONFLICT"]);
-const ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE =
-  "ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED";
+const ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE = "ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED";
 const ENROLLMENT_CANCEL_ACCESS_DENIED_CODE = "ENROLLMENT_CANCEL_ACCESS_DENIED";
 const ENROLLMENT_CANCEL_FAILED_CODE = "ENROLLMENT_CANCEL_FAILED";
 const ENROLLMENT_CANCEL_INPUT_INVALID_CODE = "ENROLLMENT_CANCEL_INPUT_INVALID";
@@ -28,6 +27,8 @@ const ENROLLMENT_CANCEL_INPUT_REQUIRED_CODE = "ENROLLMENT_CANCEL_INPUT_REQUIRED"
 const ENROLLMENT_CANCEL_NOT_FOUND_CODE = "ENROLLMENT_CANCEL_NOT_FOUND";
 const ENROLLMENT_STATE_CONFLICT_CODE = "ENROLLMENT_STATE_CONFLICT";
 const ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE = "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT";
+const ENROLLMENT_DRAFT_OWNERSHIP_CONFLICT_CODE = "ENROLLMENT_DRAFT_OWNERSHIP_CONFLICT";
+const ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE = "ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT";
 const ENROLLMENT_CANCEL_COMMAND_FIELDS = new Set(["enrollmentId"]);
 
 /**
@@ -90,8 +91,8 @@ class EnrollmentApplicationService {
    * @param {string|null} [input.updatedAt]
    * @returns {unknown}
    */
-  createDraftEnrollment(input = {}) {
-    return this.getEnrollmentFactory().createDraft(input);
+  createDraftEnrollment(input = {}, context = {}) {
+    return this.getEnrollmentFactory().createDraft(withTrustedDraftUnit(input, context));
   }
 
   /**
@@ -129,16 +130,20 @@ class EnrollmentApplicationService {
    * @param {string|null} [input.updatedAt]
    * @returns {Promise<{ draftEnrollment: unknown|null, created: boolean, reused: boolean }>}
    */
-  async createDraftEnrollmentIdempotently(input = {}) {
-    const enrollment = this.getEnrollmentFactory().createDraft(input);
+  async createDraftEnrollmentIdempotently(input = {}, context = {}) {
+    const enrollment = this.getEnrollmentFactory().createDraft(
+      withTrustedDraftUnit(input, context),
+    );
     const repository = this.getEnrollmentRepository();
+
+    await this.validateDraftOwnership(enrollment);
 
     if (typeof repository.createDraftIfNotExists === "function") {
       const result = await repository.createDraftIfNotExists(enrollment);
       const draftEnrollment = result?.enrollment ?? null;
 
       if (Boolean(result?.reused) && draftEnrollment) {
-        ensureSameEnrollmentUnit(enrollment, draftEnrollment);
+        ensureSameEnrollmentOwnership(enrollment, draftEnrollment);
       }
 
       return {
@@ -155,7 +160,7 @@ class EnrollmentApplicationService {
     });
 
     if (existingEnrollment) {
-      ensureSameEnrollmentUnit(enrollment, existingEnrollment);
+      ensureSameEnrollmentOwnership(enrollment, existingEnrollment);
 
       return {
         created: false,
@@ -691,14 +696,54 @@ class EnrollmentApplicationService {
       unitId,
     });
 
-    const confirmedEnrollment = await repository.updateStatus(
-      enrollmentId,
-      EnrollmentStatus.ACTIVE,
-      {
+    let confirmedEnrollment;
+    try {
+      confirmedEnrollment = await repository.updateStatus(enrollmentId, EnrollmentStatus.ACTIVE, {
         confirmedAt,
         confirmedBy,
-      },
-    );
+        expectedStatus: EnrollmentStatus.DRAFT,
+        unitId,
+      });
+    } catch (error) {
+      if (readProperty(error, "code") === ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE) {
+        throw controlledError(
+          "Active Enrollment already exists for this student/profile pair.",
+          ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
+          { enrollmentId, studentPersonId, studentProfileId, unitId },
+        );
+      }
+      throw error;
+    }
+
+    if (confirmedEnrollment == null) {
+      throw controlledError(
+        "Enrollment changed concurrently and could not be confirmed.",
+        ENROLLMENT_STATE_CONFLICT_CODE,
+        { enrollmentId, unitId },
+      );
+    }
+
+    if (readProperty(confirmedEnrollment, "transitionChanged") === false) {
+      if (
+        normalizeEnrollmentStatus(readProperty(confirmedEnrollment, "status")) ===
+        EnrollmentStatus.ACTIVE
+      ) {
+        return {
+          alreadyConfirmed: true,
+          confirmed: false,
+          confirmedAt: readProperty(confirmedEnrollment, "confirmedAt"),
+          confirmedBy: readProperty(confirmedEnrollment, "confirmedBy"),
+          enrollment: confirmedEnrollment,
+          status: EnrollmentStatus.ACTIVE,
+        };
+      }
+
+      throw controlledError(
+        "Enrollment changed concurrently and could not be confirmed.",
+        ENROLLMENT_STATE_CONFLICT_CODE,
+        { enrollmentId, unitId },
+      );
+    }
 
     return {
       alreadyConfirmed: false,
@@ -734,6 +779,21 @@ class EnrollmentApplicationService {
     }
 
     return this.enrollmentRepository;
+  }
+
+  /**
+   * Delegates physical Pessoa/Profile/relationship/unit validation to the
+   * persistence adapter when it exposes the canonical validator. The MySQL
+   * adapter always validates again inside the transaction; lightweight legacy
+   * adapters remain compatible while the factory rejects incomplete ids.
+   *
+   * @param {unknown} enrollment
+   * @returns {Promise<void>}
+   */
+  async validateDraftOwnership(enrollment) {
+    const validator = this.enrollmentRepository?.validateDraftOwnership;
+    if (typeof validator !== "function") return;
+    await validator.call(this.enrollmentRepository, enrollment);
   }
 
   /**
@@ -863,6 +923,56 @@ function ensureSameEnrollmentUnit(requestedEnrollment, existingEnrollment) {
       },
     );
   }
+}
+
+/**
+ * Idempotency is defined by unit + student Pessoa/Profile. Responsible
+ * ownership is not part of the key, but it must match before an existing DRAFT
+ * can be reused; otherwise assisted review is required.
+ *
+ * @param {unknown} requestedEnrollment
+ * @param {unknown} existingEnrollment
+ * @returns {void}
+ */
+function ensureSameEnrollmentOwnership(requestedEnrollment, existingEnrollment) {
+  ensureSameEnrollmentUnit(requestedEnrollment, existingEnrollment);
+
+  const fields = [
+    "studentPersonId",
+    "studentProfileId",
+    "responsiblePersonId",
+    "responsibleProfileId",
+    "responsibleRelationshipId",
+  ];
+  const mismatches = fields.filter((field) => {
+    const requested = nullableText(readProperty(requestedEnrollment, field), 64);
+    const existing = nullableText(readProperty(existingEnrollment, field), 64);
+    return !requested || !existing || requested !== existing;
+  });
+
+  if (mismatches.length > 0) {
+    throw controlledError(
+      "Enrollment ownership conflict blocks idempotent reuse.",
+      ENROLLMENT_DRAFT_OWNERSHIP_CONFLICT_CODE,
+      { mismatches },
+    );
+  }
+}
+
+/**
+ * ActorContext wins over any selector carried in input. When no ActorContext is
+ * supplied, unitId remains an explicitly trusted internal input for existing
+ * application integrations.
+ */
+function withTrustedDraftUnit(input, context) {
+  const source = readObject(input);
+  const safeContext = readObject(context);
+  if (!Object.prototype.hasOwnProperty.call(safeContext, "unitId")) return source;
+
+  return {
+    ...source,
+    unitId: normalizeCanonicalUnitId(safeContext.unitId),
+  };
 }
 
 function requireConfirmationUnitContext(context) {
@@ -1062,7 +1172,9 @@ module.exports = {
   ENROLLMENT_CANCEL_NOT_FOUND_CODE,
   ENROLLMENT_STATE_CONFLICT_CODE,
   ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE,
+  ENROLLMENT_DRAFT_OWNERSHIP_CONFLICT_CODE,
   EnrollmentApplicationService,
+  ensureSameEnrollmentOwnership,
   ensureSameEnrollmentUnit,
   normalizeSearchLimit,
 };

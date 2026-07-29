@@ -26,6 +26,13 @@ class StudentEnrollmentApplicationService {
       {
         personId: studentResolution.personId,
         personProfileId: studentResolution.personProfileId,
+        responsiblePersonId:
+          normalizeObject(source.enrollment).responsiblePersonId ?? source.responsiblePersonId,
+        responsibleProfileId:
+          normalizeObject(source.enrollment).responsibleProfileId ?? source.responsibleProfileId,
+        responsibleRelationshipId:
+          normalizeObject(source.enrollment).responsibleRelationshipId ??
+          source.responsibleRelationshipId,
         startDate: normalizeObject(source.enrollment).startDate,
       },
       context,
@@ -39,11 +46,17 @@ class StudentEnrollmentApplicationService {
     const source = normalizeObject(input);
     const personId = nullableText(source.personId);
     const personProfileId = nullableText(source.personProfileId);
+    const responsiblePersonId = nullableText(source.responsiblePersonId);
+    const responsibleProfileId = nullableText(source.responsibleProfileId);
+    const responsibleRelationshipId = nullableText(source.responsibleRelationshipId);
     const startDate = nullableText(source.startDate);
     const unitId = readCanonicalUnitId(context);
     const missing = [
       ["personId", personId],
       ["personProfileId", personProfileId],
+      ["responsiblePersonId", responsiblePersonId],
+      ["responsibleProfileId", responsibleProfileId],
+      ["responsibleRelationshipId", responsibleRelationshipId],
       ["startDate", startDate],
       ["unitId", unitId],
     ]
@@ -96,12 +109,27 @@ class StudentEnrollmentApplicationService {
         409,
       );
     }
-    if (summary.status === "DRAFT")
+    if (summary.status === "DRAFT") {
+      assertExistingDraftOwnership(summary.draftEnrollment, {
+        responsiblePersonId,
+        responsibleProfileId,
+        responsibleRelationshipId,
+      });
       return buildEnrollmentResult(summary.draftEnrollment, false, true, unitId);
+    }
 
     let creation;
     try {
-      creation = await enrollmentService.createDraftEnrollmentIdempotently({ ...scope, startDate });
+      creation = await enrollmentService.createDraftEnrollmentIdempotently(
+        {
+          ...scope,
+          responsiblePersonId,
+          responsibleProfileId,
+          responsibleRelationshipId,
+          startDate,
+        },
+        context,
+      );
     } catch {
       throw applicationError(
         "Draft Enrollment creation failed.",
@@ -164,6 +192,21 @@ function buildEnrollmentResult(enrollment, created, reused, unitId) {
     resolution: created ? "CREATED" : "FOUND",
     reused,
   });
+}
+
+function assertExistingDraftOwnership(enrollment, expected) {
+  const fields = ["responsiblePersonId", "responsibleProfileId", "responsibleRelationshipId"];
+  if (
+    fields.some(
+      (field) => nullableText(readProperty(enrollment, field)) !== nullableText(expected[field]),
+    )
+  ) {
+    throw applicationError(
+      "Enrollment ownership conflict requires assisted review.",
+      STUDENT_ENROLLMENT_ERROR_CODES.STATE_CONFLICT,
+      409,
+    );
+  }
 }
 
 function buildResult(student, enrollment) {

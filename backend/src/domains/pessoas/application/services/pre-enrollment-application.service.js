@@ -120,6 +120,9 @@ class PreEnrollmentApplicationService {
           {
             personId: student.personId,
             personProfileId: student.personProfileId,
+            responsiblePersonId: responsiblePerson.personId,
+            responsibleProfileId: responsibleProfile.personProfileId,
+            responsibleRelationshipId: relationship.relationshipId,
             startDate: command.enrollment.startDate,
           },
           context,

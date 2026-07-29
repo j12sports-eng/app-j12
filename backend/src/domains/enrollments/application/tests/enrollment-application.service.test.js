@@ -16,6 +16,9 @@ test("EnrollmentApplicationService creates and reuses a persisted DRAFT in memor
 
   const first = await service.createDraftEnrollmentIdempotently({
     id: "draft-1",
+    responsiblePersonId: "responsible-person-1",
+    responsibleProfileId: "responsible-profile-1",
+    responsibleRelationshipId: "relationship-1",
     startDate: "2026-06-30",
     studentPersonId: "person-1",
     studentProfileId: "profile-1",
@@ -23,6 +26,9 @@ test("EnrollmentApplicationService creates and reuses a persisted DRAFT in memor
   });
   const second = await service.createDraftEnrollmentIdempotently({
     id: "draft-2",
+    responsiblePersonId: "responsible-person-1",
+    responsibleProfileId: "responsible-profile-1",
+    responsibleRelationshipId: "relationship-1",
     startDate: "2026-06-30",
     studentPersonId: "person-1",
     studentProfileId: "profile-1",
@@ -130,6 +136,8 @@ test("EnrollmentApplicationService confirms DRAFT to ACTIVE with audit metadata"
       options: {
         confirmedAt: "2026-06-30 10:15:30",
         confirmedBy: "admin@j12.local",
+        expectedStatus: "DRAFT",
+        unitId: "1",
       },
       status: "ACTIVE",
     },
@@ -155,8 +163,9 @@ test("EnrollmentApplicationService blocks confirmation when ACTIVE already exist
   const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
 
   await assert.rejects(
-    () => service.confirmDraftEnrollment({ enrollmentId: "draft-blocked" }, { unitId: "1" }), {
-    code: ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
+    () => service.confirmDraftEnrollment({ enrollmentId: "draft-blocked" }, { unitId: "1" }),
+    {
+      code: ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
     },
   );
   assert.equal(repository.updateCalls.length, 0);
@@ -217,11 +226,7 @@ test("EnrollmentApplicationService rejects confirmation from another trusted uni
   const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
 
   await assert.rejects(
-    () =>
-      service.confirmDraftEnrollment(
-        { enrollmentId: "draft-other-unit" },
-        { unitId: "2" },
-      ),
+    () => service.confirmDraftEnrollment({ enrollmentId: "draft-other-unit" }, { unitId: "2" }),
     {
       code: "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT",
       statusCode: 404,
@@ -426,6 +431,38 @@ test("EnrollmentApplicationService guards allowed, ACTIVE blocked and CONFLICT b
       }),
     { code: ENROLLMENT_PROCEED_CONFLICT_CODE },
   );
+});
+
+test("confirmation race returns alreadyConfirmed when conditional update loses", async () => {
+  const current = {
+    id: "draft-race",
+    startDate: "2026-06-30",
+    status: "DRAFT",
+    studentPersonId: "person-race",
+    studentProfileId: "profile-race",
+    unitId: "1",
+  };
+  const repository = {
+    async findActiveByStudent() {
+      return null;
+    },
+    async findById() {
+      return current;
+    },
+    async updateStatus() {
+      return { ...current, status: "ACTIVE", transitionChanged: false };
+    },
+  };
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+
+  const result = await service.confirmDraftEnrollment(
+    { enrollmentId: "draft-race" },
+    { unitId: "1" },
+  );
+
+  assert.equal(result.confirmed, false);
+  assert.equal(result.alreadyConfirmed, true);
+  assert.equal(result.status, "ACTIVE");
 });
 
 class FakeEnrollmentRepository {
