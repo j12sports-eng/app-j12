@@ -12,6 +12,8 @@
  *   Read-only lookup by aggregate id used by internal confirmation flows.
  * @property {(enrollment: unknown) => Promise<void>} validateDraftOwnership
  *   Validates canonical unit, responsible, profiles, student and relationship before modern persistence.
+ * @property {({ responsiblePersonId, studentPersonId, unitId }: { responsiblePersonId: string, studentPersonId: string, unitId: string }) => Promise<Record<string, unknown>>} resolveDraftOpeningOwnership
+ *   Resolves the unique active canonical profiles and responsible relationship for administrative DRAFT opening.
  * @property {(studentPersonId: string) => Promise<unknown[]>} findByStudentPersonId
  * @property {({ studentPersonId, studentProfileId }: { studentPersonId?: string|null, studentProfileId?: string|null }) => Promise<unknown|null>} findActiveByStudent
  *   Read-only adapter method used by the application service to resolve the current ACTIVE Enrollment.

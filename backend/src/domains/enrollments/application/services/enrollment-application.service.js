@@ -79,16 +79,115 @@ class EnrollmentApplicationService {
   }
 
   /**
+   * Opens or reuses the canonical administrative Enrollment DRAFT.
+   * Unit ownership is accepted only from ActorContext.
+   *
+   * @param {{ responsiblePersonId: string, studentPersonId: string, startDate: string }} input
+   * @param {Object} actorContext
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async openDraftEnrollment(input = {}, actorContext = {}) {
+    const command = readOpenDraftCommand(input);
+    const unitId = requireOpenDraftActorUnit(actorContext);
+    const repository = this.enrollmentRepository;
+
+    if (typeof repository?.resolveDraftOpeningOwnership !== "function") {
+      throw controlledError(
+        "Draft Enrollment opening is unavailable.",
+        ENROLLMENT_OPEN_DRAFT_FAILED_CODE,
+        { statusCode: 500 },
+      );
+    }
+
+    let ownership;
+    try {
+      ownership = await repository.resolveDraftOpeningOwnership({
+        responsiblePersonId: command.responsiblePersonId,
+        studentPersonId: command.studentPersonId,
+        unitId,
+      });
+    } catch (error) {
+      if (readProperty(error, "code") === ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE) {
+        throw controlledError(
+          "Enrollment ownership is invalid.",
+          ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE,
+          { statusCode: 422 },
+        );
+      }
+      throw controlledError("Draft Enrollment opening failed.", ENROLLMENT_OPEN_DRAFT_FAILED_CODE, {
+        statusCode: 500,
+      });
+    }
+
+    assertResolvedDraftOpeningOwnership(ownership, command, unitId);
+    const scope = {
+      studentPersonId: ownership.studentPersonId,
+      studentProfileId: ownership.studentProfileId,
+      unitId,
+    };
+    let summary;
+    try {
+      summary = await this.getEnrollmentStatusSummary(scope);
+    } catch {
+      throw controlledError("Draft Enrollment opening failed.", ENROLLMENT_OPEN_DRAFT_FAILED_CODE, {
+        statusCode: 500,
+      });
+    }
+
+    if (summary?.status === "ACTIVE") {
+      throw controlledError(
+        "An active Enrollment already exists.",
+        ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
+        { statusCode: 409 },
+      );
+    }
+    if (summary?.status === "CONFLICT") {
+      throw controlledError(
+        "Enrollment state conflict requires assisted review.",
+        ENROLLMENT_STATE_CONFLICT_CODE,
+        { statusCode: 409 },
+      );
+    }
+    if (summary?.status === "DRAFT") {
+      ensureSameEnrollmentOwnership(ownership, summary.draftEnrollment);
+      return toOpenDraftEnrollmentResult(summary.draftEnrollment, false, true, unitId);
+    }
+    if (summary?.status !== "NONE") {
+      throw controlledError("Draft Enrollment opening failed.", ENROLLMENT_OPEN_DRAFT_FAILED_CODE, {
+        statusCode: 500,
+      });
+    }
+
+    let creation;
+    try {
+      creation = await this.createDraftEnrollmentIdempotently(
+        { ...ownership, startDate: command.startDate },
+        { unitId },
+      );
+    } catch (error) {
+      if (readProperty(error, "code") === ACTIVE_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE) {
+        throw controlledError(
+          "An active Enrollment already exists.",
+          ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
+          { statusCode: 409 },
+        );
+      }
+      throw error;
+    }
+
+    return toOpenDraftEnrollmentResult(
+      creation?.draftEnrollment,
+      Boolean(creation?.created),
+      Boolean(creation?.reused),
+      unitId,
+    );
+  }
+
+  /**
    * Creates a draft Enrollment aggregate in memory.
    *
    * @param {Object} input
-   * @param {string|null} [input.id]
-   * @param {string} input.studentPersonId
-   * @param {string} input.studentProfileId
-   * @param {string} input.startDate
-   * @param {string} input.unitId
-   * @param {string|null} [input.createdAt]
-   * @param {string|null} [input.updatedAt]
+   * @param {Object} context
    * @returns {unknown}
    */
   createDraftEnrollment(input = {}, context = {}) {
@@ -1136,6 +1235,120 @@ function normalizeSearchLimit(value) {
 
   return Math.min(Math.trunc(parsed), 25);
 }
+const OPEN_DRAFT_COMMAND_FIELDS = new Set(["responsiblePersonId", "startDate", "studentPersonId"]);
+const ENROLLMENT_OPEN_DRAFT_ACTOR_CONTEXT_REQUIRED_CODE =
+  "ENROLLMENT_OPEN_DRAFT_ACTOR_CONTEXT_REQUIRED";
+const ENROLLMENT_OPEN_DRAFT_INPUT_INVALID_CODE = "ENROLLMENT_OPEN_DRAFT_INPUT_INVALID";
+const ENROLLMENT_OPEN_DRAFT_FAILED_CODE = "ENROLLMENT_OPEN_DRAFT_FAILED";
+const ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE = "ENROLLMENT_DRAFT_OWNERSHIP_INVALID";
+
+function readOpenDraftCommand(input) {
+  const source = readObject(input);
+  const unexpectedFields = Object.keys(source).filter(
+    (field) => !OPEN_DRAFT_COMMAND_FIELDS.has(field),
+  );
+  const responsiblePersonId = nullableText(source.responsiblePersonId, 64);
+  const studentPersonId = nullableText(source.studentPersonId, 64);
+  const startDate = normalizeOpenDraftDate(source.startDate);
+  const missingFields = [];
+  if (!responsiblePersonId) missingFields.push("responsiblePersonId");
+  if (!studentPersonId) missingFields.push("studentPersonId");
+  if (!startDate) missingFields.push("startDate");
+
+  if (unexpectedFields.length > 0 || missingFields.length > 0) {
+    throw controlledError(
+      "Draft Enrollment opening input is invalid.",
+      ENROLLMENT_OPEN_DRAFT_INPUT_INVALID_CODE,
+      { missingFields, statusCode: 400, unexpectedFields },
+    );
+  }
+
+  return Object.freeze({ responsiblePersonId, startDate, studentPersonId });
+}
+
+function requireOpenDraftActorUnit(actorContext) {
+  try {
+    const unitId = normalizeCanonicalUnitId(
+      readProperty(readProperty(actorContext, "unitContext"), "unitId"),
+      { nullable: true },
+    );
+    if (unitId) return unitId;
+  } catch {
+    // Invalid ActorContext is mapped to the same fail-closed error.
+  }
+
+  throw controlledError(
+    "ActorContext with canonical unit is required.",
+    ENROLLMENT_OPEN_DRAFT_ACTOR_CONTEXT_REQUIRED_CODE,
+    { statusCode: 403 },
+  );
+}
+
+function normalizeOpenDraftDate(value) {
+  const normalized = nullableText(value, 10);
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10) === normalized ? normalized : null;
+}
+
+function assertResolvedDraftOpeningOwnership(ownership, command, unitId) {
+  const source = readObject(ownership);
+  let ownershipUnitId = null;
+  try {
+    ownershipUnitId = normalizeCanonicalUnitId(source.unitId, { nullable: true });
+  } catch {
+    ownershipUnitId = null;
+  }
+  const valid =
+    nullableText(source.responsiblePersonId, 64) === command.responsiblePersonId &&
+    Boolean(nullableText(source.responsibleProfileId, 64)) &&
+    Boolean(nullableText(source.responsibleRelationshipId, 64)) &&
+    nullableText(source.studentPersonId, 64) === command.studentPersonId &&
+    Boolean(nullableText(source.studentProfileId, 64)) &&
+    ownershipUnitId === unitId;
+
+  if (!valid) {
+    throw controlledError(
+      "Enrollment ownership is invalid.",
+      ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE,
+      { statusCode: 422 },
+    );
+  }
+}
+
+function toOpenDraftEnrollmentResult(enrollment, created, reused, unitId) {
+  const enrollmentId = nullableText(readProperty(enrollment, "id"), 64);
+  const status = normalizeEnrollmentStatus(readProperty(enrollment, "status"));
+  const startDate = normalizeOpenDraftDate(readProperty(enrollment, "startDate"));
+  let enrollmentUnitId = null;
+  try {
+    enrollmentUnitId = normalizeCanonicalUnitId(readProperty(enrollment, "unitId"), {
+      nullable: true,
+    });
+  } catch {
+    enrollmentUnitId = null;
+  }
+
+  if (
+    !enrollmentId ||
+    status !== EnrollmentStatus.DRAFT ||
+    !startDate ||
+    enrollmentUnitId !== unitId
+  ) {
+    throw controlledError("Draft Enrollment opening failed.", ENROLLMENT_OPEN_DRAFT_FAILED_CODE, {
+      statusCode: 500,
+    });
+  }
+
+  return Object.freeze({
+    created: created === true,
+    enrollmentId,
+    reused: reused === true,
+    startDate,
+    status: EnrollmentStatus.DRAFT,
+  });
+}
 
 /**
  * @param {string} message
@@ -1173,6 +1386,10 @@ module.exports = {
   ENROLLMENT_STATE_CONFLICT_CODE,
   ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE,
   ENROLLMENT_DRAFT_OWNERSHIP_CONFLICT_CODE,
+  ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE,
+  ENROLLMENT_OPEN_DRAFT_ACTOR_CONTEXT_REQUIRED_CODE,
+  ENROLLMENT_OPEN_DRAFT_FAILED_CODE,
+  ENROLLMENT_OPEN_DRAFT_INPUT_INVALID_CODE,
   EnrollmentApplicationService,
   ensureSameEnrollmentOwnership,
   ensureSameEnrollmentUnit,

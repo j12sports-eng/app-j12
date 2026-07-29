@@ -9,8 +9,15 @@ const ENROLLMENT_ADMIN_ALREADY_ACTIVE_CODE = "ENROLLMENT_ADMIN_ALREADY_ACTIVE";
 const ENROLLMENT_ADMIN_ERROR_CODE = "ENROLLMENT_ADMIN_ERROR";
 const ENROLLMENT_ADMIN_SEARCH_QUERY_REQUIRED_CODE = "ENROLLMENT_ADMIN_SEARCH_QUERY_REQUIRED";
 
+const ENROLLMENT_OPEN_DRAFT_INPUT_INVALID_CODE = "ENROLLMENT_OPEN_DRAFT_INPUT_INVALID";
+
 const CONTROLLED_ERROR_STATUS_BY_CODE = Object.freeze({
   ACTIVE_ENROLLMENT_ALREADY_EXISTS: 409,
+  ENROLLMENT_DRAFT_OWNERSHIP_INVALID: 422,
+  ENROLLMENT_OPEN_DRAFT_ACTOR_CONTEXT_REQUIRED: 403,
+  ENROLLMENT_OPEN_DRAFT_FAILED: 500,
+  ENROLLMENT_OPEN_DRAFT_INPUT_INVALID: 400,
+  ENROLLMENT_STATE_CONFLICT: 409,
   CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED: 400,
   CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS: 409,
   CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND: 404,
@@ -42,10 +49,42 @@ class EnrollmentAdminController {
       options.enrollmentFacade || options.facade || new EnrollmentFacade(options);
 
     this.getStatus = this.getStatus.bind(this);
+    this.openDraft = this.openDraft.bind(this);
     this.searchStudentScopes = this.searchStudentScopes.bind(this);
     this.getCurrentDraft = this.getCurrentDraft.bind(this);
     this.getCurrentActive = this.getCurrentActive.bind(this);
     this.confirmDraft = this.confirmDraft.bind(this);
+  }
+
+  /**
+   * POST /admin/enrollments
+   *
+   * Opens the canonical administrative Enrollment DRAFT. The unit selector is
+   * intentionally absent from the command and remains owned by ActorContext.
+   */
+  async openDraft(req, res, next) {
+    try {
+      readTrustedEnrollmentContext(req);
+      const input = readOpenDraftInput(req);
+      const validation = validateOpenDraftInput(input);
+
+      if (!validation.valid) {
+        return sendBadRequest(res, validation);
+      }
+
+      const data = await this.getFacade().openDraftEnrollment(
+        {
+          responsiblePersonId: input.responsiblePersonId,
+          startDate: input.startDate,
+          studentPersonId: input.studentPersonId,
+        },
+        req.actorContext,
+      );
+
+      return res.status(data?.created ? 201 : 200).json(successEnvelope(data));
+    } catch (error) {
+      return handleAdminError(error, res, next);
+    }
   }
 
   /**
@@ -242,9 +281,7 @@ function sendBadRequest(res, validation) {
 function sendControlledError(res, error = {}) {
   const code = nullableText(error.code, 100) || ENROLLMENT_ADMIN_ERROR_CODE;
   const statusCode =
-    Number(error.statusCode || error.status) ||
-    CONTROLLED_ERROR_STATUS_BY_CODE[code] ||
-    400;
+    Number(error.statusCode || error.status) || CONTROLLED_ERROR_STATUS_BY_CODE[code] || 400;
 
   return res.status(statusCode).json({
     code,
@@ -312,12 +349,7 @@ function readConfirmInput(req = {}) {
   const body = req?.body && typeof req.body === "object" ? req.body : {};
   const user = req?.auth || req?.user || {};
   const confirmedBy =
-    body.confirmedBy ||
-    body.confirmed_by ||
-    user.email ||
-    user.login ||
-    user.username ||
-    user.id;
+    body.confirmedBy || body.confirmed_by || user.email || user.login || user.username || user.id;
 
   return {
     confirmedBy: nullableText(confirmedBy, 191),
@@ -329,6 +361,47 @@ function readConfirmInput(req = {}) {
  * @param {{ studentPersonId: string|null, studentProfileId: string|null }} input
  * @returns {{ code: string, message: string, missingFields: string[], valid: boolean }}
  */
+const OPEN_DRAFT_ALLOWED_FIELDS = Object.freeze([
+  "responsiblePersonId",
+  "startDate",
+  "studentPersonId",
+]);
+const OPEN_DRAFT_IGNORED_UNIT_FIELDS = Object.freeze(["unitId", "unit_id"]);
+
+function readOpenDraftInput(req = {}) {
+  const body =
+    req?.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const unexpectedFields = Object.keys(body).filter(
+    (field) =>
+      !OPEN_DRAFT_ALLOWED_FIELDS.includes(field) && !OPEN_DRAFT_IGNORED_UNIT_FIELDS.includes(field),
+  );
+
+  return {
+    responsiblePersonId: nullableText(body.responsiblePersonId, 64),
+    startDate: nullableText(body.startDate, 10),
+    studentPersonId: nullableText(body.studentPersonId, 64),
+    unexpectedFields,
+  };
+}
+
+function validateOpenDraftInput(input = {}) {
+  const missingFields = [];
+  if (!input.responsiblePersonId) missingFields.push("responsiblePersonId");
+  if (!input.studentPersonId) missingFields.push("studentPersonId");
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.startDate || "")) missingFields.push("startDate");
+  const unexpectedFields = Array.isArray(input.unexpectedFields) ? input.unexpectedFields : [];
+
+  return {
+    code: ENROLLMENT_OPEN_DRAFT_INPUT_INVALID_CODE,
+    message: unexpectedFields.length
+      ? "Enrollment DRAFT request contains unsupported fields."
+      : "responsiblePersonId, studentPersonId and a valid startDate are required.",
+    missingFields,
+    unexpectedFields,
+    valid: missingFields.length === 0 && unexpectedFields.length === 0,
+  };
+}
+
 function validateStudentScope(input = {}) {
   const missingFields = [];
 
@@ -427,15 +500,18 @@ module.exports = {
   ENROLLMENT_ADMIN_ERROR_CODE,
   ENROLLMENT_ADMIN_INPUT_REQUIRED_CODE,
   ENROLLMENT_ADMIN_SEARCH_QUERY_REQUIRED_CODE,
+  ENROLLMENT_OPEN_DRAFT_INPUT_INVALID_CODE,
   EnrollmentAdminController,
   handleAdminError,
   nullableText,
   normalizeLimit,
   readConfirmInput,
+  readOpenDraftInput,
   readStudentScope,
   readStudentScopeSearch,
   successEnvelope,
   validateConfirmInput,
+  validateOpenDraftInput,
   validateStudentScope,
   validateStudentScopeSearch,
 };

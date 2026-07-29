@@ -7,9 +7,7 @@ const {
 const {
   createEnrollmentActorContextMiddleware,
 } = require("../../infrastructure/enrollment-route-context.composition.js");
-const {
-  EnrollmentAdminController,
-} = require("../controllers/enrollment-admin.controller.js");
+const { EnrollmentAdminController } = require("../controllers/enrollment-admin.controller.js");
 
 const ENROLLMENT_ADMIN_ROUTE_BASE_PATH = "/admin/enrollments";
 
@@ -30,10 +28,12 @@ const ENROLLMENT_ADMIN_ROUTE_BASE_PATH = "/admin/enrollments";
  */
 function createEnrollmentAdminRouter(options = {}) {
   const router = express.Router();
-  const controller = options.controller || new EnrollmentAdminController({
-    ...options,
-    enrollmentFacade: createEnrollmentAdminFacade(options),
-  });
+  const controller =
+    options.controller ||
+    new EnrollmentAdminController({
+      ...options,
+      enrollmentFacade: createEnrollmentAdminFacade(options),
+    });
   const authMiddleware = options.authMiddleware || requireAuth;
   const accessMiddleware = options.accessMiddleware || ensureEnrollmentAdminAccess;
   const actorContextMiddleware = createEnrollmentActorContextMiddleware(options);
@@ -42,6 +42,7 @@ function createEnrollmentAdminRouter(options = {}) {
   router.use(accessMiddleware);
   router.use(actorContextMiddleware);
 
+  router.post("/", controller.openDraft);
   router.get("/students/search", controller.searchStudentScopes);
   router.get("/status", controller.getStatus);
   router.get("/current-draft", controller.getCurrentDraft);

@@ -3,12 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const {
-  createEnrollmentAdminRouter,
-} = require("./enrollment-admin.routes.js");
-const {
-  createEnrollmentPublicRouter,
-} = require("./enrollment-public.routes.js");
+const { createEnrollmentAdminRouter } = require("./enrollment-admin.routes.js");
+const { createEnrollmentPublicRouter } = require("./enrollment-public.routes.js");
 
 const ROUTERS = [
   ["admin", createEnrollmentAdminRouter],
@@ -36,12 +32,7 @@ for (const [name, createRouter] of ROUTERS) {
 
     await handle(router, request(), res);
 
-    assert.deepEqual(order, [
-      "requireAuth",
-      "access",
-      "actorContext",
-      "controller",
-    ]);
+    assert.deepEqual(order, ["requireAuth", "access", "actorContext", "controller"]);
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body, { success: true });
   });
@@ -60,6 +51,7 @@ for (const [name, createRouter] of ROUTERS) {
         confirmDraft() {},
         getCurrentActive() {},
         getCurrentDraft() {},
+        openDraft() {},
         getStatus() {
           controllerCalls += 1;
         },
@@ -108,6 +100,7 @@ function controller(order, expectedActorContext) {
     confirmDraft() {},
     getCurrentActive() {},
     getCurrentDraft() {},
+    openDraft() {},
     getStatus(req, res) {
       order.push("controller");
       assert.equal(req.actorContext, expectedActorContext);

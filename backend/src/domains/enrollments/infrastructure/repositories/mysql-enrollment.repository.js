@@ -135,6 +135,38 @@ const SELECT_VALID_DRAFT_OWNERSHIP_SQL = `
   LOCK IN SHARE MODE
 `;
 
+const SELECT_DRAFT_OPENING_OWNERSHIP_SQL = `
+  SELECT
+    CAST(unit_scope.id AS CHAR) AS unit_id,
+    responsible_person.id AS responsible_person_id,
+    responsible_profile.id AS responsible_profile_id,
+    responsible_relationship.id AS responsible_relationship_id,
+    student_person.id AS student_person_id,
+    student_profile.id AS student_profile_id
+  FROM j12_unidades unit_scope
+  INNER JOIN people responsible_person
+    ON responsible_person.id = ?
+   AND responsible_person.ativo = 1
+  INNER JOIN person_profiles responsible_profile
+    ON responsible_profile.person_id = responsible_person.id
+   AND LOWER(responsible_profile.profile_type) = 'responsavel'
+   AND LOWER(responsible_profile.status) IN ('active', 'ativo')
+  INNER JOIN people student_person
+    ON student_person.id = ?
+   AND student_person.ativo = 1
+  INNER JOIN person_profiles student_profile
+    ON student_profile.person_id = student_person.id
+   AND LOWER(student_profile.profile_type) = 'aluno'
+   AND LOWER(student_profile.status) IN ('active', 'ativo')
+  INNER JOIN person_relationships responsible_relationship
+    ON responsible_relationship.person_id = responsible_person.id
+   AND responsible_relationship.related_person_id = student_person.id
+   AND LOWER(responsible_relationship.status) = 'active'
+  WHERE unit_scope.id = ?
+  ORDER BY responsible_profile.id, student_profile.id, responsible_relationship.id
+  LIMIT 2
+`;
+
 const SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL = `
   SELECT
 ${ENROLLMENT_PROJECTION_SQL}
@@ -457,12 +489,49 @@ class MySqlEnrollmentRepository {
   }
 
   /**
-   * Creates a DRAFT Enrollment only when one does not already exist for the
-   * student/profile pair. A MySQL named lock serializes concurrent attempts
-   * without requiring a schema change.
+   * Resolves the active canonical profiles and responsible relationship needed
+   * to open a DRAFT for the actor unit.
    *
    * @param {import("../../domain/entities/enrollment.entity.js").Enrollment|Record<string, unknown>} enrollment
-   * @returns {Promise<{ enrollment: Record<string, unknown>|null, created: boolean, reused: boolean }>}
+   * @returns {Promise<Record<string, unknown>>}
+   */
+  async resolveDraftOpeningOwnership(enrollment = {}) {
+    const input = enrollment;
+    const responsiblePersonId = requiredText(input.responsiblePersonId, "responsiblePersonId", 64);
+    const studentPersonId = requiredText(input.studentPersonId, "studentPersonId", 64);
+    const unitId = requiredCanonicalUnitId(input.unitId);
+    const rows = await this.query(SELECT_DRAFT_OPENING_OWNERSHIP_SQL, [
+      responsiblePersonId,
+      studentPersonId,
+      unitId,
+    ]);
+
+    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    if (
+      !row ||
+      row.responsible_person_id !== responsiblePersonId ||
+      row.student_person_id !== studentPersonId ||
+      String(row.unit_id) !== unitId
+    ) {
+      const error = new Error("Enrollment DRAFT ownership is invalid or ambiguous.");
+      error.code = ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE;
+      throw error;
+    }
+
+    return Object.freeze({
+      responsiblePersonId: row.responsible_person_id,
+      responsibleProfileId: row.responsible_profile_id,
+      responsibleRelationshipId: row.responsible_relationship_id,
+      studentPersonId: row.student_person_id,
+      studentProfileId: row.student_profile_id,
+      unitId: String(row.unit_id),
+    });
+  }
+
+  /**
+   * Creates a DRAFT Enrollment only when one does not already exist for the
+   * same student, profile and canonical unit. The existing named lock and
+   * physical constraints preserve idempotency under concurrency.
    */
   async createDraftIfNotExists(enrollment) {
     const input = toEnrollmentData(enrollment);
@@ -1324,11 +1393,13 @@ module.exports = {
   DRAFT_ENROLLMENT_LOCK_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_TIMEOUT_CODE,
+  ENROLLMENT_DRAFT_OWNERSHIP_INVALID_CODE,
   ENROLLMENT_PROJECTION_SQL,
   ENROLLMENTS_TABLE_NAME: TABLE_NAME,
   GET_DRAFT_ENROLLMENT_LOCK_SQL,
   INSERT_ENROLLMENT_SQL,
   SELECT_VALID_DRAFT_OWNERSHIP_SQL,
+  SELECT_DRAFT_OPENING_OWNERSHIP_SQL,
   MySqlEnrollmentRepository,
   RELEASE_DRAFT_ENROLLMENT_LOCK_SQL,
   SEARCH_ENROLLMENT_STUDENT_SCOPES_SQL,

@@ -142,8 +142,17 @@ class EnrollmentFacade {
 
   /**
    * @param {Object} input
-   * @returns {unknown}
+   * @param {Object} actorContext
+   * @returns {Promise<unknown>}
    */
+  openDraftEnrollment(input = {}, actorContext = {}) {
+    const service = this.getEnrollmentService();
+    if (typeof service.openDraftEnrollment !== "function") {
+      throw new TypeError("EnrollmentFacade requires openDraftEnrollment.");
+    }
+    return service.openDraftEnrollment(input, actorContext);
+  }
+
   createDraftEnrollment(input = {}, context = {}) {
     return this.getEnrollmentService().createDraftEnrollment(input, context);
   }
