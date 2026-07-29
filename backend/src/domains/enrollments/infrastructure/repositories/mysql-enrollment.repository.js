@@ -11,11 +11,30 @@ const DRAFT_ENROLLMENT_DUPLICATE_CONSTRAINT_CODE = "DRAFT_ENROLLMENT_DUPLICATE_C
 const MYSQL_DUPLICATE_ENTRY_CODE = "ER_DUP_ENTRY";
 const MYSQL_DUPLICATE_ENTRY_ERRNO = 1062;
 
+const ENROLLMENT_PROJECTION_SQL = `
+    id,
+    student_person_id,
+    student_profile_id,
+    CAST(unit_id AS CHAR) AS unit_id,
+    responsible_person_id,
+    responsible_profile_id,
+    responsible_relationship_id,
+    status,
+    start_date,
+    end_date,
+    confirmed_at,
+    confirmed_by,
+    created_at,
+    updated_at,
+    deleted_at
+`;
+
 const INSERT_ENROLLMENT_SQL = `
   INSERT INTO ${TABLE_NAME} (
     id,
     student_person_id,
     student_profile_id,
+    unit_id,
     responsible_person_id,
     responsible_profile_id,
     responsible_relationship_id,
@@ -26,21 +45,24 @@ const INSERT_ENROLLMENT_SQL = `
     updated_at,
     deleted_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
 `;
 
 const SELECT_ENROLLMENT_BY_ID_SQL = `
-  SELECT *
+  SELECT
+${ENROLLMENT_PROJECTION_SQL}
   FROM ${TABLE_NAME}
   WHERE id = ?
   LIMIT 1
 `;
 
 const SELECT_ACTIVE_ENROLLMENT_BY_STUDENT_SQL = `
-  SELECT *
+  SELECT
+${ENROLLMENT_PROJECTION_SQL}
   FROM ${TABLE_NAME}
   WHERE status = ?
     AND deleted_at IS NULL
+    AND unit_id = ?
     AND student_person_id = ?
     AND student_profile_id = ?
   ORDER BY confirmed_at DESC, updated_at DESC, created_at DESC, id DESC
@@ -73,10 +95,12 @@ const UPDATE_ENROLLMENT_STATUS_SQL = `
 `;
 
 const SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL = `
-  SELECT *
+  SELECT
+${ENROLLMENT_PROJECTION_SQL}
   FROM ${TABLE_NAME}
   WHERE status = ?
     AND deleted_at IS NULL
+    AND unit_id = ?
     AND student_person_id = ?
     AND student_profile_id = ?
   ORDER BY created_at DESC, id DESC
@@ -84,20 +108,24 @@ const SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL = `
 `;
 
 const SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PERSON_SQL = `
-  SELECT *
+  SELECT
+${ENROLLMENT_PROJECTION_SQL}
   FROM ${TABLE_NAME}
   WHERE status = ?
     AND deleted_at IS NULL
+    AND unit_id = ?
     AND student_person_id = ?
   ORDER BY created_at DESC, id DESC
   LIMIT 1
 `;
 
 const SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL = `
-  SELECT *
+  SELECT
+${ENROLLMENT_PROJECTION_SQL}
   FROM ${TABLE_NAME}
   WHERE status = ?
     AND deleted_at IS NULL
+    AND unit_id = ?
     AND student_profile_id = ?
   ORDER BY created_at DESC, id DESC
   LIMIT 1
@@ -198,6 +226,7 @@ class MySqlEnrollmentRepository {
       values.id,
       values.student_person_id,
       values.student_profile_id,
+      values.unit_id,
       values.responsible_person_id,
       values.responsible_profile_id,
       values.responsible_relationship_id,
@@ -234,23 +263,30 @@ class MySqlEnrollmentRepository {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findActiveByStudent({ studentPersonId = null, studentProfileId = null } = {}) {
+  async findActiveByStudent({
+    studentPersonId = null,
+    studentProfileId = null,
+    unitId = null,
+  } = {}) {
     const personId = nullableText(studentPersonId, 64);
     const profileId = nullableText(studentProfileId, 64);
+    const canonicalUnitId = nullableCanonicalUnitId(unitId);
 
-    if (!personId || !profileId) {
+    if (!personId || !profileId || !canonicalUnitId) {
       return null;
     }
 
     const rows = await this.query(SELECT_ACTIVE_ENROLLMENT_BY_STUDENT_SQL, [
       EnrollmentStatus.ACTIVE,
+      canonicalUnitId,
       personId,
       profileId,
     ]);
 
-    return toEnrollmentDataFromRow(readFirstRow(rows));
+    return toEnrollmentDataFromRowForUnit(readFirstRow(rows), canonicalUnitId);
   }
 
   /**
@@ -344,6 +380,7 @@ class MySqlEnrollmentRepository {
         {
           studentPersonId: values.student_person_id,
           studentProfileId: values.student_profile_id,
+          unitId: values.unit_id,
         },
         dedicatedQuery,
       );
@@ -393,6 +430,7 @@ class MySqlEnrollmentRepository {
           {
             studentPersonId: values.student_person_id,
             studentProfileId: values.student_profile_id,
+            unitId: values.unit_id,
           },
           dedicatedQuery,
         );
@@ -488,31 +526,38 @@ class MySqlEnrollmentRepository {
    * @param {Object} input
    * @param {string|null} [input.studentPersonId]
    * @param {string|null} [input.studentProfileId]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<Record<string, unknown>|null>}
    */
   async findDraftByStudent(
-    { studentPersonId = null, studentProfileId = null } = {},
+    { studentPersonId = null, studentProfileId = null, unitId = null } = {},
     queryRunner = this.query,
   ) {
     const personId = nullableText(studentPersonId, 64);
     const profileId = nullableText(studentProfileId, 64);
+    const canonicalUnitId = nullableCanonicalUnitId(unitId);
+
+    if (!canonicalUnitId) {
+      return null;
+    }
 
     if (personId && profileId) {
       const rows = await queryRunner(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL, [
         EnrollmentStatus.DRAFT,
+        canonicalUnitId,
         personId,
         profileId,
       ]);
 
-      return toEnrollmentDataFromRow(readFirstRow(rows));
+      return toEnrollmentDataFromRowForUnit(readFirstRow(rows), canonicalUnitId);
     }
 
     if (personId) {
-      return this.findDraftByStudentPersonId(personId, queryRunner);
+      return this.findDraftByStudentPersonId(personId, canonicalUnitId, queryRunner);
     }
 
     if (profileId) {
-      return this.findDraftByStudentProfileId(profileId, queryRunner);
+      return this.findDraftByStudentProfileId(profileId, canonicalUnitId, queryRunner);
     }
 
     return null;
@@ -522,32 +567,48 @@ class MySqlEnrollmentRepository {
    * Finds the latest persisted DRAFT Enrollment by student Pessoa id.
    *
    * @param {string} studentPersonId
+   * @param {string} unitId
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findDraftByStudentPersonId(studentPersonId, queryRunner = this.query) {
+  async findDraftByStudentPersonId(studentPersonId, unitId, queryRunner = this.query) {
     const personId = requiredText(studentPersonId, "studentPersonId", 64);
+    const canonicalUnitId = nullableCanonicalUnitId(unitId);
+
+    if (!canonicalUnitId) {
+      return null;
+    }
+
     const rows = await queryRunner(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PERSON_SQL, [
       EnrollmentStatus.DRAFT,
+      canonicalUnitId,
       personId,
     ]);
 
-    return toEnrollmentDataFromRow(readFirstRow(rows));
+    return toEnrollmentDataFromRowForUnit(readFirstRow(rows), canonicalUnitId);
   }
 
   /**
    * Finds the latest persisted DRAFT Enrollment by student profile id.
    *
    * @param {string} studentProfileId
+   * @param {string} unitId
    * @returns {Promise<Record<string, unknown>|null>}
    */
-  async findDraftByStudentProfileId(studentProfileId, queryRunner = this.query) {
+  async findDraftByStudentProfileId(studentProfileId, unitId, queryRunner = this.query) {
     const profileId = requiredText(studentProfileId, "studentProfileId", 64);
+    const canonicalUnitId = nullableCanonicalUnitId(unitId);
+
+    if (!canonicalUnitId) {
+      return null;
+    }
+
     const rows = await queryRunner(SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL, [
       EnrollmentStatus.DRAFT,
+      canonicalUnitId,
       profileId,
     ]);
 
-    return toEnrollmentDataFromRow(readFirstRow(rows));
+    return toEnrollmentDataFromRowForUnit(readFirstRow(rows), canonicalUnitId);
   }
 
   /**
@@ -745,8 +806,27 @@ function toEnrollmentDataFromRow(row) {
     status: normalizeEnrollmentStatus(row.status) || nullableText(row.status, 32),
     studentPersonId: row.student_person_id ?? null,
     studentProfileId: row.student_profile_id ?? null,
+    unitId: row.unit_id == null ? null : String(row.unit_id),
     updatedAt: row.updated_at ?? null,
   };
+}
+
+/**
+ * Fails closed if a query adapter returns a legacy or cross-unit row despite
+ * the canonical unit predicate.
+ *
+ * @param {Record<string, unknown>|null} row
+ * @param {string} unitId
+ * @returns {Record<string, unknown>|null}
+ */
+function toEnrollmentDataFromRowForUnit(row, unitId) {
+  const enrollment = toEnrollmentDataFromRow(row);
+
+  if (!enrollment || enrollment.unitId !== unitId) {
+    return null;
+  }
+
+  return enrollment;
 }
 
 /**
@@ -771,6 +851,7 @@ function toEnrollmentRowValues(enrollment = {}) {
       "studentProfileId",
       64,
     ),
+    unit_id: requiredCanonicalUnitId(enrollment.unitId ?? enrollment.unit_id),
     responsible_person_id: nullableText(
       enrollment.responsiblePersonId ?? enrollment.responsible_person_id,
       64,
@@ -788,11 +869,12 @@ function toEnrollmentRowValues(enrollment = {}) {
 }
 
 /**
- * @param {{ student_person_id: string, student_profile_id: string }} values
+ * @param {{ student_person_id: string, student_profile_id: string, unit_id: string }} values
  * @returns {string}
  */
 function buildDraftEnrollmentLockName(values) {
-  const key = `${values.student_person_id}:${values.student_profile_id}`;
+  const unitId = requiredCanonicalUnitId(values.unit_id);
+  const key = `${unitId}:${values.student_person_id}:${values.student_profile_id}`;
   const hash = createHash("sha256").update(key).digest("hex").slice(0, 32);
 
   return `enrollment:draft:${hash}`;
@@ -1026,6 +1108,34 @@ function nullableText(value, max = 65535) {
   return normalized || null;
 }
 
+/**
+ * Preserves canonical BIGINT identity as a decimal string.
+ *
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function nullableCanonicalUnitId(value) {
+  if (typeof value !== "string" || !/^[1-9][0-9]{0,19}$/u.test(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function requiredCanonicalUnitId(value) {
+  const unitId = nullableCanonicalUnitId(value);
+
+  if (!unitId) {
+    throw new TypeError("MySqlEnrollmentRepository.create requires unitId.");
+  }
+
+  return unitId;
+}
+
 module.exports = {
   ACTIVE_DRAFT_UNIQUE_INDEX_NAME,
   DEFAULT_DRAFT_ENROLLMENT_LOCK_TIMEOUT_SECONDS,
@@ -1034,6 +1144,7 @@ module.exports = {
   DRAFT_ENROLLMENT_LOCK_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_RELEASE_FAILED_CODE,
   DRAFT_ENROLLMENT_LOCK_TIMEOUT_CODE,
+  ENROLLMENT_PROJECTION_SQL,
   ENROLLMENTS_TABLE_NAME: TABLE_NAME,
   GET_DRAFT_ENROLLMENT_LOCK_SQL,
   INSERT_ENROLLMENT_SQL,
@@ -1057,5 +1168,6 @@ module.exports = {
   toEnrollmentStudentScopeData,
   toEnrollmentData,
   toEnrollmentDataFromRow,
+  toEnrollmentDataFromRowForUnit,
   toEnrollmentRowValues,
 };
