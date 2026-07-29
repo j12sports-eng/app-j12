@@ -31,10 +31,17 @@ class MemoryEnrollmentDigitalInvitationRepository {
   async findActiveByEnrollment(enrollmentId) {
     const id = String(enrollmentId ?? "");
     const active = [...this.rows.values()]
-      .filter((row) => row.enrollmentId === id && row.status === EnrollmentDigitalInvitationStatus.ACTIVE)
+      .filter(
+        (row) => row.enrollmentId === id && row.status === EnrollmentDigitalInvitationStatus.ACTIVE,
+      )
       .sort(compareUpdatedDesc)[0];
 
     return clone(active || null);
+  }
+
+  async findActiveByEnrollmentInUnit(input = {}) {
+    const active = await this.findActiveByEnrollment(input.enrollmentId);
+    return active?.unitId === String(input.unitId ?? "") ? active : null;
   }
 
   async findByTokenHash(tokenHash) {
@@ -170,12 +177,15 @@ function clone(value) {
 
 function requiredText(value, field, max = 65535) {
   const normalized = nullableText(value, max);
-  if (!normalized) throw new TypeError(`MemoryEnrollmentDigitalInvitationRepository requires ${field}.`);
+  if (!normalized)
+    throw new TypeError(`MemoryEnrollmentDigitalInvitationRepository requires ${field}.`);
   return normalized;
 }
 
 function nullableText(value, max = 65535) {
-  const normalized = String(value ?? "").trim().slice(0, max);
+  const normalized = String(value ?? "")
+    .trim()
+    .slice(0, max);
   return normalized || null;
 }
 

@@ -18,6 +18,11 @@ const CONTROLLED_ERROR_STATUS_BY_CODE = Object.freeze({
   ENROLLMENT_OPEN_DRAFT_FAILED: 500,
   ENROLLMENT_OPEN_DRAFT_INPUT_INVALID: 400,
   ENROLLMENT_STATE_CONFLICT: 409,
+  ENROLLMENT_INVITATION_ADMIN_FORBIDDEN: 403,
+  ENROLLMENT_INVITATION_ADMIN_INPUT_INVALID: 400,
+  ENROLLMENT_INVITATION_ADMIN_NOT_AVAILABLE: 404,
+  ENROLLMENT_INVITATION_ADMIN_PERSISTENCE_ERROR: 500,
+  ENROLLMENT_INVITATION_ADMIN_STATE_CONFLICT: 409,
   CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED: 400,
   CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS: 409,
   CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND: 404,
@@ -50,10 +55,32 @@ class EnrollmentAdminController {
 
     this.getStatus = this.getStatus.bind(this);
     this.openDraft = this.openDraft.bind(this);
+    this.createDigitalEnrollmentInvitation = this.createDigitalEnrollmentInvitation.bind(this);
     this.searchStudentScopes = this.searchStudentScopes.bind(this);
     this.getCurrentDraft = this.getCurrentDraft.bind(this);
     this.getCurrentActive = this.getCurrentActive.bind(this);
     this.confirmDraft = this.confirmDraft.bind(this);
+  }
+
+  async createDigitalEnrollmentInvitation(req, res, next) {
+    try {
+      readTrustedEnrollmentContext(req);
+      const input = readDigitalEnrollmentInvitationInput(req);
+      if (!input.valid) {
+        return sendBadRequest(res, {
+          code: "ENROLLMENT_INVITATION_ADMIN_INPUT_INVALID",
+          message: "Enrollment invitation admin input is invalid.",
+          missingFields: input.enrollmentId ? [] : ["enrollmentId"],
+        });
+      }
+      const data = await this.getFacade().createDigitalEnrollmentInvitation(
+        { enrollmentId: input.enrollmentId },
+        req.actorContext,
+      );
+      return res.status(201).json(successEnvelope(data));
+    } catch (error) {
+      return handleAdminError(error, res, next);
+    }
   }
 
   /**
@@ -361,6 +388,21 @@ function readConfirmInput(req = {}) {
  * @param {{ studentPersonId: string|null, studentProfileId: string|null }} input
  * @returns {{ code: string, message: string, missingFields: string[], valid: boolean }}
  */
+function readDigitalEnrollmentInvitationInput(req = {}) {
+  const params = req?.params && typeof req.params === "object" ? req.params : {};
+  const body =
+    req?.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const enrollmentId = nullableText(params.enrollmentId, 64);
+  return {
+    enrollmentId,
+    valid: Boolean(
+      enrollmentId &&
+      /^[A-Za-z0-9._:-]{1,64}$/u.test(enrollmentId) &&
+      Object.keys(body).length === 0,
+    ),
+  };
+}
+
 const OPEN_DRAFT_ALLOWED_FIELDS = Object.freeze([
   "responsiblePersonId",
   "startDate",
@@ -506,6 +548,7 @@ module.exports = {
   nullableText,
   normalizeLimit,
   readConfirmInput,
+  readDigitalEnrollmentInvitationInput,
   readOpenDraftInput,
   readStudentScope,
   readStudentScopeSearch,

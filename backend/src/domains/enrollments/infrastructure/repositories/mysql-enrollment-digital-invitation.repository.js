@@ -58,6 +58,16 @@ const SELECT_ACTIVE_INVITATION_BY_ENROLLMENT_SQL = `
   LIMIT 1
 `;
 
+const SELECT_ACTIVE_INVITATION_BY_ENROLLMENT_AND_UNIT_SQL = `
+  SELECT ${INVITATION_PROJECTION}
+  FROM ${TABLE_NAME}
+  WHERE enrollment_id = ?
+    AND unit_id = ?
+    AND status = ?
+  ORDER BY created_at DESC, id DESC
+  LIMIT 1
+`;
+
 const SELECT_INVITATION_BY_TOKEN_HASH_SQL = `
   SELECT ${INVITATION_PROJECTION}
   FROM ${TABLE_NAME}
@@ -130,6 +140,17 @@ class MySqlEnrollmentDigitalInvitationRepository {
     const id = requiredText(enrollmentId, "enrollmentId", 64);
     const rows = await queryRunner(SELECT_ACTIVE_INVITATION_BY_ENROLLMENT_SQL, [
       id,
+      EnrollmentDigitalInvitationStatus.ACTIVE,
+    ]);
+    return toInvitationData(readFirstRow(rows));
+  }
+
+  async findActiveByEnrollmentInUnit(input = {}, queryRunner = this.query) {
+    const enrollmentId = requiredText(input.enrollmentId, "enrollmentId", 64);
+    const unitId = requiredText(input.unitId, "unitId", 64);
+    const rows = await queryRunner(SELECT_ACTIVE_INVITATION_BY_ENROLLMENT_AND_UNIT_SQL, [
+      enrollmentId,
+      unitId,
       EnrollmentDigitalInvitationStatus.ACTIVE,
     ]);
     return toInvitationData(readFirstRow(rows));
@@ -314,7 +335,9 @@ function requiredText(value, field, max = 65535) {
 }
 
 function nullableText(value, max = 65535) {
-  const normalized = String(value ?? "").trim().slice(0, max);
+  const normalized = String(value ?? "")
+    .trim()
+    .slice(0, max);
   return normalized || null;
 }
 
@@ -324,6 +347,7 @@ module.exports = {
   INVITATION_PROJECTION,
   MySqlEnrollmentDigitalInvitationRepository,
   SELECT_ACTIVE_INVITATION_BY_ENROLLMENT_SQL,
+  SELECT_ACTIVE_INVITATION_BY_ENROLLMENT_AND_UNIT_SQL,
   SELECT_INVITATION_BY_ID_SQL,
   SELECT_INVITATION_BY_TOKEN_HASH_SQL,
   TABLE_NAME,

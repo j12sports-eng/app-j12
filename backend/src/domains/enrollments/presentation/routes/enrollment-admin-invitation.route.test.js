@@ -3,38 +3,33 @@ const test = require("node:test");
 
 const { createEnrollmentAdminRouter } = require("./enrollment-admin.routes.js");
 
-test("POST / is mounted only on the authenticated administrative router after ActorContext", async () => {
+test("POST /:enrollmentId/invitations runs the authenticated canonical admin chain", async () => {
   const order = [];
-  const actorContext = Object.freeze({ unitContext: Object.freeze({ unitId: "12" }) });
-  const controller = handlers({
-    openDraft(req, res) {
-      order.push("controller");
-      assert.equal(req.actorContext, actorContext);
-      res.status(201).json({ success: true });
-    },
-  });
   const router = createEnrollmentAdminRouter({
     accessMiddleware: mark(order, "access"),
-    actorContextMiddleware(req, _res, next) {
-      order.push("actorContext");
-      req.actorContext = actorContext;
-      next();
-    },
+    actorContextMiddleware: mark(order, "actorContext"),
     authMiddleware: mark(order, "auth"),
-    controller,
+    controller: handlers({
+      createDigitalEnrollmentInvitation(_req, res) {
+        order.push("controller");
+        res.status(201).json({ success: true });
+      },
+    }),
   });
   const response = createResponse();
-
-  await handle(router, { body: {}, headers: {}, method: "POST", url: "/" }, response);
-
+  await handle(
+    router,
+    { body: {}, headers: {}, method: "POST", url: "/draft-1/invitations" },
+    response,
+  );
   assert.deepEqual(order, ["auth", "access", "actorContext", "controller"]);
   assert.equal(response.statusCode, 201);
 });
 
 function handlers(overrides = {}) {
   return {
-    createDigitalEnrollmentInvitation() {},
     confirmDraft() {},
+    createDigitalEnrollmentInvitation() {},
     getCurrentActive() {},
     getCurrentDraft() {},
     getStatus() {},
@@ -53,9 +48,9 @@ function mark(order, name) {
 
 function handle(router, req, res) {
   return new Promise((resolve, reject) => {
-    const originalJson = res.json.bind(res);
+    const json = res.json.bind(res);
     res.json = (body) => {
-      originalJson(body);
+      json(body);
       resolve();
       return res;
     };
@@ -74,10 +69,10 @@ function createResponse() {
       this.body = body;
       return this;
     },
+    setHeader() {},
     status(statusCode) {
       this.statusCode = statusCode;
       return this;
     },
-    setHeader() {},
   };
 }

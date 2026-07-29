@@ -122,6 +122,7 @@ class EnrollmentFacade {
         enrollmentApplicationService: this.enrollmentService,
         studentApplicationService: options.studentApplicationService || null,
       });
+    this.enrollmentInvitationAdminService = options.enrollmentInvitationAdminService || null;
   }
 
   /** Canonical modern entrypoint: Pessoa -> Aluno profile -> DRAFT Enrollment. */
@@ -151,6 +152,14 @@ class EnrollmentFacade {
       throw new TypeError("EnrollmentFacade requires openDraftEnrollment.");
     }
     return service.openDraftEnrollment(input, actorContext);
+  }
+
+  createDigitalEnrollmentInvitation(input = {}, actorContext = {}) {
+    const service = this.enrollmentInvitationAdminService;
+    if (typeof service?.createDigitalEnrollmentInvitation !== "function") {
+      throw new TypeError("EnrollmentFacade requires createDigitalEnrollmentInvitation.");
+    }
+    return service.createDigitalEnrollmentInvitation(input, actorContext);
   }
 
   createDraftEnrollment(input = {}, context = {}) {

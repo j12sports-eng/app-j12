@@ -48,6 +48,7 @@ for (const [name, createRouter] of ROUTERS) {
       actorContextMiddleware: (_req, _res, next) => next(expected),
       authMiddleware: (_req, _res, next) => next(),
       controller: {
+        createDigitalEnrollmentInvitation() {},
         confirmDraft() {},
         getCurrentActive() {},
         getCurrentDraft() {},
@@ -97,6 +98,7 @@ test("mounted Enrollment route factories opt into the canonical route context co
 
 function controller(order, expectedActorContext) {
   return {
+    createDigitalEnrollmentInvitation() {},
     confirmDraft() {},
     getCurrentActive() {},
     getCurrentDraft() {},

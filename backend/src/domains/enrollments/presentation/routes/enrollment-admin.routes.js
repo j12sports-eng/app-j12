@@ -26,6 +26,19 @@ const ENROLLMENT_ADMIN_ROUTE_BASE_PATH = "/admin/enrollments";
  * @param {Record<string, unknown>} [options.enrollmentRepository]
  * @returns {import("express").Router}
  */
+const {
+  EnrollmentApplicationService,
+} = require("../../application/services/enrollment-application.service.js");
+const {
+  EnrollmentDigitalInvitationService,
+} = require("../../application/services/enrollment-digital-invitation.service.js");
+const {
+  EnrollmentInvitationAdminApplicationService,
+} = require("../../application/services/enrollment-invitation-admin-application.service.js");
+const {
+  MySqlEnrollmentDigitalInvitationRepository,
+} = require("../../infrastructure/repositories/mysql-enrollment-digital-invitation.repository.js");
+
 function createEnrollmentAdminRouter(options = {}) {
   const router = express.Router();
   const controller =
@@ -42,6 +55,7 @@ function createEnrollmentAdminRouter(options = {}) {
   router.use(accessMiddleware);
   router.use(actorContextMiddleware);
 
+  router.post("/:enrollmentId/invitations", controller.createDigitalEnrollmentInvitation);
   router.post("/", controller.openDraft);
   router.get("/students/search", controller.searchStudentScopes);
   router.get("/status", controller.getStatus);
@@ -69,8 +83,45 @@ function createEnrollmentAdminFacade(options = {}) {
       queryRunner: options.queryRunner || null,
     });
 
+  const enrollmentApplicationService =
+    options.enrollmentService ||
+    options.enrollmentApplicationService ||
+    new EnrollmentApplicationService({
+      enrollmentFactory: options.enrollmentFactory,
+      enrollmentRepository,
+    });
+  const invitationRepository =
+    options.invitationRepository ||
+    new MySqlEnrollmentDigitalInvitationRepository({
+      queryRunner: options.invitationQueryRunner || null,
+      transactionRunner: options.invitationTransactionRunner || null,
+    });
+  const invitationService =
+    options.invitationService ||
+    new EnrollmentDigitalInvitationService({
+      authorizeEnrollmentInvitation: async () => true,
+      clock: options.invitationClock,
+      defaultDurationSeconds: options.defaultInvitationDurationSeconds,
+      enrollmentReader: enrollmentApplicationService,
+      invitationRepository,
+      logger: options.logger,
+      tokenGenerator: options.invitationTokenGenerator,
+    });
+  const enrollmentInvitationAdminService =
+    options.enrollmentInvitationAdminService ||
+    new EnrollmentInvitationAdminApplicationService({
+      clock: options.invitationClock,
+      enrollmentReader: enrollmentApplicationService,
+      invitationRepository,
+      invitationService,
+      logger: options.logger,
+      publicInvitationBaseUrl: options.publicInvitationBaseUrl,
+    });
+
   return new EnrollmentFacade({
     ...options,
+    enrollmentApplicationService,
+    enrollmentInvitationAdminService,
     enrollmentRepository,
   });
 }

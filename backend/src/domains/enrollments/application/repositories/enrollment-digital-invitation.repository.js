@@ -5,6 +5,7 @@
  * @property {(input: Record<string, unknown>) => Promise<Record<string, unknown>>} create
  * @property {(id: string) => Promise<Record<string, unknown>|null>} findById
  * @property {(enrollmentId: string) => Promise<Record<string, unknown>|null>} findActiveByEnrollment
+ * @property {(input: { enrollmentId: string, unitId: string }) => Promise<Record<string, unknown>|null>} findActiveByEnrollmentInUnit
  * @property {(tokenHash: string) => Promise<Record<string, unknown>|null>} findByTokenHash
  * @property {(input: { invitationId?: string|null, revokedAt?: string|null, revokedBy?: string|null, replacedByInvitationId?: string|null }) => Promise<{ changed: boolean, invitation: Record<string, unknown>|null }>} revokeInvitation
  * @property {(input: { invitationId?: string|null, expiredAt?: string|null }) => Promise<{ changed: boolean, invitation: Record<string, unknown>|null }>} expireInvitation

@@ -29,6 +29,9 @@ const COMMAND_FIELDS = new Set(["durationSeconds", "enrollmentId"]);
 const REVOKE_FIELDS = new Set(["enrollmentId"]);
 const VIEW_FIELDS = new Set(["enrollmentId"]);
 
+const DEFAULT_DIGITAL_ENROLLMENT_INVITATION_BASE_URL = "/matricula-digital";
+const CANONICAL_CREATE_FIELDS = new Set(["enrollmentId"]);
+
 class EnrollmentInvitationAdminApplicationError extends Error {
   constructor(code, statusCode = 400) {
     super(publicMessageFor(code));
@@ -41,17 +44,52 @@ class EnrollmentInvitationAdminApplicationError extends Error {
 
 class EnrollmentInvitationAdminApplicationService {
   constructor({
+    clock = () => new Date(),
     enrollmentReader = null,
     invitationRepository = null,
     invitationService = null,
     logger = null,
+    publicInvitationBaseUrl = DEFAULT_DIGITAL_ENROLLMENT_INVITATION_BASE_URL,
     unitContextResolver = null,
   } = {}) {
+    this.clock = typeof clock === "function" ? clock : () => new Date();
     this.enrollmentReader = enrollmentReader;
     this.invitationRepository = invitationRepository;
     this.invitationService = invitationService;
     this.logger = logger;
+    this.publicInvitationBaseUrl = normalizeInvitationBaseUrl(publicInvitationBaseUrl);
     this.unitContextResolver = unitContextResolver;
+  }
+
+  async createDigitalEnrollmentInvitation(command = {}, actorContext = {}) {
+    if (!/^[1-9][0-9]{0,19}$/u.test(String(actorContext?.unitContext?.unitId ?? ""))) {
+      throw adminError(ENROLLMENT_INVITATION_ADMIN_ERROR_CODES.FORBIDDEN, 403);
+    }
+    return this.executeMutation(
+      EnrollmentInvitationAdminAction.CREATE_INVITATION,
+      ENROLLMENT_INVITATION_ADMIN_EVENTS.CREATED,
+      command,
+      { actorContext },
+      CANONICAL_CREATE_FIELDS,
+      async ({ actor, enrollmentId }) => {
+        const current = await this.findCurrentInvitationInUnit(enrollmentId, actor.unitId);
+        const invitationCommand = { enrollmentId };
+        const invitationContext = toInvitationServiceContext(actor);
+        const result =
+          current && !isInvitationExpired(current, this.nowDate())
+            ? await this.getInvitationService().renewInvitation(
+                invitationCommand,
+                invitationContext,
+              )
+            : await this.getInvitationService().createInvitation(
+                invitationCommand,
+                invitationContext,
+              );
+
+        await this.assertInvitationUnit(result, actor.unitId);
+        return toCanonicalInvitationDto(result, this.publicInvitationBaseUrl);
+      },
+    );
   }
 
   async create(command = {}, context = {}) {
@@ -138,13 +176,18 @@ class EnrollmentInvitationAdminApplicationService {
   async getCurrent(command = {}, context = {}) {
     const safeCommand = validateAllowedFields(command, VIEW_FIELDS);
     const enrollmentId = requiredEnrollmentId(safeCommand.enrollmentId);
-    const actor = await this.prepareActor(context.actorContext, EnrollmentInvitationAdminAction.VIEW_INVITATION);
+    const actor = await this.prepareActor(
+      context.actorContext,
+      EnrollmentInvitationAdminAction.VIEW_INVITATION,
+    );
 
     try {
       await this.loadOwnedDraftEnrollment(enrollmentId, actor.unitId);
       const invitation = await this.findCurrentInvitation(enrollmentId);
       if (invitation) await this.assertInvitationUnit(invitation, actor.unitId);
-      const result = Object.freeze({ invitation: invitation ? toSafeInvitationDto(invitation) : null });
+      const result = Object.freeze({
+        invitation: invitation ? toSafeInvitationDto(invitation) : null,
+      });
       this.logSafe(ENROLLMENT_INVITATION_ADMIN_EVENTS.VIEWED, {
         actor,
         enrollmentId,
@@ -191,12 +234,12 @@ class EnrollmentInvitationAdminApplicationService {
 
   async prepareActor(actorContext, action) {
     const actor = readActorContext(actorContext);
-    assertEnrollmentInvitationAdminRole(
-      { membershipRole: actor.membershipRole },
-      action,
-    );
+    assertEnrollmentInvitationAdminRole({ membershipRole: actor.membershipRole }, action);
 
-    if (this.unitContextResolver && typeof this.unitContextResolver.resolveUnitContext === "function") {
+    if (
+      this.unitContextResolver &&
+      typeof this.unitContextResolver.resolveUnitContext === "function"
+    ) {
       let unitContext;
       try {
         unitContext = await this.unitContextResolver.resolveUnitContext(
@@ -271,6 +314,25 @@ class EnrollmentInvitationAdminApplicationService {
     }
   }
 
+  async findCurrentInvitationInUnit(enrollmentId, unitId) {
+    try {
+      const repository = this.getInvitationRepository();
+      if (typeof repository.findActiveByEnrollmentInUnit !== "function") {
+        throw adminError(ENROLLMENT_INVITATION_ADMIN_ERROR_CODES.PERSISTENCE_ERROR, 500);
+      }
+      return repository.findActiveByEnrollmentInUnit({ enrollmentId, unitId });
+    } catch (error) {
+      if (error instanceof EnrollmentInvitationAdminApplicationError) throw error;
+      throw adminError(ENROLLMENT_INVITATION_ADMIN_ERROR_CODES.PERSISTENCE_ERROR, 500);
+    }
+  }
+
+  nowDate() {
+    const value = this.clock();
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+  }
+
   async readEnrollment(enrollmentId) {
     const reader = this.enrollmentReader;
     if (typeof reader?.findEnrollmentById === "function") {
@@ -304,7 +366,8 @@ class EnrollmentInvitationAdminApplicationService {
   }
 
   logSafe(action, input = {}) {
-    const writer = typeof this.logger?.info === "function" ? this.logger.info.bind(this.logger) : null;
+    const writer =
+      typeof this.logger?.info === "function" ? this.logger.info.bind(this.logger) : null;
     if (!writer) return;
     const actor = input.actor || {};
 
@@ -350,7 +413,13 @@ function readActorContext(actorContext) {
     unitId: nullableText(unitContext.unitId, 64),
   };
 
-  if (!actor.authIdentityId || !actor.unitId || !actor.membershipRole || !actor.requestId || !actor.correlationId) {
+  if (
+    !actor.authIdentityId ||
+    !actor.unitId ||
+    !actor.membershipRole ||
+    !actor.requestId ||
+    !actor.correlationId
+  ) {
     throw adminError(ENROLLMENT_INVITATION_ADMIN_ERROR_CODES.FORBIDDEN, 403);
   }
 
@@ -393,6 +462,37 @@ function toSafeInvitationDto(invitation) {
     status: normalizeEnrollmentDigitalInvitationStatus(readProperty(invitation, "status")),
     unitId: readProperty(invitation, "unitId"),
   });
+}
+
+function toCanonicalInvitationDto(invitation, baseUrl) {
+  const invitationId = nullableText(readProperty(invitation, "invitationId"), 64);
+  const expiresAt = nullableText(readProperty(invitation, "expiresAt"), 32);
+  const rawToken = nullableText(readProperty(invitation, "rawToken"), 256);
+  const status = normalizeEnrollmentDigitalInvitationStatus(readProperty(invitation, "status"));
+  if (
+    !invitationId ||
+    !expiresAt ||
+    !/^[A-Za-z0-9_-]{43}$/u.test(rawToken || "") ||
+    status !== "ACTIVE"
+  ) {
+    throw adminError(ENROLLMENT_INVITATION_ADMIN_ERROR_CODES.PERSISTENCE_ERROR, 500);
+  }
+  return Object.freeze({
+    expiresAt,
+    invitationId,
+    status,
+    url: `${baseUrl}/${encodeURIComponent(rawToken)}`,
+  });
+}
+
+function isInvitationExpired(invitation, now) {
+  const expiresAt = new Date(readProperty(invitation, "expiresAt"));
+  return Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= now.getTime();
+}
+
+function normalizeInvitationBaseUrl(value) {
+  const normalized = nullableText(value, 2048) || DEFAULT_DIGITAL_ENROLLMENT_INVITATION_BASE_URL;
+  return normalized.replace(/\/+$/u, "");
 }
 
 function mapAdminError(error) {
@@ -445,7 +545,7 @@ function readObject(value) {
 }
 
 function readProperty(value, property) {
-  return value && typeof value === "object" ? value[property] ?? null : null;
+  return value && typeof value === "object" ? (value[property] ?? null) : null;
 }
 
 function nullableText(value, max = 65535) {
@@ -455,6 +555,7 @@ function nullableText(value, max = 65535) {
 }
 
 module.exports = {
+  DEFAULT_DIGITAL_ENROLLMENT_INVITATION_BASE_URL,
   ENROLLMENT_INVITATION_ADMIN_ALLOWED_ROLES,
   ENROLLMENT_INVITATION_ADMIN_ERROR_CODES,
   ENROLLMENT_INVITATION_ADMIN_EVENTS,
@@ -462,6 +563,8 @@ module.exports = {
   EnrollmentInvitationAdminApplicationService,
   adminError,
   mapAdminError,
+  normalizeInvitationBaseUrl,
   readEnrollmentUnitId,
   toSafeInvitationDto,
+  toCanonicalInvitationDto,
 };
