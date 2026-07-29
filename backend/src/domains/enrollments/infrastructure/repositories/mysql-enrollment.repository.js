@@ -59,6 +59,26 @@ ${ENROLLMENT_PROJECTION_SQL}
   LIMIT 1
 `;
 
+// Sprint 29.3E: dedicated allowlisted projection for the token-authorized
+// public entrypoint. The unit predicate prevents cross-unit Enrollment reads.
+const SELECT_PUBLIC_ENROLLMENT_BY_ID_SQL = `
+  SELECT
+    enrollment.id AS enrollment_id,
+    CAST(enrollment.unit_id AS CHAR) AS unit_id,
+    enrollment.status,
+    student.nome AS student_name,
+    student.data_nascimento AS student_birth_date,
+    student.sexo AS student_gender
+  FROM ${TABLE_NAME} enrollment
+  INNER JOIN people student
+    ON student.id = enrollment.student_person_id
+   AND student.ativo = 1
+  WHERE enrollment.id = ?
+    AND enrollment.unit_id = ?
+    AND enrollment.deleted_at IS NULL
+  LIMIT 1
+`;
+
 const SELECT_ACTIVE_ENROLLMENT_BY_STUDENT_SQL = `
   SELECT
 ${ENROLLMENT_PROJECTION_SQL}
@@ -339,6 +359,18 @@ class MySqlEnrollmentRepository {
     const rows = await queryRunner(SELECT_ENROLLMENT_BY_ID_SQL, [enrollmentId]);
 
     return toEnrollmentDataFromRow(readFirstRow(rows));
+  }
+
+  /**
+   * Returns only the public student fields required to begin the digital form.
+   * The trusted unit comes from the already-resolved invitation, never from HTTP.
+   */
+  async findPublicById(input = {}, queryRunner = this.query) {
+    const enrollmentId = requiredText(input.enrollmentId, "enrollmentId", 64);
+    const unitId = requiredCanonicalUnitId(input.unitId);
+    const rows = await queryRunner(SELECT_PUBLIC_ENROLLMENT_BY_ID_SQL, [enrollmentId, unitId]);
+
+    return toPublicEnrollmentDataFromRow(readFirstRow(rows));
   }
 
   /**
@@ -1022,6 +1054,30 @@ function toEnrollmentDataFromRow(row) {
   };
 }
 
+function toPublicEnrollmentDataFromRow(row) {
+  if (!row || typeof row !== "object") return null;
+
+  return {
+    enrollmentId: nullableText(row.enrollment_id, 64),
+    status: normalizeEnrollmentStatus(row.status) || nullableText(row.status, 32),
+    student: {
+      birthDate: normalizePublicDate(row.student_birth_date),
+      gender: nullableText(row.student_gender, 30),
+      name: nullableText(row.student_name, 191),
+    },
+    unitId: row.unit_id == null ? null : String(row.unit_id),
+  };
+}
+
+function normalizePublicDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const normalized = nullableText(value, 32);
+  return normalized ? normalized.slice(0, 10) : null;
+}
+
 /**
  * Fails closed if a query adapter returns a legacy or cross-unit row despite
  * the canonical unit predicate.
@@ -1408,6 +1464,7 @@ module.exports = {
   SELECT_DRAFT_ENROLLMENT_BY_STUDENT_PROFILE_SQL,
   SELECT_DRAFT_ENROLLMENT_BY_STUDENT_SQL,
   SELECT_ENROLLMENT_BY_ID_SQL,
+  SELECT_PUBLIC_ENROLLMENT_BY_ID_SQL,
   UPDATE_ENROLLMENT_STATUS_SQL,
   START_TRANSACTION_SQL,
   COMMIT_TRANSACTION_SQL,
@@ -1425,6 +1482,7 @@ module.exports = {
   toEnrollmentStudentScopeData,
   toEnrollmentData,
   toEnrollmentDataFromRow,
+  toPublicEnrollmentDataFromRow,
   toEnrollmentDataFromRowForUnit,
   toEnrollmentRowValues,
 };

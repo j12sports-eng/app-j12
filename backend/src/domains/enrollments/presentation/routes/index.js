@@ -1,4 +1,5 @@
 module.exports = Object.freeze({
+  ...require("./enrollment-digital-public.routes.js"),
   ...require("./enrollment-admin.routes.js"),
   ...require("./enrollment-invitation-admin.routes.js"),
   ...require("./enrollment-invitation-public.routes.js"),

@@ -10,6 +10,9 @@
  * @property {(enrollment: import("../../domain/entities/enrollment.entity.js").Enrollment|Record<string, unknown>) => Promise<{ enrollment: unknown|null, created: boolean, reused: boolean }>} createDraftIfNotExists
  * @property {(id: string) => Promise<unknown|null>} findById
  *   Read-only lookup by aggregate id used by internal confirmation flows.
+ * @property {({ enrollmentId, unitId }: { enrollmentId: string, unitId: string }) => Promise<{ enrollmentId: string, unitId: string, status: string, student: { name: string|null, birthDate: string|null, gender: string|null } }|null>} findPublicById
+ *   Unit-scoped read-only projection used by the public digital Enrollment entrypoint.
+ *   It deliberately omits ownership identifiers, audit fields and administrative data.
  * @property {(enrollment: unknown) => Promise<void>} validateDraftOwnership
  *   Validates canonical unit, responsible, profiles, student and relationship before modern persistence.
  * @property {({ responsiblePersonId, studentPersonId, unitId }: { responsiblePersonId: string, studentPersonId: string, unitId: string }) => Promise<Record<string, unknown>>} resolveDraftOpeningOwnership

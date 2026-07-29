@@ -57,9 +57,11 @@ const stateRoutes = require("./routes/state.routes.js");
 const turmasRoutes = require("./routes/turmas.routes.js");
 const unidadesRoutes = require("./routes/unidades.routes.js");
 const {
+  createEnrollmentDigitalPublicRouter,
   createEnrollmentAdminRouter,
   createEnrollmentInvitationPublicRouter,
   createEnrollmentPublicRouter,
+  ENROLLMENT_DIGITAL_PUBLIC_ROUTE_BASE_PATH,
   ENROLLMENT_ADMIN_ROUTE_BASE_PATH,
   ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH,
   ENROLLMENT_PUBLIC_ROUTE_BASE_PATH,
@@ -115,6 +117,7 @@ const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS || 15000);
 
 const app = express();
 const server = http.createServer(app);
+const enrollmentDigitalPublicRoutes = createEnrollmentDigitalPublicRouter();
 const enrollmentAdminRoutes = createEnrollmentAdminRouter();
 const enrollmentInvitationPublicRoutes = createEnrollmentInvitationPublicRouter();
 const enrollmentPublicRoutes = createEnrollmentPublicRouter();
@@ -491,6 +494,7 @@ mount(
   [ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`],
   enrollmentPublicRoutes,
 );
+mount([ENROLLMENT_DIGITAL_PUBLIC_ROUTE_BASE_PATH], enrollmentDigitalPublicRoutes);
 mount(
   [`/api${ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH}`],
   enrollmentInvitationPublicRoutes,
