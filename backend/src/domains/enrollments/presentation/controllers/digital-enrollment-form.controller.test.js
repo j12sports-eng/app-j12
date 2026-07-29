@@ -15,8 +15,10 @@ test("controller forwards only token and command to the form service", async () 
   const res = response();
   await controller.updateStudent(
     {
-      body: { fields: { name: "Aluno" }, revision: 1 },
+      body: { fields: { name: "Aluno" }, revision: 1, unitId: "999", unit_id: "999" },
+      headers: { "x-unit-id": "999" },
       params: { token: "A".repeat(43) },
+      query: { unitId: "999", unit_id: "999" },
     },
     res,
   );

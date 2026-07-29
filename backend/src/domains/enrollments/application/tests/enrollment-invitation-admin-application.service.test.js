@@ -190,6 +190,46 @@ test("EnrollmentInvitationAdminApplicationService revalidates UnitContext when r
   );
 });
 
+test("EnrollmentInvitationAdminApplicationService ignores a client-selected unit during revalidation", async () => {
+  const resolverCalls = [];
+  const serviceCalls = [];
+  const service = createService({
+    invitationService: {
+      async createInvitation(command, serviceContext) {
+        serviceCalls.push({ command, serviceContext });
+        return invitationResult({ unitId: "12" });
+      },
+      renewInvitation() {},
+      revokeInvitation() {},
+    },
+    unitContextResolver: {
+      async resolveUnitContext(command) {
+        resolverCalls.push(command);
+        return {
+          membershipRole: "admin",
+          unitId: "12",
+        };
+      },
+    },
+  });
+
+  await service.create(
+    { enrollmentId: "enrollment-1" },
+    context({
+      unitContext: {
+        membershipId: "membership-client-selected",
+        membershipRole: "admin",
+        unitId: "13",
+      },
+    }),
+  );
+
+  assert.deepEqual(resolverCalls, [
+    { authIdentityId: "identity-1", requestedUnitId: null },
+  ]);
+  assert.equal(serviceCalls[0].serviceContext.unitId, "12");
+});
+
 test("EnrollmentInvitationAdminApplicationService handles create races without returning loser token", async () => {
   let created = false;
   const service = createService({

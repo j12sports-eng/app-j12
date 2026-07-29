@@ -47,7 +47,7 @@ class DigitalEnrollmentFormController {
       const data =
         operation === "getForm" || operation === "getReview"
           ? await service[operation](token)
-          : await service[operation](token, req.body || {});
+          : await service[operation](token, readFormCommand(req));
       return res.json({ data, success: true });
     } catch (error) {
       this.logger?.warn?.("[enrollments] digital form request rejected", {
@@ -70,4 +70,16 @@ class DigitalEnrollmentFormController {
   }
 }
 
-module.exports = { DigitalEnrollmentFormController };
+function readFormCommand(req = {}) {
+  const body =
+    req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  return {
+    fields:
+      body.fields && typeof body.fields === "object" && !Array.isArray(body.fields)
+        ? body.fields
+        : {},
+    revision: body.revision,
+  };
+}
+
+module.exports = { DigitalEnrollmentFormController, readFormCommand };

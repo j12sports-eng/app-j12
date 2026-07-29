@@ -202,7 +202,7 @@ class EnrollmentInvitationAdminApplicationService {
         unitContext = await this.unitContextResolver.resolveUnitContext(
           {
             authIdentityId: actor.authIdentityId,
-            requestedUnitId: actor.unitId,
+            requestedUnitId: null,
           },
           {
             authIdentityId: actor.authIdentityId,

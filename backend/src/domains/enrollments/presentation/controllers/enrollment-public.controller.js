@@ -1,4 +1,8 @@
 const { EnrollmentFacade } = require("../../application/facades/enrollment.facade.js");
+const {
+  ENROLLMENT_TRUSTED_UNIT_CONTEXT_REQUIRED_CODE,
+  readTrustedEnrollmentContext,
+} = require("../../application/security/trusted-enrollment-context.js");
 
 const ENROLLMENT_PUBLIC_INPUT_REQUIRED_CODE = "ENROLLMENT_PUBLIC_INPUT_REQUIRED";
 const ENROLLMENT_PUBLIC_ALREADY_ACTIVE_CODE = "ENROLLMENT_PUBLIC_ALREADY_ACTIVE";
@@ -9,6 +13,8 @@ const PUBLIC_CONTROLLED_ERROR_STATUS_BY_CODE = Object.freeze({
   CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED: 400,
   CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS: 409,
   CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND: 404,
+  CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED: 403,
+  [ENROLLMENT_TRUSTED_UNIT_CONTEXT_REQUIRED_CODE]: 403,
   ENROLLMENT_PROCEED_BLOCKED: 409,
   ENROLLMENT_PROCEED_CONFLICT: 409,
   ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED: 400,
@@ -49,7 +55,8 @@ class EnrollmentPublicController {
    */
   async getStatus(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -74,7 +81,8 @@ class EnrollmentPublicController {
    */
   async getCurrentDraft(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -99,7 +107,8 @@ class EnrollmentPublicController {
    */
   async getCurrentActive(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -124,6 +133,7 @@ class EnrollmentPublicController {
    */
   async confirmDraft(req, res, next) {
     try {
+      const context = readTrustedEnrollmentContext(req);
       const input = readConfirmInput(req);
       const validation = validateConfirmInput(input);
 
@@ -131,7 +141,7 @@ class EnrollmentPublicController {
         return sendBadRequest(res, validation);
       }
 
-      const data = await this.getFacade().confirmDraftEnrollment(input);
+      const data = await this.getFacade().confirmDraftEnrollment(input, context);
 
       if (data?.alreadyConfirmed) {
         return sendControlledError(res, {
@@ -236,14 +246,16 @@ function handlePublicError(error, res, next) {
 
 /**
  * @param {Object} req
+ * @param {{ unitId: string }} context
  * @returns {{ studentPersonId: string|null, studentProfileId: string|null }}
  */
-function readStudentScope(req = {}) {
+function readStudentScope(req = {}, context = readTrustedEnrollmentContext(req)) {
   const query = req?.query && typeof req.query === "object" ? req.query : {};
 
   return {
     studentPersonId: nullableText(query.studentPersonId ?? query.student_person_id, 64),
     studentProfileId: nullableText(query.studentProfileId ?? query.student_profile_id, 64),
+    unitId: context.unitId,
   };
 }
 

@@ -20,7 +20,7 @@ class EnrollmentInvitationPublicController {
       });
 
       return res.json({
-        data,
+        data: toPublicInvitationResponse(data),
         success: true,
       });
     } catch (error) {
@@ -75,6 +75,19 @@ function readTokenParam(req = {}) {
   return nullableText(params.token, 256);
 }
 
+function toPublicInvitationResponse(value = {}) {
+  const capabilities = readProperty(value, "capabilities");
+  return Object.freeze({
+    available: readProperty(value, "available") === true,
+    capabilities: Object.freeze({
+      canContinue: readProperty(capabilities, "canContinue") === true,
+      requiresAuthentication: readProperty(capabilities, "requiresAuthentication") === true,
+    }),
+    expiresAt: nullableText(readProperty(value, "expiresAt"), 32),
+    nextStep: nullableText(readProperty(value, "nextStep"), 64),
+  });
+}
+
 function readProperty(value, property) {
   return value && typeof value === "object" ? value[property] ?? null : null;
 }
@@ -90,4 +103,5 @@ module.exports = {
   applyPublicInvitationResponseHeaders,
   readTokenParam,
   sendGenericNotAvailable,
+  toPublicInvitationResponse,
 };

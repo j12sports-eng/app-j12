@@ -1,4 +1,7 @@
 const { EnrollmentFacade } = require("../facades/enrollment.facade.js");
+const {
+  readTrustedEnrollmentContext,
+} = require("../security/trusted-enrollment-context.js");
 
 /**
  * Internal HTTP controller prepared for future Enrollment routes.
@@ -24,7 +27,8 @@ class EnrollmentInternalController {
    * @returns {Promise<{ success: true, data: unknown }>}
    */
   async getStatus(request = {}) {
-    const data = await this.getFacade().getEnrollmentStatusSummary(readStudentScope(request));
+    const context = readTrustedEnrollmentContext(request);
+    const data = await this.getFacade().getEnrollmentStatusSummary(readStudentScope(request, context));
 
     return successResponse(data);
   }
@@ -36,7 +40,8 @@ class EnrollmentInternalController {
    * @returns {Promise<{ success: true, data: unknown }>}
    */
   async getCurrentDraft(request = {}) {
-    const data = await this.getFacade().findCurrentDraftEnrollment(readStudentScope(request));
+    const context = readTrustedEnrollmentContext(request);
+    const data = await this.getFacade().findCurrentDraftEnrollment(readStudentScope(request, context));
 
     return successResponse(data);
   }
@@ -48,7 +53,8 @@ class EnrollmentInternalController {
    * @returns {Promise<{ success: true, data: unknown }>}
    */
   async getCurrentActive(request = {}) {
-    const data = await this.getFacade().findCurrentActiveEnrollment(readStudentScope(request));
+    const context = readTrustedEnrollmentContext(request);
+    const data = await this.getFacade().findCurrentActiveEnrollment(readStudentScope(request, context));
 
     return successResponse(data);
   }
@@ -60,7 +66,8 @@ class EnrollmentInternalController {
    * @returns {Promise<{ success: true, data: unknown }>}
    */
   async confirm(request = {}) {
-    const data = await this.getFacade().confirmDraftEnrollment(readConfirmInput(request));
+    const context = readTrustedEnrollmentContext(request);
+    const data = await this.getFacade().confirmDraftEnrollment(readConfirmInput(request), context);
 
     return successResponse(data);
   }
@@ -104,14 +111,18 @@ function errorResponse(error) {
 
 /**
  * @param {Object} request
+ * @param {{ unitId: string }} context
  * @returns {{ studentPersonId: string|null, studentProfileId: string|null }}
  */
-function readStudentScope(request = {}) {
-  const source = readRequestSource(request);
+function readStudentScope(request = {}, context = readTrustedEnrollmentContext(request)) {
+  const query = request.query
+    ? readObject(request.query)
+    : readObject(request);
 
   return {
-    studentPersonId: nullableText(source.studentPersonId ?? source.student_person_id, 64),
-    studentProfileId: nullableText(source.studentProfileId ?? source.student_profile_id, 64),
+    studentPersonId: nullableText(query.studentPersonId ?? query.student_person_id, 64),
+    studentProfileId: nullableText(query.studentProfileId ?? query.student_profile_id, 64),
+    unitId: context.unitId,
   };
 }
 
@@ -120,36 +131,34 @@ function readStudentScope(request = {}) {
  * @returns {{ confirmedBy: string|null, enrollmentId: string|null }}
  */
 function readConfirmInput(request = {}) {
-  const source = readRequestSource(request);
+  const params = readObject(request.params);
+  const body = readObject(request.body);
+  const direct = !request.params && !request.body ? readObject(request) : {};
   const user = request?.user || request?.auth || {};
   const confirmedBy =
-    source.confirmedBy ||
-    source.confirmed_by ||
     user.email ||
     user.username ||
     user.id ||
-    source.requestedBy ||
-    source.requested_by;
+    body.confirmedBy ||
+    body.confirmed_by ||
+    direct.confirmedBy ||
+    direct.confirmed_by;
 
   return {
     confirmedBy: nullableText(confirmedBy, 191),
-    enrollmentId: nullableText(source.enrollmentId ?? source.enrollment_id ?? source.id, 64),
+    enrollmentId: nullableText(
+      params.enrollmentId ?? params.enrollment_id ?? params.id ?? body.enrollmentId ?? direct.enrollmentId ?? direct.enrollment_id ?? direct.id,
+      64,
+    ),
   };
 }
 
 /**
- * @param {Object} request
+ * @param {unknown} value
  * @returns {Record<string, unknown>}
  */
-function readRequestSource(request = {}) {
-  return {
-    ...(request?.query && typeof request.query === "object" ? request.query : {}),
-    ...(request?.params && typeof request.params === "object" ? request.params : {}),
-    ...(request?.body && typeof request.body === "object" ? request.body : {}),
-    ...(request && typeof request === "object" && !request.query && !request.params && !request.body
-      ? request
-      : {}),
-  };
+function readObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 /**

@@ -1,4 +1,7 @@
 const { EnrollmentFacade } = require("../../application/facades/enrollment.facade.js");
+const {
+  readTrustedEnrollmentContext,
+} = require("../../application/security/trusted-enrollment-context.js");
 
 const ENROLLMENT_INTERNAL_INPUT_REQUIRED_CODE = "ENROLLMENT_INTERNAL_INPUT_REQUIRED";
 
@@ -35,7 +38,8 @@ class EnrollmentInternalController {
    */
   async getStatus(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -60,7 +64,8 @@ class EnrollmentInternalController {
    */
   async getCurrentDraft(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -85,7 +90,8 @@ class EnrollmentInternalController {
    */
   async getCurrentActive(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -110,6 +116,7 @@ class EnrollmentInternalController {
    */
   async confirmDraft(req, res, next) {
     try {
+      const context = readTrustedEnrollmentContext(req);
       const input = readConfirmInput(req);
       const validation = validateConfirmInput(input);
 
@@ -117,7 +124,7 @@ class EnrollmentInternalController {
         return sendBadRequest(res, validation);
       }
 
-      const data = await this.getFacade().confirmDraftEnrollment(input);
+      const data = await this.getFacade().confirmDraftEnrollment(input, context);
 
       return sendSuccess(res, data);
     } catch (error) {
@@ -175,14 +182,16 @@ function sendBadRequest(res, validation) {
 
 /**
  * @param {Object} req
+ * @param {{ unitId: string }} context
  * @returns {{ studentPersonId: string|null, studentProfileId: string|null }}
  */
-function readStudentScope(req = {}) {
+function readStudentScope(req = {}, context = readTrustedEnrollmentContext(req)) {
   const query = req?.query && typeof req.query === "object" ? req.query : {};
 
   return {
     studentPersonId: nullableText(query.studentPersonId ?? query.student_person_id, 64),
     studentProfileId: nullableText(query.studentProfileId ?? query.student_profile_id, 64),
+    unitId: context.unitId,
   };
 }
 

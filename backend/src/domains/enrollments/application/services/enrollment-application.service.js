@@ -10,6 +10,8 @@ const {
 
 const CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED_CODE = "CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED";
 const CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND_CODE = "CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND";
+const CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED_CODE =
+  "CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED";
 const CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS_CODE = "CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS";
 const ACTIVE_ENROLLMENT_GUARD_INPUT_REQUIRED_CODE = "ACTIVE_ENROLLMENT_GUARD_INPUT_REQUIRED";
 const ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE = "ACTIVE_ENROLLMENT_ALREADY_EXISTS";
@@ -17,6 +19,8 @@ const ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED_CODE = "ENROLLMENT_PROCEED_GUARD_I
 const ENROLLMENT_PROCEED_BLOCKED_CODE = "ENROLLMENT_PROCEED_BLOCKED";
 const ENROLLMENT_PROCEED_CONFLICT_CODE = "ENROLLMENT_PROCEED_CONFLICT";
 const ENROLLMENT_PROCEED_STATUS_VALUES = Object.freeze(["NONE", "DRAFT", "ACTIVE", "CONFLICT"]);
+const ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE =
+  "ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED";
 const ENROLLMENT_CANCEL_ACCESS_DENIED_CODE = "ENROLLMENT_CANCEL_ACCESS_DENIED";
 const ENROLLMENT_CANCEL_FAILED_CODE = "ENROLLMENT_CANCEL_FAILED";
 const ENROLLMENT_CANCEL_INPUT_INVALID_CODE = "ENROLLMENT_CANCEL_INPUT_INVALID";
@@ -304,18 +308,28 @@ class EnrollmentApplicationService {
    * @param {Object} input
    * @param {string|null} [input.query]
    * @param {number|string|null} [input.limit]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<unknown[]>}
    */
   async searchStudentScopes(input = {}) {
     const query = nullableText(input.query ?? input.q ?? input.search, 100);
+    const unitId = normalizeCanonicalUnitId(input.unitId, { nullable: true });
 
     if (!query || query.length < 2) {
       return [];
+    }
+    if (!unitId) {
+      throw controlledError(
+        "searchStudentScopes requires trusted unitId.",
+        ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE,
+        { statusCode: 403 },
+      );
     }
 
     return this.getEnrollmentStudentScopeSearchReader().searchStudentScopes({
       limit: normalizeSearchLimit(input.limit),
       query,
+      unitId,
     });
   }
 
@@ -605,10 +619,12 @@ class EnrollmentApplicationService {
    * @param {string|null} [input.enrollmentId]
    * @param {string|null} [input.confirmedBy]
    * @param {string|null} [input.confirmedAt]
+   * @param {{ unitId?: string|null }} context
    * @returns {Promise<{ alreadyConfirmed: boolean, confirmed: boolean, confirmedAt: string|null, confirmedBy: string|null, enrollment: unknown|null, status: string }>}
    */
-  async confirmDraftEnrollment(input = {}) {
+  async confirmDraftEnrollment(input = {}, context = {}) {
     const enrollmentId = nullableText(input.enrollmentId, 64);
+    const trustedUnitId = requireConfirmationUnitContext(context);
 
     if (!enrollmentId) {
       throw controlledError(
@@ -629,6 +645,13 @@ class EnrollmentApplicationService {
     }
 
     const unitId = requirePersistedEnrollmentUnit(currentEnrollment);
+    if (unitId !== trustedUnitId) {
+      throw controlledError(
+        "Enrollment unit ownership does not match trusted context.",
+        ENROLLMENT_UNIT_OWNERSHIP_CONFLICT_CODE,
+        { statusCode: 404 },
+      );
+    }
     const currentStatus = normalizeEnrollmentStatus(readProperty(currentEnrollment, "status"));
     const confirmedAt = normalizeTimestamp(input.confirmedAt);
     const confirmedBy = nullableText(input.confirmedBy, 191);
@@ -842,6 +865,23 @@ function ensureSameEnrollmentUnit(requestedEnrollment, existingEnrollment) {
   }
 }
 
+function requireConfirmationUnitContext(context) {
+  try {
+    const unitId = normalizeCanonicalUnitId(readProperty(context, "unitId"), {
+      nullable: true,
+    });
+    if (unitId) return unitId;
+  } catch {
+    // Invalid context is handled by the same fail-closed error below.
+  }
+
+  throw controlledError(
+    "Trusted unit context is required for Enrollment confirmation.",
+    CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED_CODE,
+    { statusCode: 403 },
+  );
+}
+
 /**
  * Confirmation never adopts a legacy or malformed Enrollment ownership.
  *
@@ -1010,9 +1050,11 @@ module.exports = {
   CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED_CODE,
   CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS_CODE,
   CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND_CODE,
+  CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED_CODE,
   ENROLLMENT_PROCEED_BLOCKED_CODE,
   ENROLLMENT_PROCEED_CONFLICT_CODE,
   ENROLLMENT_PROCEED_GUARD_INPUT_REQUIRED_CODE,
+  ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE,
   ENROLLMENT_CANCEL_ACCESS_DENIED_CODE,
   ENROLLMENT_CANCEL_FAILED_CODE,
   ENROLLMENT_CANCEL_INPUT_INVALID_CODE,

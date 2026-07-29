@@ -14,9 +14,15 @@ test("EnrollmentInvitationPublicController returns a minimal success envelope wi
       async resolveByToken(command) {
         assert.deepEqual(command, { rawToken: "A".repeat(43) });
         return {
+          available: true,
+          capabilities: {
+            canContinue: false,
+            requiresAuthentication: false,
+          },
           enrollmentId: "enrollment-draft",
+          expiresAt: "2026-08-01 12:00:00",
           invitationId: "invitation-1",
-          status: "ACTIVE",
+          nextStep: "WAIT_FOR_ADMIN",
           unitId: "unit-1",
         };
       },
@@ -28,7 +34,17 @@ test("EnrollmentInvitationPublicController returns a minimal success envelope wi
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.success, true);
-  assert.equal(res.body.data.invitationId, "invitation-1");
+  assert.deepEqual(res.body.data, {
+    available: true,
+    capabilities: {
+      canContinue: false,
+      requiresAuthentication: false,
+    },
+    expiresAt: "2026-08-01 12:00:00",
+    nextStep: "WAIT_FOR_ADMIN",
+  });
+  assert.equal("unitId" in res.body.data, false);
+  assert.equal("invitationId" in res.body.data, false);
   assert.equal(JSON.stringify(res.body).includes("A".repeat(43)), false);
   assert.equal(JSON.stringify(res.body).includes("tokenHash"), false);
 });

@@ -493,10 +493,11 @@ class EnrollmentFacade {
   }
   /**
    * @param {Object} input
+   * @param {Object} context
    * @returns {Promise<unknown>}
    */
-  async confirmDraftEnrollment(input = {}) {
-    const result = await this.getEnrollmentService().confirmDraftEnrollment(input);
+  async confirmDraftEnrollment(input = {}, context = {}) {
+    const result = await this.getEnrollmentService().confirmDraftEnrollment(input, context);
 
     await this.emitEnrollmentConfirmedEventWhenNeeded(result);
 

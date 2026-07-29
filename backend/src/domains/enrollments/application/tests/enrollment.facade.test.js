@@ -98,10 +98,12 @@ test("EnrollmentFacade delegates draft creation and emits draft-created event on
 
 test("EnrollmentFacade delegates confirmation and emits confirmed event", async () => {
   const events = [];
+  const calls = [];
   const facade = new EnrollmentFacade({
     clock: () => "2026-06-30T12:30:00.000Z",
     enrollmentService: {
-      async confirmDraftEnrollment(input) {
+      async confirmDraftEnrollment(input, context) {
+        calls.push({ context, input });
         return {
           confirmed: true,
           enrollment: {
@@ -121,9 +123,14 @@ test("EnrollmentFacade delegates confirmation and emits confirmed event", async 
     },
   });
 
-  const result = await facade.confirmDraftEnrollment({ enrollmentId: "confirmed-1" });
+  const context = Object.freeze({ unitId: "1" });
+  const result = await facade.confirmDraftEnrollment(
+    { enrollmentId: "confirmed-1" },
+    context,
+  );
 
   assert.equal(result.confirmed, true);
+  assert.deepEqual(calls, [{ context, input: { enrollmentId: "confirmed-1" } }]);
   assert.equal(events.length, 1);
   assert.equal(events[0].type, "EnrollmentConfirmed");
   assert.equal(events[0].enrollmentId, "confirmed-1");

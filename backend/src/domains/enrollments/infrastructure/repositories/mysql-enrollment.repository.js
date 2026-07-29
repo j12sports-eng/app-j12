@@ -150,6 +150,7 @@ const SEARCH_ENROLLMENT_STUDENT_SCOPES_SQL = `
     ON enrollment.student_person_id = profile.person_id
    AND enrollment.student_profile_id = profile.id
    AND enrollment.deleted_at IS NULL
+   AND enrollment.unit_id = ?
   WHERE profile.profile_type = 'aluno'
     AND (
       person.nome LIKE ? ESCAPE '\\\\'
@@ -619,12 +620,17 @@ class MySqlEnrollmentRepository {
    * @param {Object} input
    * @param {string|null} [input.query]
    * @param {number|string|null} [input.limit]
+   * @param {string|null} [input.unitId]
    * @returns {Promise<Array<Record<string, unknown>>>}
    */
-  async searchStudentScopes({ query = null, limit = 10 } = {}) {
+  async searchStudentScopes({ query = null, limit = 10, unitId = null } = {}) {
     const search = nullableText(query, 100);
+    const canonicalUnitId = nullableCanonicalUnitId(unitId);
 
     if (!search || search.length < 2) {
+      return [];
+    }
+    if (!canonicalUnitId) {
       return [];
     }
 
@@ -641,6 +647,7 @@ class MySqlEnrollmentRepository {
     const rows = await this.query(searchSql, [
       EnrollmentStatus.DRAFT,
       EnrollmentStatus.ACTIVE,
+      canonicalUnitId,
       likeTerm,
       likeTerm,
       documentTerm,

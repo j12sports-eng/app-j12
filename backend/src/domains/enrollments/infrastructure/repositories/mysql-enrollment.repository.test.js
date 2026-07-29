@@ -32,12 +32,31 @@ test("MySqlEnrollmentRepository embeds only a normalized search limit", async ()
     },
   });
 
-  await repository.searchStudentScopes({ query: "Aluno Jornada", limit: 999 });
+  await repository.searchStudentScopes({
+    query: "Aluno Jornada",
+    limit: 999,
+    unitId: UNIT_ID,
+  });
 
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /LIMIT 25/);
   assert.doesNotMatch(calls[0].sql, /LIMIT \?/);
-  assert.equal(calls[0].params.length, 8);
+  assert.match(calls[0].sql, /enrollment\.unit_id = \?/u);
+  assert.equal(calls[0].params.length, 9);
+  assert.equal(calls[0].params[2], UNIT_ID);
+});
+
+test("MySqlEnrollmentRepository does not search Enrollment scopes without unit", async () => {
+  let queryCalls = 0;
+  const repository = new MySqlEnrollmentRepository({
+    queryRunner: async () => {
+      queryCalls += 1;
+      return [];
+    },
+  });
+
+  assert.deepEqual(await repository.searchStudentScopes({ query: "Aluno" }), []);
+  assert.equal(queryCalls, 0);
 });
 
 test("all Enrollment aggregate reads explicitly CAST unit_id AS CHAR", () => {

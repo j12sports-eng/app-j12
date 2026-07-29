@@ -1,4 +1,8 @@
 const { EnrollmentFacade } = require("../../application/facades/enrollment.facade.js");
+const {
+  ENROLLMENT_TRUSTED_UNIT_CONTEXT_REQUIRED_CODE,
+  readTrustedEnrollmentContext,
+} = require("../../application/security/trusted-enrollment-context.js");
 
 const ENROLLMENT_ADMIN_INPUT_REQUIRED_CODE = "ENROLLMENT_ADMIN_INPUT_REQUIRED";
 const ENROLLMENT_ADMIN_ALREADY_ACTIVE_CODE = "ENROLLMENT_ADMIN_ALREADY_ACTIVE";
@@ -10,6 +14,9 @@ const CONTROLLED_ERROR_STATUS_BY_CODE = Object.freeze({
   CONFIRM_DRAFT_ENROLLMENT_ID_REQUIRED: 400,
   CONFIRM_DRAFT_ENROLLMENT_INVALID_STATUS: 409,
   CONFIRM_DRAFT_ENROLLMENT_NOT_FOUND: 404,
+  CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED: 403,
+  ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED: 403,
+  [ENROLLMENT_TRUSTED_UNIT_CONTEXT_REQUIRED_CODE]: 403,
   ENROLLMENT_ADMIN_ALREADY_ACTIVE: 409,
   ENROLLMENT_ADMIN_INPUT_REQUIRED: 400,
   ENROLLMENT_ADMIN_SEARCH_QUERY_REQUIRED: 400,
@@ -51,7 +58,8 @@ class EnrollmentAdminController {
    */
   async searchStudentScopes(req, res, next) {
     try {
-      const input = readStudentScopeSearch(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScopeSearch(req, context);
       const validation = validateStudentScopeSearch(input);
 
       if (!validation.valid) {
@@ -76,7 +84,8 @@ class EnrollmentAdminController {
    */
   async getStatus(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -101,7 +110,8 @@ class EnrollmentAdminController {
    */
   async getCurrentDraft(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -126,7 +136,8 @@ class EnrollmentAdminController {
    */
   async getCurrentActive(req, res, next) {
     try {
-      const input = readStudentScope(req);
+      const context = readTrustedEnrollmentContext(req);
+      const input = readStudentScope(req, context);
       const validation = validateStudentScope(input);
 
       if (!validation.valid) {
@@ -151,6 +162,7 @@ class EnrollmentAdminController {
    */
   async confirmDraft(req, res, next) {
     try {
+      const context = readTrustedEnrollmentContext(req);
       const input = readConfirmInput(req);
       const validation = validateConfirmInput(input);
 
@@ -158,7 +170,7 @@ class EnrollmentAdminController {
         return sendBadRequest(res, validation);
       }
 
-      const data = await this.getFacade().confirmDraftEnrollment(input);
+      const data = await this.getFacade().confirmDraftEnrollment(input, context);
 
       if (data?.alreadyConfirmed) {
         return sendControlledError(res, {
@@ -263,27 +275,31 @@ function handleAdminError(error, res, next) {
 
 /**
  * @param {Object} req
+ * @param {{ unitId: string }} context
  * @returns {{ studentPersonId: string|null, studentProfileId: string|null }}
  */
-function readStudentScope(req = {}) {
+function readStudentScope(req = {}, context = readTrustedEnrollmentContext(req)) {
   const query = req?.query && typeof req.query === "object" ? req.query : {};
 
   return {
     studentPersonId: nullableText(query.studentPersonId ?? query.student_person_id, 64),
     studentProfileId: nullableText(query.studentProfileId ?? query.student_profile_id, 64),
+    unitId: context.unitId,
   };
 }
 
 /**
  * @param {Object} req
+ * @param {{ unitId: string }} context
  * @returns {{ limit: number, query: string|null }}
  */
-function readStudentScopeSearch(req = {}) {
+function readStudentScopeSearch(req = {}, context = readTrustedEnrollmentContext(req)) {
   const query = req?.query && typeof req.query === "object" ? req.query : {};
 
   return {
     limit: normalizeLimit(query.limit),
     query: nullableText(query.q ?? query.query ?? query.search, 100),
+    unitId: context.unitId,
   };
 }
 

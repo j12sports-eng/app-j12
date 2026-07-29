@@ -3,8 +3,10 @@ const test = require("node:test");
 
 const {
   ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
+  CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED_CODE,
   ENROLLMENT_PROCEED_BLOCKED_CODE,
   ENROLLMENT_PROCEED_CONFLICT_CODE,
+  ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE,
   EnrollmentApplicationService,
 } = require("../services/enrollment-application.service.js");
 
@@ -106,11 +108,14 @@ test("EnrollmentApplicationService confirms DRAFT to ACTIVE with audit metadata"
   });
   const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
 
-  const result = await service.confirmDraftEnrollment({
-    confirmedAt: "2026-06-30T10:15:30.000Z",
-    confirmedBy: "admin@j12.local",
-    enrollmentId: "draft-confirm",
-  });
+  const result = await service.confirmDraftEnrollment(
+    {
+      confirmedAt: "2026-06-30T10:15:30.000Z",
+      confirmedBy: "admin@j12.local",
+      enrollmentId: "draft-confirm",
+    },
+    { unitId: "1" },
+  );
 
   assert.equal(result.confirmed, true);
   assert.equal(result.alreadyConfirmed, false);
@@ -149,9 +154,11 @@ test("EnrollmentApplicationService blocks confirmation when ACTIVE already exist
   });
   const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
 
-  await assert.rejects(() => service.confirmDraftEnrollment({ enrollmentId: "draft-blocked" }), {
+  await assert.rejects(
+    () => service.confirmDraftEnrollment({ enrollmentId: "draft-blocked" }, { unitId: "1" }), {
     code: ACTIVE_ENROLLMENT_ALREADY_EXISTS_CODE,
-  });
+    },
+  );
   assert.equal(repository.updateCalls.length, 0);
 });
 
@@ -167,9 +174,59 @@ test("EnrollmentApplicationService blocks confirmation without persisted unit ow
   });
   const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
 
-  await assert.rejects(() => service.confirmDraftEnrollment({ enrollmentId: "legacy-draft" }), {
-    code: "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT",
+  await assert.rejects(
+    () => service.confirmDraftEnrollment({ enrollmentId: "legacy-draft" }, { unitId: "1" }),
+    {
+      code: "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT",
+    },
+  );
+  assert.equal(repository.updateCalls.length, 0);
+});
+
+test("EnrollmentApplicationService rejects confirmation without trusted unit before repository reads", async () => {
+  let reads = 0;
+  const service = new EnrollmentApplicationService({
+    enrollmentRepository: {
+      async findById() {
+        reads += 1;
+        return null;
+      },
+    },
   });
+
+  await assert.rejects(
+    () => service.confirmDraftEnrollment({ enrollmentId: "draft-without-context" }),
+    {
+      code: CONFIRM_DRAFT_ENROLLMENT_UNIT_CONTEXT_REQUIRED_CODE,
+      statusCode: 403,
+    },
+  );
+  assert.equal(reads, 0);
+});
+
+test("EnrollmentApplicationService rejects confirmation from another trusted unit", async () => {
+  const repository = new FakeEnrollmentRepository();
+  repository.seed({
+    id: "draft-other-unit",
+    startDate: "2026-06-30",
+    status: "DRAFT",
+    studentPersonId: "person-other-unit",
+    studentProfileId: "profile-other-unit",
+    unitId: "1",
+  });
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+
+  await assert.rejects(
+    () =>
+      service.confirmDraftEnrollment(
+        { enrollmentId: "draft-other-unit" },
+        { unitId: "2" },
+      ),
+    {
+      code: "ENROLLMENT_UNIT_OWNERSHIP_CONFLICT",
+      statusCode: 404,
+    },
+  );
   assert.equal(repository.updateCalls.length, 0);
 });
 
@@ -274,7 +331,11 @@ test("EnrollmentApplicationService searches student scopes through repository", 
   ];
 
   const shortSearch = await service.searchStudentScopes({ query: "a" });
-  const results = await service.searchStudentScopes({ limit: 999, query: "Aluno" });
+  const results = await service.searchStudentScopes({
+    limit: 999,
+    query: "Aluno",
+    unitId: "1",
+  });
 
   assert.deepEqual(shortSearch, []);
   assert.deepEqual(results, repository.studentScopes);
@@ -282,8 +343,20 @@ test("EnrollmentApplicationService searches student scopes through repository", 
     {
       limit: 25,
       query: "Aluno",
+      unitId: "1",
     },
   ]);
+});
+
+test("EnrollmentApplicationService fails closed when search has no trusted unit", async () => {
+  const repository = new FakeEnrollmentRepository();
+  const service = new EnrollmentApplicationService({ enrollmentRepository: repository });
+
+  await assert.rejects(() => service.searchStudentScopes({ query: "Aluno" }), {
+    code: ENROLLMENT_SEARCH_UNIT_CONTEXT_REQUIRED_CODE,
+    statusCode: 403,
+  });
+  assert.deepEqual(repository.searchCalls, []);
 });
 
 test("EnrollmentApplicationService guards allowed, ACTIVE blocked and CONFLICT blocked states", async () => {
