@@ -11,6 +11,33 @@ const PERSON_WRITER_CLASSIFICATIONS = Object.freeze([
 
 const AUDITED_PERSON_WRITERS = Object.freeze([
   Object.freeze({
+    classification: 'MODERN_SYNCHRONIZED',
+    directSql: true,
+    file: 'backend/src/domains/enrollments/infrastructure/digital-enrollment-form.gateway.js',
+    id: 'DIGITAL_ENROLLMENT_FORM_PERSON_UPDATE',
+    operations: Object.freeze(['UPDATE']),
+    reason: 'Canonical digital form gateway updates the owned people row inside its transaction.',
+    synchronized: true,
+  }),
+  Object.freeze({
+    classification: 'TEST_FIXTURE',
+    directSql: true,
+    file: 'backend/src/domains/enrollments/infrastructure/digital-enrollment-form.gateway.test.js',
+    id: 'DIGITAL_ENROLLMENT_FORM_GATEWAY_SQL_FIXTURE',
+    operations: Object.freeze(['UPDATE']),
+    reason: 'Gateway fixture applies parameterized update columns only in memory.',
+    synchronized: true,
+  }),
+  Object.freeze({
+    classification: 'TEST_FIXTURE',
+    directSql: true,
+    file: 'backend/src/domains/pessoas/person-digital-enrollment-fields.test.js',
+    id: 'PERSON_DIGITAL_FIELDS_SQL_FIXTURE',
+    operations: Object.freeze(['INSERT']),
+    reason: 'Person field test fixture captures canonical parameterized inserts without a database.',
+    synchronized: true,
+  }),
+  Object.freeze({
     classification: "MODERN_SYNCHRONIZED",
     directSql: false,
     file: "backend/src/domains/pessoas/person.repository.js",

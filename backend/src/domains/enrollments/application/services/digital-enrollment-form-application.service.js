@@ -28,7 +28,14 @@ const OPERATION_FIELD_ALLOWLISTS = Object.freeze({
     "street",
   ]),
   updateResponsible: new Set(["email", "name", "phone"]),
-  updateStudent: new Set(["birthDate", "name"]),
+  updateStudent: new Set([
+    "birthCity",
+    "birthDate",
+    "birthState",
+    "bloodType",
+    "name",
+    "nationality",
+  ]),
 });
 
 class DigitalEnrollmentFormApplicationService {
@@ -50,13 +57,27 @@ class DigitalEnrollmentFormApplicationService {
     for (const operation of PUBLIC_OPERATIONS) this[operation] = this[operation].bind(this);
   }
 
-  async getForm(rawToken) { return this.execute("getForm", rawToken); }
-  async updateResponsible(rawToken, command = {}) { return this.execute("updateResponsible", rawToken, command); }
-  async updateStudent(rawToken, command = {}) { return this.execute("updateStudent", rawToken, command); }
-  async updateAddress(rawToken, command = {}) { return this.execute("updateAddress", rawToken, command); }
-  async updateAdditionalInformation(rawToken, command = {}) { return this.execute("updateAdditionalInformation", rawToken, command); }
-  async advanceStep(rawToken, command = {}) { return this.execute("advanceStep", rawToken, command); }
-  async getReview(rawToken) { return this.execute("getReview", rawToken); }
+  async getForm(rawToken) {
+    return this.execute("getForm", rawToken);
+  }
+  async updateResponsible(rawToken, command = {}) {
+    return this.execute("updateResponsible", rawToken, command);
+  }
+  async updateStudent(rawToken, command = {}) {
+    return this.execute("updateStudent", rawToken, command);
+  }
+  async updateAddress(rawToken, command = {}) {
+    return this.execute("updateAddress", rawToken, command);
+  }
+  async updateAdditionalInformation(rawToken, command = {}) {
+    return this.execute("updateAdditionalInformation", rawToken, command);
+  }
+  async advanceStep(rawToken, command = {}) {
+    return this.execute("advanceStep", rawToken, command);
+  }
+  async getReview(rawToken) {
+    return this.execute("getReview", rawToken);
+  }
 
   async execute(operation, rawToken, command = {}) {
     if (!PUBLIC_OPERATIONS.includes(operation)) throw blocked();
@@ -136,14 +157,20 @@ class DigitalEnrollmentFormApplicationService {
 
 function sanitizeCommandEnvelope(operation, command) {
   const source = command && typeof command === "object" && !Array.isArray(command) ? command : {};
-  const sourceFields = source.fields && typeof source.fields === "object" && !Array.isArray(source.fields) ? source.fields : {};
+  const sourceFields =
+    source.fields && typeof source.fields === "object" && !Array.isArray(source.fields)
+      ? source.fields
+      : {};
   const allowlist = OPERATION_FIELD_ALLOWLISTS[operation] || new Set();
   const unexpectedFields = Object.keys(sourceFields).filter((field) => !allowlist.has(field));
   if (unexpectedFields.length > 0) throw blocked();
   const isWrite = !new Set(["getForm", "getReview"]).has(operation);
-  if (isWrite && (!Number.isSafeInteger(source.revision) || source.revision < 1)) throw invalidCommand("revision is required.");
+  if (isWrite && (!Number.isSafeInteger(source.revision) || source.revision < 1))
+    throw invalidCommand("revision is required.");
   return Object.freeze({
-    fields: Object.freeze(Object.fromEntries(Object.entries(sourceFields).filter(([field]) => allowlist.has(field)))),
+    fields: Object.freeze(
+      Object.fromEntries(Object.entries(sourceFields).filter(([field]) => allowlist.has(field))),
+    ),
     revision: Number.isSafeInteger(source.revision) ? source.revision : null,
   });
 }

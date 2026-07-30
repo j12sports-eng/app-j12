@@ -176,6 +176,46 @@ test("fails closed when invitation has no unit ownership", async () => {
   );
 });
 
+test("gateway accepts canonical birth fields and preserves undefined values", async () => {
+  const { gateway, state } = fixture();
+  let form = await gateway.executeDigitalEnrollmentOperation({
+    command: {
+      fields: {
+        birthCity: "Goiania",
+        birthState: "GO",
+        bloodType: "O-",
+        nationality: "Brasileira",
+      },
+      revision: 1,
+    },
+    invitation: INVITATION,
+    operation: "updateStudent",
+  });
+  assert.deepEqual(
+    {
+      birthCity: form.student.birthCity,
+      birthState: form.student.birthState,
+      bloodType: form.student.bloodType,
+      nationality: form.student.nationality,
+    },
+    {
+      birthCity: "Goiania",
+      birthState: "GO",
+      bloodType: "O-",
+      nationality: "Brasileira",
+    },
+  );
+
+  form = await gateway.executeDigitalEnrollmentOperation({
+    command: { fields: { birthCity: undefined, bloodType: null }, revision: 2 },
+    invitation: INVITATION,
+    operation: "updateStudent",
+  });
+  assert.equal(form.student.birthCity, "Goiania");
+  assert.equal(form.student.bloodType, "");
+  assert.equal(state.people["student-1"].birthCity, "Goiania");
+});
+
 function fixture(overrides = {}) {
   const baseEnrollment = {
     id: "enrollment-1",
@@ -283,6 +323,10 @@ function fixture(overrides = {}) {
 }
 function applyColumn(person, column, value) {
   const map = {
+    birth_city: ["birthCity"],
+    birth_state: ["birthState"],
+    blood_type: ["bloodType"],
+    nationality: ["nationality"],
     nome: ["name", "fullName"],
     email: ["contact", "email"],
     telefone: ["contact", "phone"],

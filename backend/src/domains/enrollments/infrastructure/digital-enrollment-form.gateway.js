@@ -9,6 +9,10 @@ const {
 } = require("../application/services/digital-enrollment-contract.service.js");
 
 const PERSON_FIELD_COLUMNS = Object.freeze({
+  birthCity: "birth_city",
+  birthState: "birth_state",
+  nationality: "nationality",
+  bloodType: "blood_type",
   birthDate: "data_nascimento",
   city: "cidade",
   complement: "complemento",
@@ -248,6 +252,7 @@ async function updatePerson(queryRunner, personId, fields) {
   const assignments = [];
   const params = [];
   for (const [field, value] of entries) {
+    if (value === undefined) continue;
     const column = PERSON_FIELD_COLUMNS[field];
     if (!column) throw invalidStep();
     const normalized = normalizePersonField(field, value);
@@ -271,6 +276,10 @@ async function updatePerson(queryRunner, personId, fields) {
 }
 function normalizePersonField(field, value) {
   const limits = {
+    birthCity: 191,
+    birthState: 50,
+    nationality: 191,
+    bloodType: 20,
     birthDate: 10,
     city: 191,
     complement: 191,
@@ -309,8 +318,12 @@ function toFormDto({ progress, responsible, student }) {
       phone: responsible.contact?.phone || "",
     }),
     student: Object.freeze({
+      birthCity: student.birthCity || "",
       birthDate: student.birthDate || "",
+      birthState: student.birthState || "",
+      bloodType: student.bloodType || "",
       name: student.name?.fullName || "",
+      nationality: student.nationality || "",
     }),
   });
 }

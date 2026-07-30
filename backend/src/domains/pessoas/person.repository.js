@@ -30,6 +30,10 @@ const CREATE_PEOPLE_TABLE_SQL = `
     ativo TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    birth_city VARCHAR(191) NULL,
+    birth_state VARCHAR(50) NULL,
+    nationality VARCHAR(191) NULL,
+    blood_type VARCHAR(20) NULL,
 
     INDEX idx_people_nome (nome),
     INDEX idx_people_cpf (cpf),
@@ -63,6 +67,10 @@ const UPDATE_COLUMN_MAP = Object.freeze({
   celular_normalized: "celular_normalized",
   cpf_normalized: "cpf_normalized",
   email_normalized: "email_normalized",
+  birth_city: "birth_city",
+  birth_state: "birth_state",
+  nationality: "nationality",
+  blood_type: "blood_type",
 });
 
 /**
@@ -132,9 +140,13 @@ class PersonRepository {
           email_normalized,
           telefone_normalized,
           celular_normalized,
+          birth_city,
+          birth_state,
+          nationality,
+          blood_type,
           ativo
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -157,6 +169,10 @@ class PersonRepository {
         values.email_normalized,
         values.telefone_normalized,
         values.celular_normalized,
+        values.birth_city,
+        values.birth_state,
+        values.nationality,
+        values.blood_type,
         values.ativo,
       ],
     );

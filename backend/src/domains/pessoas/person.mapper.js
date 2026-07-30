@@ -8,6 +8,10 @@ const { Person } = require("./person.entity.js");
  * @property {string|null} [rg]
  * @property {string|null} [sexo]
  * @property {string|null} [dataNascimento]
+ * @property {string|null} [birthCity]
+ * @property {string|null} [birthState]
+ * @property {string|null} [nationality]
+ * @property {string|null} [bloodType]
  * @property {string|null} [email]
  * @property {string|null} [telefone]
  * @property {string|null} [celular]
@@ -63,6 +67,9 @@ function toPersonDataFromRow(row) {
   const persistenceData = {
     ativo: normalizeBoolean(row.ativo),
     bairro: row.bairro ?? null,
+    birthCity: row.birth_city ?? null,
+    birthState: row.birth_state ?? null,
+    bloodType: row.blood_type ?? null,
     celular: row.celular ?? null,
     cep: row.cep ?? null,
     cidade: row.cidade ?? null,
@@ -75,6 +82,7 @@ function toPersonDataFromRow(row) {
     id: row.id ?? null,
     logradouro: row.logradouro ?? null,
     nome: row.nome ?? null,
+    nationality: row.nationality ?? null,
     numero: row.numero ?? null,
     rg: row.rg ?? null,
     sexo: row.sexo ?? null,
@@ -129,6 +137,9 @@ function toPersonRowValues(data = {}) {
   return {
     ativo: active ? 1 : 0,
     bairro: nullableText(data.bairro ?? data.address?.district, 191),
+    birth_city: nullableText(data.birthCity, 191),
+    birth_state: nullableText(data.birthState, 50),
+    blood_type: nullableText(data.bloodType, 20),
     celular: nullableText(readOwnOrFallback(data, "celular", data.contact?.mobilePhone), 50),
     cep: nullableText(data.cep ?? data.address?.zipCode, 20),
     cidade: nullableText(data.cidade ?? data.address?.city, 191),
@@ -140,6 +151,7 @@ function toPersonRowValues(data = {}) {
     id: nullableText(data.id, 64),
     logradouro: nullableText(data.logradouro ?? data.address?.street, 191),
     nome: text(data.nome ?? data.name?.fullName ?? data.name?.displayName, 191),
+    nationality: nullableText(data.nationality, 191),
     numero: nullableText(data.numero ?? data.address?.number, 30),
     rg: nullableText(data.rg ?? rg, 30),
     sexo: nullableText(data.sexo, 30),

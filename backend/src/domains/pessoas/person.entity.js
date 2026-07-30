@@ -16,6 +16,10 @@ class Person {
     this.address = data.address ?? null;
     this.profiles = Array.isArray(data.profiles) ? data.profiles : [];
     this.birthDate = data.birthDate ?? null;
+    this.birthCity = data.birthCity ?? null;
+    this.birthState = data.birthState ?? null;
+    this.nationality = data.nationality ?? null;
+    this.bloodType = data.bloodType ?? null;
     this.status = data.status ?? null;
     this.createdAt = data.createdAt ?? null;
     this.updatedAt = data.updatedAt ?? null;
@@ -29,12 +33,16 @@ class Person {
   toJSON() {
     return {
       address: this.address,
+      birthCity: this.birthCity,
       birthDate: this.birthDate,
+      birthState: this.birthState,
+      bloodType: this.bloodType,
       contact: this.contact,
       createdAt: this.createdAt,
       documents: this.documents,
       id: this.id,
       name: this.name,
+      nationality: this.nationality,
       profiles: this.profiles,
       status: this.status,
       updatedAt: this.updatedAt,
