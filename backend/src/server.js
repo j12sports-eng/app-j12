@@ -494,7 +494,10 @@ mount(
   [ENROLLMENT_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_PUBLIC_ROUTE_BASE_PATH}`],
   enrollmentPublicRoutes,
 );
-mount([ENROLLMENT_DIGITAL_PUBLIC_ROUTE_BASE_PATH], enrollmentDigitalPublicRoutes);
+mount(
+  [ENROLLMENT_DIGITAL_PUBLIC_ROUTE_BASE_PATH, `/api${ENROLLMENT_DIGITAL_PUBLIC_ROUTE_BASE_PATH}`],
+  enrollmentDigitalPublicRoutes,
+);
 mount(
   [`/api${ENROLLMENT_INVITATION_PUBLIC_ROUTE_BASE_PATH}`],
   enrollmentInvitationPublicRoutes,

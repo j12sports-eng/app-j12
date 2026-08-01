@@ -31,6 +31,34 @@ test("EnrollmentDigitalPublicController reads the token and returns the public D
   assert.deepEqual(res.body, dto);
 });
 
+test("EnrollmentDigitalPublicController forwards the canonical section command", async () => {
+  const token = "A".repeat(43);
+  const data = { progress: { revision: 3 } };
+  const controller = new EnrollmentDigitalPublicController({
+    formService: {
+      async updateSection(receivedToken, command) {
+        assert.equal(receivedToken, token);
+        assert.deepEqual(command, {
+          fields: { name: "Aluno" },
+          revision: 2,
+          section: "student",
+        });
+        return data;
+      },
+    },
+  });
+  const res = createResponse();
+  await controller.patchByToken(
+    {
+      params: { token },
+      body: { fields: { name: "Aluno" }, revision: 2, section: "student", unitId: "ignored" },
+    },
+    res,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { data, success: true });
+});
+
 test("EnrollmentDigitalPublicController returns the same generic body for every failure", async () => {
   const logged = [];
   const controller = new EnrollmentDigitalPublicController({
@@ -61,6 +89,27 @@ test("EnrollmentDigitalPublicController returns the same generic body for every 
   assert.equal(JSON.stringify(logged).includes(token), false);
   assert.equal(JSON.stringify(res.body).includes("sensitive internal detail"), false);
 });
+
+for (const [statusCode, expectedStatus] of [
+  [400, 400],
+  [409, 409],
+  [404, 404],
+]) {
+  test(`EnrollmentDigitalPublicController maps persistence failure ${statusCode}`, async () => {
+    const controller = new EnrollmentDigitalPublicController({
+      formService: {
+        async updateSection() {
+          throw Object.assign(new Error("internal"), { statusCode });
+        },
+      },
+    });
+    const res = createResponse();
+    await controller.patchByToken({ params: { token: "A".repeat(43) }, body: {} }, res);
+    assert.equal(res.statusCode, expectedStatus);
+    assert.equal(res.body.success, false);
+    assert.equal(JSON.stringify(res.body).includes("internal"), false);
+  });
+}
 
 function createResponse() {
   return {

@@ -214,7 +214,7 @@ function defaultPolicies() {
       match: (req) =>
         /(?:\/public\/|\/enrollments\/public|\/enrollments\/digital-invitations\/public(?:\/|$))/.test(
           req.path || "",
-        ),
+        ) || isDigitalEnrollmentPublicPath(req.path),
       max: positive(null, process.env.PUBLIC_RATE_LIMIT_MAX, 90),
       windowMs: positive(null, process.env.PUBLIC_RATE_LIMIT_WINDOW_MS, 60_000),
     },
@@ -243,10 +243,13 @@ function isHealthPath(path) {
 function isSensitiveRequest(req) {
   return (
     /^\/(?:api\/)?auth(?:\/|$)/.test(req.path || req.originalUrl || "") ||
-    /^\/(?:api\/)?enrollments\/digital-invitations\/public(?:\/|$)/.test(
-      req.path || req.originalUrl || "",
-    ) ||
+    isDigitalEnrollmentPublicPath(req.path || req.originalUrl) ||
     Boolean(req.headers?.authorization)
+  );
+}
+function isDigitalEnrollmentPublicPath(path) {
+  return /^\/(?:api\/)?(?:enrollments\/digital-invitations\/public|matricula-digital)(?:\/|$)/.test(
+    path || "",
   );
 }
 function pruneStore(store, timestamp, policies) {
@@ -263,6 +266,7 @@ module.exports = {
   createSecurityAuditMiddleware,
   createSecurityHeadersMiddleware,
   createSlidingWindowRateLimiter,
+  isDigitalEnrollmentPublicPath,
   logSecurityEvent,
   validateAuthInput,
 };

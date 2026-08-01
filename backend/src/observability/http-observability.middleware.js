@@ -71,7 +71,7 @@ function readId(value) {
 }
 
 const SENSITIVE_PATH_PATTERN =
-  /((?:\/api)?\/enrollments\/digital-invitations\/public)\/[^/?#\s]+/gi;
+  /((?:\/api)?\/(?:enrollments\/digital-invitations\/public|matricula-digital))\/[^/?#\s]+/gi;
 
 function sanitizeSensitivePath(value) {
   return String(value ?? "").replace(SENSITIVE_PATH_PATTERN, "$1/[REDACTED]");

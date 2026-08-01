@@ -37,6 +37,12 @@ const OPERATION_FIELD_ALLOWLISTS = Object.freeze({
     "nationality",
   ]),
 });
+const SECTION_OPERATION_BY_NAME = Object.freeze({
+  responsible: "updateResponsible",
+  student: "updateStudent",
+  address: "updateAddress",
+  "additional-information": "updateAdditionalInformation",
+});
 
 class DigitalEnrollmentFormApplicationService {
   constructor({
@@ -55,6 +61,7 @@ class DigitalEnrollmentFormApplicationService {
     this.logger = logger;
 
     for (const operation of PUBLIC_OPERATIONS) this[operation] = this[operation].bind(this);
+    this.updateSection = this.updateSection.bind(this);
   }
 
   async getForm(rawToken) {
@@ -77,6 +84,24 @@ class DigitalEnrollmentFormApplicationService {
   }
   async getReview(rawToken) {
     return this.execute("getReview", rawToken);
+  }
+
+  /** Canonical public command: maps an allowlisted section to the existing operation. */
+  async updateSection(rawToken, command = {}) {
+    const source = command && typeof command === "object" && !Array.isArray(command) ? command : {};
+    const section = typeof source.section === "string" ? source.section : null;
+    const operation = Object.prototype.hasOwnProperty.call(SECTION_OPERATION_BY_NAME, section)
+      ? SECTION_OPERATION_BY_NAME[section]
+      : null;
+    if (!operation) throw invalidCommand("section is invalid.");
+    if (!source.fields || typeof source.fields !== "object" || Array.isArray(source.fields)) {
+      throw invalidCommand("fields is required.");
+    }
+    const allowlist = OPERATION_FIELD_ALLOWLISTS[operation];
+    if (Object.keys(source.fields).some((field) => !allowlist.has(field))) {
+      throw invalidCommand("fields contains an unsupported field.");
+    }
+    return this[operation](rawToken, { fields: source.fields, revision: source.revision });
   }
 
   async execute(operation, rawToken, command = {}) {
@@ -209,6 +234,7 @@ module.exports = {
   DigitalEnrollmentFormApplicationService,
   OPERATION_FIELD_ALLOWLISTS,
   PUBLIC_OPERATIONS,
+  SECTION_OPERATION_BY_NAME,
   blocked,
   documentPolicyNotConfigured,
   documentsIncomplete,

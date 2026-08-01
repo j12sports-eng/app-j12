@@ -7,6 +7,7 @@ const read = (relative) => readFile(new URL(relative, import.meta.url), "utf8");
 test("digital invitation client stays isolated from legacy and browser persistence", async () => {
   const client = await read("../api/digital-invitation-public.ts");
   assert.match(client, /digital-invitations\/public/);
+  assert.match(client, /DIGITAL_ENROLLMENT_CANONICAL_BASE_PATH = "\/api\/matricula-digital"/);
   assert.match(client, /credentials: "omit"/);
   assert.match(client, /cache: "no-store"/);
   assert.match(client, /revision/);

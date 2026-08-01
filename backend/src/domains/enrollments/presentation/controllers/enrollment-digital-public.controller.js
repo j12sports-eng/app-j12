@@ -7,11 +7,17 @@ const ENROLLMENT_PUBLIC_ERROR_MESSAGE = "Convite de matricula digital indisponiv
 
 /** Thin HTTP boundary; all token and Enrollment rules stay in application. */
 class EnrollmentDigitalPublicController {
-  constructor({ enrollmentPublicApplicationService = null, logger = null } = {}) {
+  constructor({
+    enrollmentPublicApplicationService = null,
+    formService = null,
+    logger = null,
+  } = {}) {
     this.enrollmentPublicApplicationService =
       enrollmentPublicApplicationService || new EnrollmentPublicApplicationService();
+    this.formService = formService;
     this.logger = logger;
     this.getByToken = this.getByToken.bind(this);
+    this.patchByToken = this.patchByToken.bind(this);
   }
 
   async getByToken(req, res) {
@@ -23,6 +29,19 @@ class EnrollmentDigitalPublicController {
     } catch (error) {
       this.logRejected(error);
       return sendPublicNotAvailable(res);
+    }
+  }
+
+  async patchByToken(req, res) {
+    try {
+      const data = await this.getFormService().updateSection(
+        readTokenParam(req),
+        readSectionCommand(req),
+      );
+      return res.json({ data, success: true });
+    } catch (error) {
+      this.logRejected(error, "patch");
+      return sendPublicPersistenceError(res, error);
     }
   }
 
@@ -38,14 +57,29 @@ class EnrollmentDigitalPublicController {
     return this.enrollmentPublicApplicationService;
   }
 
-  logRejected(error) {
+  getFormService() {
+    if (!this.formService || typeof this.formService.updateSection !== "function") {
+      throw new TypeError(
+        "EnrollmentDigitalPublicController requires DigitalEnrollmentFormApplicationService.",
+      );
+    }
+    return this.formService;
+  }
+
+  logRejected(error, operation = "get") {
     const writer =
       typeof this.logger?.warn === "function" ? this.logger.warn.bind(this.logger) : null;
     writer?.("[enrollments] digital public controller rejected request", {
       code: nullableText(error?.code, 96) || ENROLLMENT_PUBLIC_NOT_AVAILABLE_CODE,
+      operation,
       result: "not_available",
     });
   }
+}
+
+function readSectionCommand(req = {}) {
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  return { fields: body.fields, revision: body.revision, section: body.section };
 }
 
 function applyEnrollmentPublicSecurityHeaders(_req, res, next) {
@@ -69,6 +103,24 @@ function sendPublicNotAvailable(res) {
   });
 }
 
+function sendPublicPersistenceError(res, error) {
+  if (error?.statusCode === 400) {
+    return res.status(400).json({
+      code: "DIGITAL_ENROLLMENT_INVALID_COMMAND",
+      error: "Dados do formulario invalidos.",
+      success: false,
+    });
+  }
+  if (error?.statusCode === 409) {
+    return res.status(409).json({
+      code: "DIGITAL_ENROLLMENT_PROGRESS_CONFLICT",
+      error: "O formulario foi atualizado em outra sessao.",
+      success: false,
+    });
+  }
+  return sendPublicNotAvailable(res);
+}
+
 function nullableText(value, max = 65535) {
   const normalized = String(value ?? "")
     .trim()
@@ -80,6 +132,8 @@ module.exports = {
   ENROLLMENT_PUBLIC_ERROR_MESSAGE,
   EnrollmentDigitalPublicController,
   applyEnrollmentPublicSecurityHeaders,
+  readSectionCommand,
   readTokenParam,
+  sendPublicPersistenceError,
   sendPublicNotAvailable,
 };

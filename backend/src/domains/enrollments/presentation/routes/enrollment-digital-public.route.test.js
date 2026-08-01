@@ -7,13 +7,17 @@ const {
   createEnrollmentDigitalPublicRouter,
 } = require("./enrollment-digital-public.routes.js");
 
-test("GET /matricula-digital/:token is public and applies secret-safe headers", async () => {
+test("GET and PATCH /matricula-digital/:token are public and apply secret-safe headers", async () => {
   const calls = [];
   const router = createEnrollmentDigitalPublicRouter({
     controller: {
       getByToken(_req, res) {
-        calls.push("controller");
+        calls.push("get");
         return res.json({ ok: true });
+      },
+      patchByToken(_req, res) {
+        calls.push("patch");
+        return res.json({ saved: true });
       },
     },
   });
@@ -24,18 +28,23 @@ test("GET /matricula-digital/:token is public and applies secret-safe headers", 
 
   assert.equal(ENROLLMENT_DIGITAL_PUBLIC_ROUTE_BASE_PATH, "/matricula-digital");
   assert.equal(ENROLLMENT_DIGITAL_PUBLIC_ROUTE_PATH, "/:token");
-  assert.deepEqual(routes, [{ methods: { get: true }, path: "/:token" }]);
+  assert.deepEqual(routes, [
+    { methods: { get: true }, path: "/:token" },
+    { methods: { patch: true }, path: "/:token" },
+  ]);
 
   const response = await dispatch(router, `/${"A".repeat(43)}`);
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.body, { ok: true });
-  assert.deepEqual(calls, ["controller"]);
+  const patch = await dispatch(router, `/${"A".repeat(43)}`, "PATCH");
+  assert.deepEqual(patch.body, { saved: true });
+  assert.deepEqual(calls, ["get", "patch"]);
   assert.equal(response.headers["cache-control"], "private, no-store, max-age=0, must-revalidate");
   assert.equal(response.headers["referrer-policy"], "no-referrer");
   assert.equal(response.headers["x-robots-tag"], "noindex, nofollow, noarchive");
 });
 
-function dispatch(router, url) {
+function dispatch(router, url, method = "GET") {
   const response = createResponse();
   return new Promise((resolve, reject) => {
     const json = response.json.bind(response);
@@ -44,7 +53,7 @@ function dispatch(router, url) {
       resolve(response);
       return response;
     };
-    router.handle({ headers: {}, method: "GET", url }, response, (error) => {
+    router.handle({ headers: {}, method, url }, response, (error) => {
       if (error) reject(error);
       else resolve(response);
     });

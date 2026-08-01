@@ -28,11 +28,17 @@ test("digital enrollment route is a six-step wizard with visible save states", (
   assert.match(route, /onBlur/);
 });
 
-test("digital enrollment API carries revision and exposes canonical reads and writes", () => {
+test("digital enrollment API keeps reads and advances while section writes use the canonical endpoint", () => {
   for (const endpoint of ["/form", "/advance", "/review"]) {
     assert.match(api, new RegExp(endpoint.replace("/", "\\/")));
   }
-  assert.match(api, /`\/\$\{endpoint\}`/);
+  const saveClient = api.slice(
+    api.indexOf("export function saveDigitalEnrollmentStep"),
+    api.indexOf("export function advanceDigitalEnrollmentStep"),
+  );
+  assert.match(saveClient, /DIGITAL_ENROLLMENT_CANONICAL_BASE_PATH/);
+  assert.match(saveClient, /JSON\.stringify\(\{ fields, revision, section \}\)/);
+  assert.doesNotMatch(saveClient, /digital-invitations\/public|`\/\$\{endpoint\}`/);
   assert.match(api, /revision/);
   assert.match(api, /method: "PATCH"/);
   assert.match(api, /method: "POST"/);

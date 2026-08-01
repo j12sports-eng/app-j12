@@ -335,6 +335,71 @@ test("digital enrollment contract allowlist forwards canonical birth fields only
   });
 });
 
+test("canonical section command maps only the four public sections", async () => {
+  const operations = [];
+  const service = new DigitalEnrollmentFormApplicationService({
+    aggregateGateway: {
+      async executeDigitalEnrollmentOperation(input) {
+        operations.push(input.operation);
+        return { operation: input.operation };
+      },
+    },
+    invitationResolver: {
+      async resolveInvitationByRawToken() {
+        return { enrollmentId: "enrollment-1", invitationId: "invitation-1" };
+      },
+    },
+  });
+  for (const section of ["responsible", "student", "address", "additional-information"]) {
+    await service.updateSection("A".repeat(43), { fields: {}, revision: 2, section });
+  }
+  assert.deepEqual(operations, [
+    "updateResponsible",
+    "updateStudent",
+    "updateAddress",
+    "updateAdditionalInformation",
+  ]);
+});
+
+test("canonical section command rejects malformed and unsafe envelopes before resolution", async () => {
+  let resolutions = 0;
+  const service = new DigitalEnrollmentFormApplicationService({
+    invitationResolver: {
+      async resolveInvitationByRawToken() {
+        resolutions += 1;
+      },
+    },
+  });
+  const commands = [
+    {},
+    { fields: {}, revision: 1 },
+    { fields: {}, revision: 1, section: "documents" },
+    { fields: {}, revision: 1, section: "__proto__" },
+    { fields: {}, revision: 1, section: "constructor" },
+    { fields: {}, revision: 1, section: "prototype" },
+    { revision: 1, section: "student" },
+    { fields: [], revision: 1, section: "student" },
+    { fields: "invalid", revision: 1, section: "student" },
+    { fields: {}, section: "student" },
+    { fields: {}, revision: 0, section: "student" },
+    { fields: {}, revision: 1.5, section: "student" },
+    { fields: { unitId: "12" }, revision: 1, section: "student" },
+    { fields: { enrollmentId: "draft-1" }, revision: 1, section: "student" },
+    { fields: { personId: "person-1" }, revision: 1, section: "student" },
+    { fields: { profileId: "profile-1" }, revision: 1, section: "student" },
+    { fields: JSON.parse('{"__proto__":{"polluted":true}}'), revision: 1, section: "student" },
+    { fields: { constructor: "polluted" }, revision: 1, section: "student" },
+    { fields: { prototype: "polluted" }, revision: 1, section: "student" },
+  ];
+  for (const command of commands) {
+    await assert.rejects(() => service.updateSection("token", command), {
+      code: "DIGITAL_ENROLLMENT_INVALID_COMMAND",
+      statusCode: 400,
+    });
+  }
+  assert.equal(resolutions, 0);
+});
+
 function reviewFixture(overrides = {}) {
   const progress = {
     completedSteps: ["RESPONSIBLE_DATA", "STUDENT_DATA", "ADDRESS", "ADDITIONAL_INFORMATION"],

@@ -5,9 +5,23 @@ export type PublicInvitation = {
   nextStep: string;
 };
 export type DigitalEnrollmentStep = "RESPONSIBLE_DATA" | "STUDENT_DATA" | "ADDRESS" | "ADDITIONAL_INFORMATION" | "DOCUMENTS" | "REVIEW";
+export const DIGITAL_ENROLLMENT_SECTIONS = [
+  "responsible",
+  "student",
+  "address",
+  "additional-information",
+] as const;
+export type DigitalEnrollmentSection = (typeof DIGITAL_ENROLLMENT_SECTIONS)[number];
 export type DigitalEnrollmentForm = {
   responsible: { name: string; email: string; phone: string };
-  student: { name: string; birthDate: string };
+  student: {
+    name: string;
+    birthDate: string;
+    birthCity: string;
+    birthState: string;
+    nationality: string;
+    bloodType: string;
+  };
   address: { zipCode: string; street: string; number: string; district: string; city: string; state: string; complement: string };
   additionalInformation: Record<string, never>;
   progress: { currentStep: DigitalEnrollmentStep; completedSteps: DigitalEnrollmentStep[]; revision: number; status: string };
@@ -16,9 +30,25 @@ export class PublicInvitationError extends Error {
   constructor(public readonly kind: "unavailable" | "rate_limit" | "network" | "conflict" | "invalid") { super(kind); }
 }
 export function isValidInvitationToken(token: string): boolean { return /^[A-Za-z0-9_-]{43}$/.test(token); }
-async function request<T>(token: string, suffix: string, init: RequestInit = {}): Promise<T> {
+const LEGACY_INVITATION_PUBLIC_BASE_PATH = "/api/enrollments/digital-invitations/public";
+export const DIGITAL_ENROLLMENT_CANONICAL_BASE_PATH = "/api/matricula-digital";
+async function request<T>(
+  token: string,
+  suffix: string,
+  init: RequestInit = {},
+  basePath = LEGACY_INVITATION_PUBLIC_BASE_PATH,
+): Promise<T> {
   try {
-    const response = await fetch(`/api/enrollments/digital-invitations/public/${encodeURIComponent(token)}${suffix}`, { credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", ...init, headers: init.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...(init.headers || {}) } });
+    const response = await fetch(`${basePath}/${encodeURIComponent(token)}${suffix}`, {
+      credentials: "omit",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      ...init,
+      headers:
+        init.body instanceof FormData
+          ? init.headers
+          : { "Content-Type": "application/json", ...(init.headers || {}) },
+    });
     if (response.status === 429) throw new PublicInvitationError("rate_limit");
     if (response.status === 409) throw new PublicInvitationError("conflict");
     if (response.status === 400) throw new PublicInvitationError("invalid");
@@ -32,8 +62,20 @@ async function request<T>(token: string, suffix: string, init: RequestInit = {})
 export function resolvePublicInvitation(token: string) { return request<PublicInvitation>(token, ""); }
 export function getDigitalEnrollmentForm(token: string) { return request<DigitalEnrollmentForm>(token, "/form"); }
 export function getDigitalEnrollmentReview(token: string) { return request<DigitalEnrollmentForm>(token, "/review"); }
-export function saveDigitalEnrollmentStep(token: string, endpoint: string, fields: Record<string, string>, revision: number) {
-  return request<DigitalEnrollmentForm>(token, `/${endpoint}`, { method: "PATCH", body: JSON.stringify({ fields, revision }) });
+export function saveDigitalEnrollmentStep(
+  token: string,
+  section: string,
+  fields: Record<string, string>,
+  revision: number,
+) {
+  if (!DIGITAL_ENROLLMENT_SECTIONS.includes(section as DigitalEnrollmentSection))
+    throw new PublicInvitationError("invalid");
+  return request<DigitalEnrollmentForm>(
+    token,
+    "",
+    { method: "PATCH", body: JSON.stringify({ fields, revision, section }) },
+    DIGITAL_ENROLLMENT_CANONICAL_BASE_PATH,
+  );
 }
 export function advanceDigitalEnrollmentStep(token: string, targetStep: DigitalEnrollmentStep, revision: number) {
   return request<{ currentStep: DigitalEnrollmentStep; progress: DigitalEnrollmentForm["progress"] }>(token, "/advance", { method: "POST", body: JSON.stringify({ fields: { targetStep }, revision }) });

@@ -1,11 +1,20 @@
 const express = require("express");
 
 const {
+  DigitalEnrollmentFormApplicationService,
+} = require("../../application/services/digital-enrollment-form-application.service.js");
+const {
   EnrollmentDigitalInvitationService,
 } = require("../../application/services/enrollment-digital-invitation.service.js");
 const {
   EnrollmentPublicApplicationService,
 } = require("../../application/services/enrollment-public-application.service.js");
+const {
+  DigitalEnrollmentFormGateway,
+} = require("../../infrastructure/digital-enrollment-form.gateway.js");
+const {
+  createDigitalEnrollmentTransactionRunner,
+} = require("../../infrastructure/digital-enrollment-transaction.runner.js");
 const {
   MySqlEnrollmentDigitalInvitationRepository,
 } = require("../../infrastructure/repositories/mysql-enrollment-digital-invitation.repository.js");
@@ -32,6 +41,11 @@ function createEnrollmentDigitalPublicRouter(options = {}) {
     ENROLLMENT_DIGITAL_PUBLIC_ROUTE_PATH,
     applyEnrollmentPublicSecurityHeaders,
     controller.getByToken,
+  );
+  router.patch(
+    ENROLLMENT_DIGITAL_PUBLIC_ROUTE_PATH,
+    applyEnrollmentPublicSecurityHeaders,
+    controller.patchByToken,
   );
 
   return router;
@@ -64,9 +78,22 @@ function createEnrollmentDigitalPublicController(options = {}) {
       invitationService,
       logger: options.logger,
     });
+  const transactionRunner =
+    options.transactionRunner ||
+    createDigitalEnrollmentTransactionRunner(options.transactionRunnerOptions || {});
+  const formGateway =
+    options.formGateway || new DigitalEnrollmentFormGateway({ transactionRunner });
+  const formService =
+    options.formService ||
+    new DigitalEnrollmentFormApplicationService({
+      aggregateGateway: formGateway,
+      invitationResolver: invitationService,
+      logger: options.logger,
+    });
 
   return new EnrollmentDigitalPublicController({
     enrollmentPublicApplicationService,
+    formService,
     logger: options.logger,
   });
 }

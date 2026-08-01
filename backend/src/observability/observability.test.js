@@ -63,6 +63,14 @@ test("sensitive invitation paths redact only the path token", () => {
     sanitizeSensitivePath(`/api/enrollments/digital-invitations/public/${token}?source=email`),
     "/api/enrollments/digital-invitations/public/[REDACTED]?source=email",
   );
+  assert.equal(
+    sanitizeSensitivePath(`/matricula-digital/${token}?source=email`),
+    "/matricula-digital/[REDACTED]?source=email",
+  );
+  assert.equal(
+    sanitizeSensitivePath(`/api/matricula-digital/${token}`),
+    "/api/matricula-digital/[REDACTED]",
+  );
   assert.equal(sanitizeSensitivePath("/api/alunos/123"), "/api/alunos/123");
 
   const entries = [];

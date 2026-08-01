@@ -7,6 +7,7 @@ const {
   createSecurityAuditMiddleware,
   createSecurityHeadersMiddleware,
   createSlidingWindowRateLimiter,
+  isDigitalEnrollmentPublicPath,
   validateAuthInput,
 } = require("./security-hardening.js");
 
@@ -34,6 +35,9 @@ test("public invitation receives no-store and a redacted security path", () => {
     () => {},
   );
   assert.equal(headers["Cache-Control"], "no-store");
+  assert.equal(isDigitalEnrollmentPublicPath(`/matricula-digital/${token}`), true);
+  assert.equal(isDigitalEnrollmentPublicPath(`/api/matricula-digital/${token}`), true);
+  assert.equal(isDigitalEnrollmentPublicPath("/api/alunos/123"), false);
 });
 
 test("sliding rate limiter is configurable and emits structured event", () => {
