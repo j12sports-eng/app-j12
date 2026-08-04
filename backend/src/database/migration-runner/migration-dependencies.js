@@ -53,7 +53,7 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
     "20260629190607_add_active_draft_unique_constraint_to_enrollments",
   ]),
   "20260724120000_create_auth_identities_table": Object.freeze([
-    "20260712184500_create_auth_runtime_tables",
+    "20260803133000_reconcile_auth_runtime_charset_collation",
   ]),
   "20260724123000_create_user_unit_memberships_table": Object.freeze([
     "20260724120000_create_auth_identities_table",
@@ -61,8 +61,8 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   // People owns people/person_profiles/person_relationships; invitations owns
   // the transitive enrollment dependency required by the progress foreign keys.
   "20260724150000_create_digital_enrollment_progress": Object.freeze([
-    "20260712183000_create_people_domain_tables",
-    "20260720120000_create_enrollment_digital_invitations_table",
+    "20260803120000_prepare_enrollment_draft_ownership",
+    "20260803130000_reconcile_enrollment_digital_invitation_unit_type",
   ]),
   "20260725120000_create_digital_enrollment_documents": Object.freeze([
     "20260724150000_create_digital_enrollment_progress",
@@ -78,10 +78,22 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
     "20260729120000_add_enrollment_unit_ownership_to_enrollments",
   ]),
   "20260729180000_enforce_enrollment_multiunit_invariants": Object.freeze([
-    "20260629190607_add_active_draft_unique_constraint_to_enrollments",
+    "20260803123000_reconcile_enrollment_multiunit_invariants",
+  ]),
+  "20260803120000_prepare_enrollment_draft_ownership": Object.freeze([
+    "20260629134546_create_enrollments_table",
     "20260719200000_add_pre_enrollment_integrity_constraints",
-    "20260724150000_create_digital_enrollment_progress",
+  ]),
+  "20260803123000_reconcile_enrollment_multiunit_invariants": Object.freeze([
+    "20260629190607_add_active_draft_unique_constraint_to_enrollments",
     "20260729150000_add_enrollment_unit_foreign_key",
+    "20260803120000_prepare_enrollment_draft_ownership",
+  ]),
+  "20260803130000_reconcile_enrollment_digital_invitation_unit_type": Object.freeze([
+    "20260720120000_create_enrollment_digital_invitations_table",
+  ]),
+  "20260803133000_reconcile_auth_runtime_charset_collation": Object.freeze([
+    "20260712184500_create_auth_runtime_tables",
   ]),
 });
 module.exports = { MIGRATION_DEPENDENCIES };

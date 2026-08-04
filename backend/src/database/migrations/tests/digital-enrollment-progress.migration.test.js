@@ -30,11 +30,8 @@ test("digital enrollment progress migration has safe topology", () => {
 });
 
 test("digital enrollment progress migration has canonical dependency ordering", () => {
-  assert.deepEqual(
-    MIGRATION_DEPENDENCIES["20260724150000_create_digital_enrollment_progress"],
-    [
-      "20260712183000_create_people_domain_tables",
-      "20260720120000_create_enrollment_digital_invitations_table",
-    ],
-  );
+  assert.deepEqual(MIGRATION_DEPENDENCIES["20260724150000_create_digital_enrollment_progress"], [
+    "20260803120000_prepare_enrollment_draft_ownership",
+    "20260803130000_reconcile_enrollment_digital_invitation_unit_type",
+  ]);
 });

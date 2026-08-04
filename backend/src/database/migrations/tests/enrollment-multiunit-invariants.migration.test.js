@@ -101,12 +101,7 @@ test("down fails closed instead of restoring the global index across unit identi
 test("migration dependency order includes ownership, relationships and canonical unit FK", () => {
   assert.deepEqual(
     MIGRATION_DEPENDENCIES["20260729180000_enforce_enrollment_multiunit_invariants"],
-    [
-      "20260629190607_add_active_draft_unique_constraint_to_enrollments",
-      "20260719200000_add_pre_enrollment_integrity_constraints",
-      "20260724150000_create_digital_enrollment_progress",
-      "20260729150000_add_enrollment_unit_foreign_key",
-    ],
+    ["20260803123000_reconcile_enrollment_multiunit_invariants"],
   );
 });
 

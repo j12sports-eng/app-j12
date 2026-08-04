@@ -44,7 +44,15 @@
     "e2e:23.11": "playwright test --config=playwright.config.cjs",
     "e2e:23.11:inspect": "node scripts/e2e/sprint-23-11-runner.cjs --inspect-only",
     "e2e:23.11:local": "node scripts/e2e/sprint-23-11-runner.cjs --apply-local-migrations",
-    "e2e:27.18b.1": "playwright test --config=playwright.crm-kanban.config.cjs"
+    "e2e:27.18b.1": "playwright test --config=playwright.crm-kanban.config.cjs",
+    "doctor:inspect": "node backend/src/database/j12-doctor/cli.js inspect",
+    "doctor:report": "node backend/src/database/j12-doctor/cli.js report",
+    "doctor:migrations": "node backend/src/database/j12-doctor/cli.js check-migrations",
+    "doctor:schema": "node backend/src/database/j12-doctor/cli.js check-schema",
+    "doctor:drift": "node backend/src/database/j12-doctor/cli.js check-drift",
+    "doctor:test": "node --test backend/src/database/j12-doctor/**/*.test.js",
+    "migration-manager:test": "node --test backend/src/database/migration-manager/tests/*.test.js",
+    "test": "npm run migration-manager:test"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

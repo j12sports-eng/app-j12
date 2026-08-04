@@ -86,7 +86,7 @@ function readFirstRow(result) {
 }
 
 function getDefaultQueryRunner() {
-  return require("../../../../config/db.js").query;
+  return require("../../../config/db.js").query;
 }
 
 module.exports = {

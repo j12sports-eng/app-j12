@@ -81,6 +81,70 @@ class CanonicalMigrationRunner {
       return result;
     });
   }
+
+  async applyOne(migrationId, { dryRun = false } = {}) {
+    const migration = this.catalog.find((candidate) => candidate.id === migrationId);
+    if (!migration)
+      throw migrationError(
+        `Migration ${migrationId} does not exist in the canonical catalog.`,
+        "MIGRATION_NOT_FOUND",
+        { migrationId },
+      );
+    if (dryRun)
+      return {
+        applied: [],
+        dryRun: true,
+        plan: [toPlanItem({ ...migration, state: "PENDING" })],
+        skipped: [],
+      };
+    assertRuntimeDependencies(this.executor, this.ledger);
+
+    return this.ledger.withLock(async () => {
+      await this.ledger.ensureLedger();
+      const status = buildStatus(this.catalog, await this.ledger.list());
+      const selected = status.find((item) => item.id === migrationId);
+      if (selected.state !== "PENDING")
+        throw migrationError(
+          `Migration ${migrationId} is ${selected.state}; apply-one requires PENDING.`,
+          "MIGRATION_APPLY_ONE_STATE_INVALID",
+          { migrationId, state: selected.state },
+        );
+      const statusById = new Map(status.map((item) => [item.id, item]));
+      const blockedDependencies = (migration.dependencies || []).filter(
+        (dependencyId) => statusById.get(dependencyId)?.state !== MigrationLedgerStatus.APPLIED,
+      );
+      if (blockedDependencies.length)
+        throw migrationError(
+          `Migration ${migrationId} has unapplied dependencies.`,
+          "MIGRATION_APPLY_ONE_DEPENDENCY_PENDING",
+          { migrationId, dependencyIds: blockedDependencies },
+        );
+
+      const startedAt = this.clock();
+      await this.ledger.markApplying(migration, startedAt);
+      try {
+        await this.executor.apply(migration);
+        const appliedAt = this.clock();
+        await this.ledger.markApplied(
+          migration,
+          appliedAt,
+          Math.max(0, appliedAt.getTime() - startedAt.getTime()),
+        );
+        return {
+          applied: [migration.id],
+          dryRun: false,
+          plan: [toPlanItem(selected)],
+          skipped: [],
+        };
+      } catch (error) {
+        await this.ledger.markFailed(migration, this.clock(), sanitizeError(error));
+        throw migrationError(`Migration ${migration.id} failed.`, "MIGRATION_EXECUTION_FAILED", {
+          cause: error,
+          migrationId: migration.id,
+        });
+      }
+    });
+  }
 }
 
 function buildStatus(catalog, records) {
