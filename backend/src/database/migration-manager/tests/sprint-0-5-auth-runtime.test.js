@@ -13,9 +13,7 @@ const {
   authRuntimeBaselineAdoption,
 } = require("../baseline-adoptions/auth-runtime.adoption");
 
-const {
-  createAuthRuntimeRealSchemaFixture,
-} = require("./auth-runtime-real.fixture");
+const { createAuthRuntimeRealSchemaFixture } = require("./auth-runtime-real.fixture");
 
 const { evaluateBaselineEligibility } = require("../baseline-eligibility-policy");
 const {

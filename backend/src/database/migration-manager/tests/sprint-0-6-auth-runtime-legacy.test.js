@@ -14,10 +14,7 @@ const { assessManifest } = require("../../j12-doctor/checks/schema-manifest-chec
 const { LEDGER_STATES } = require("../../j12-doctor/constants");
 const { correlateMigrations } = require("../../j12-doctor/doctor");
 const { MIGRATION_DEPENDENCIES } = require("../../migration-runner/migration-dependencies");
-const {
-  analyzeAuthLegacyPreflight,
-  runAuthLegacyPreflight,
-} = require("../auth-legacy-preflight");
+const { analyzeAuthLegacyPreflight, runAuthLegacyPreflight } = require("../auth-legacy-preflight");
 const {
   AUTH_RUNTIME_CORRECTIVE_MIGRATION,
   AUTH_RUNTIME_HISTORICAL_MIGRATION,
@@ -32,9 +29,7 @@ const {
   assertCanonicalAuthBoundary,
   findCanonicalLegacyAuthDependencies,
 } = require("../canonical-auth-boundary");
-const {
-  J12_USUARIOS_RUNTIME_CONSUMERS,
-} = require("../auth-runtime-consumers.manifest");
+const { J12_USUARIOS_RUNTIME_CONSUMERS } = require("../auth-runtime-consumers.manifest");
 const { assessApplyOneRequest } = require("../apply-manager");
 const { MigrationManager } = require("../manager");
 const {
@@ -163,11 +158,7 @@ test("12. IDs orfaos sao detectados no preflight", () => {
   });
   assert.deepEqual(
     report.blockers.map((blocker) => blocker.code),
-    [
-      "LEGACY_ORPHAN_ALUNO_IDS",
-      "LEGACY_ORPHAN_PROFESSOR_IDS",
-      "LEGACY_ORPHAN_RESPONSAVEL_IDS",
-    ],
+    ["LEGACY_ORPHAN_ALUNO_IDS", "LEGACY_ORPHAN_PROFESSOR_IDS", "LEGACY_ORPHAN_RESPONSAVEL_IDS"],
   );
 });
 

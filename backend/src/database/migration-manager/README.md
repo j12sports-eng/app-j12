@@ -250,4 +250,3 @@ Toda escrita futura exige:
 - validação funcional após a operação.
 
 <!-- SPRINT-0.6-AUTH-BOUNDARY:END -->
-

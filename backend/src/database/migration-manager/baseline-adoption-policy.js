@@ -2,10 +2,7 @@
 
 const { authRuntimeBaselineAdoption } = require("./baseline-adoptions/auth-runtime.adoption");
 const { PHYSICAL_STATES } = require("../j12-doctor/constants");
-const {
-  normalize,
-  normalizeTableOption,
-} = require("../j12-doctor/checks/schema-manifest-check");
+const { normalize, normalizeTableOption } = require("../j12-doctor/checks/schema-manifest-check");
 
 const ADOPTIONS = new Map([[authRuntimeBaselineAdoption.migrationId, authRuntimeBaselineAdoption]]);
 
@@ -207,12 +204,7 @@ function assessExactLegacyTable(schemaSnapshot, expectedTable) {
         column.prefixLength,
         null,
       );
-      compareValue(
-        differences,
-        `indexes.${name}.columns.${index}.order`,
-        column.order,
-        "A",
-      );
+      compareValue(differences, `indexes.${name}.columns.${index}.order`, column.order, "A");
     }
   }
   compareKeySet(differences, "foreignKeys", actualTable.foreignKeys, expectedTable.foreignKeys);
@@ -227,7 +219,12 @@ function assessExactLegacyTable(schemaSnapshot, expectedTable) {
 }
 
 function compareKeySet(differences, path, actual = {}, expected = {}) {
-  compareValue(differences, `${path}.__keys`, Object.keys(actual).sort(), Object.keys(expected).sort());
+  compareValue(
+    differences,
+    `${path}.__keys`,
+    Object.keys(actual).sort(),
+    Object.keys(expected).sort(),
+  );
 }
 
 function compareValue(differences, path, actual, expected, property = null) {
@@ -249,9 +246,11 @@ function normalizeLegacyValue(property, value) {
     return normalizeTableOption(property, value);
   if (property === "default")
     return normalize(value).replace(/current_timestamp\(\)/gu, "current_timestamp");
-  if (property === "extra")
-    return normalize(value).replace(/default_generated/gu, "");
-  if (property === "columnType") return String(value ?? "").trim().toLowerCase();
+  if (property === "extra") return normalize(value).replace(/default_generated/gu, "");
+  if (property === "columnType")
+    return String(value ?? "")
+      .trim()
+      .toLowerCase();
   if (Array.isArray(value)) return value.map((item) => normalizeLegacyValue(null, item));
   return value;
 }
