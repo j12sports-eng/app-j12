@@ -83,6 +83,7 @@ test("4. qualquer diferenca adicional bloqueia a adoption", () => {
     columnType: "varchar(1)",
   };
   const result = adoptionFor(state);
+
   assert.equal(result.accepted, false);
   assert.ok(result.reasons.includes("LEGACY_ADOPTION_STRUCTURE_MISMATCH"));
   assert.ok(
@@ -199,6 +200,21 @@ test("17. auth_identities continua dependente da corretiva", () => {
   ]);
 });
 
+test("17a. adoption historica continua valida depois da corretiva aplicada", () => {
+  const state = createState({
+    historicalApplied: true,
+    correctiveApplied: true,
+    correctiveTargetOptions: true,
+  });
+
+  const result = adoptionFor(state);
+
+  assert.equal(result.accepted, true);
+  assert.ok(!result.reasons.includes("TABLE_OPTION_ADOPTION_DIFFERENCE_MISSING"));
+  assert.ok(!result.reasons.includes("LEGACY_ADOPTION_STRUCTURE_MISMATCH"));
+  assert.ok(!result.reasons.includes("LEGACY_ADOPTION_CHECKSUM_MISMATCH"));
+});
+
 test("18. migration historica nao foi reescrita", () => {
   const source = read(
     "backend/src/database/migrations/20260712184500_create_auth_runtime_tables.sql",
@@ -260,8 +276,24 @@ test("22. Doctor, Manager e policy usam a mesma classificacao", () => {
   assert.equal(policy.legacyClassification, AUTH_RUNTIME_CLASSIFICATION.legacyAccess);
 });
 
-function createState({ historicalApplied = false } = {}) {
+function createState({
+  historicalApplied = false,
+  correctiveApplied = false,
+  correctiveTargetOptions = false,
+} = {}) {
   const schemaSnapshot = createAuthRuntimeRealSchemaFixture();
+
+  if (correctiveTargetOptions) {
+    for (const table of ["users", "user_sessions", "password_reset_tokens"]) {
+      schemaSnapshot.tables[table].charset = "utf8mb4";
+      schemaSnapshot.tables[table].collation = "utf8mb4_unicode_ci";
+
+      for (const column of Object.values(schemaSnapshot.tables[table].columns || {})) {
+        if (column.charset) column.charset = "utf8mb4";
+        if (column.collation) column.collation = "utf8mb4_unicode_ci";
+      }
+    }
+  }
   const historical = catalogMigration({
     id: AUTH_RUNTIME_HISTORICAL_MIGRATION,
     checksum: authRuntimeBaselineAdoption.migrationChecksum,
@@ -269,13 +301,15 @@ function createState({ historicalApplied = false } = {}) {
     ledgerState: historicalApplied ? LEDGER_STATES.APPLIED : LEDGER_STATES.PENDING,
     checksumMatches: historicalApplied ? true : null,
   });
+
   const corrective = catalogMigration({
     id: AUTH_RUNTIME_CORRECTIVE_MIGRATION,
     checksum: "d".repeat(64),
     dependencies: [AUTH_RUNTIME_HISTORICAL_MIGRATION],
-    ledgerState: LEDGER_STATES.PENDING,
-    checksumMatches: null,
+    ledgerState: correctiveApplied ? LEDGER_STATES.APPLIED : LEDGER_STATES.PENDING,
+    checksumMatches: correctiveApplied ? true : null,
   });
+
   const correlation = correlateMigrations({ migrations: [historical, corrective] }, [
     assessManifest(schemaSnapshot, HISTORICAL_MANIFEST),
     assessManifest(schemaSnapshot, CORRECTIVE_MANIFEST),

@@ -1,7 +1,7 @@
 "use strict";
 
 const { authRuntimeBaselineAdoption } = require("./baseline-adoptions/auth-runtime.adoption");
-const { PHYSICAL_STATES } = require("../j12-doctor/constants");
+const { LEDGER_STATES, PHYSICAL_STATES } = require("../j12-doctor/constants");
 const { normalize, normalizeTableOption } = require("../j12-doctor/checks/schema-manifest-check");
 
 const ADOPTIONS = new Map([[authRuntimeBaselineAdoption.migrationId, authRuntimeBaselineAdoption]]);
@@ -63,6 +63,13 @@ function evaluateTableOptionAdoption({
     : { accepted: false, differences: [{ path: "adoption", code: "ADOPTION_MISSING" }] };
   if (!adoption) reasons.push("TABLE_OPTION_RECONCILIATION_REQUIRED");
   else {
+    const corrective = catalogMigrations.find(
+      (candidate) => candidate.id === adoption.mandatoryCorrectiveMigrationId,
+    );
+
+    const correctiveApplied =
+      corrective?.ledgerState === LEDGER_STATES.APPLIED && corrective?.checksumMatches === true;
+
     if (migration.checksum !== adoption.migrationChecksum)
       reasons.push("LEGACY_ADOPTION_CHECKSUM_MISMATCH");
     if (!legacyStructure.accepted) reasons.push("LEGACY_ADOPTION_STRUCTURE_MISMATCH");
@@ -93,15 +100,13 @@ function evaluateTableOptionAdoption({
     )
       reasons.push("TABLE_OPTION_ADOPTION_DIFFERENCE_NOT_ACCEPTED");
     if (
+      !correctiveApplied &&
       adoption.acceptedTemporaryTableOptionDifferences.some(
         (accepted) => !optionFindings.some((finding) => differenceMatches(finding, accepted)),
       )
     )
       reasons.push("TABLE_OPTION_ADOPTION_DIFFERENCE_MISSING");
 
-    const corrective = catalogMigrations.find(
-      (candidate) => candidate.id === adoption.mandatoryCorrectiveMigrationId,
-    );
     if (
       !corrective ||
       corrective.manifestAvailable !== true ||
