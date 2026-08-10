@@ -12,6 +12,11 @@ const {
   AUTH_RUNTIME_HISTORICAL_MIGRATION,
   authRuntimeBaselineAdoption,
 } = require("../baseline-adoptions/auth-runtime.adoption");
+
+const {
+  createAuthRuntimeRealSchemaFixture,
+} = require("./auth-runtime-real.fixture");
+
 const { evaluateBaselineEligibility } = require("../baseline-eligibility-policy");
 const {
   assessApplyOneRequest,
@@ -72,9 +77,11 @@ test("6. exceção auditada permite apenas a migration específica", () => {
     migration: historical,
     findings: optionFindings(historical.id),
     catalogMigrations: [historical, correctiveCatalogEntry()],
+    schemaSnapshot: createAuthRuntimeRealSchemaFixture(),
   });
+
   assert.equal(result.eligible, true);
-  assert.equal(result.tableOptionDecision, "TABLE_OPTION_DRIFT_ACCEPTED");
+  assert.equal(result.tableOptionDecision, "LEGACY_AUTH_STRUCTURE_ACCEPTED");
   assert.equal(
     result.tableOptionAdoption.migrationChecksum,
     authRuntimeBaselineAdoption.migrationChecksum,
@@ -86,11 +93,14 @@ test("7. exceção não permite outras migrations", () => {
     id: "20260101000000_unreviewed",
     checksum: authRuntimeBaselineAdoption.migrationChecksum,
   });
+
   const result = evaluateBaselineEligibility({
     migration: other,
-    findings: [optionFinding(other.id)],
+    findings: optionFindings(other.id),
     catalogMigrations: [other, correctiveCatalogEntry()],
+    schemaSnapshot: createAuthRuntimeRealSchemaFixture(),
   });
+
   assert.equal(result.eligible, false);
   assert.equal(result.tableOptionAdoption, null);
 });
