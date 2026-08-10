@@ -1,4 +1,4 @@
-const MIGRATION_DEPENDENCIES = Object.freeze({
+﻿const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260629134546_create_enrollments_table": Object.freeze([
     "20260712183000_create_people_domain_tables",
   ]),
@@ -55,8 +55,10 @@ const MIGRATION_DEPENDENCIES = Object.freeze({
   "20260724120000_create_auth_identities_table": Object.freeze([
     "20260803133000_reconcile_auth_runtime_charset_collation",
   ]),
+  "20260810171000_reconcile_j12_unidades_id_bigint": Object.freeze([]),
   "20260724123000_create_user_unit_memberships_table": Object.freeze([
     "20260724120000_create_auth_identities_table",
+    "20260810171000_reconcile_j12_unidades_id_bigint",
   ]),
   // People owns people/person_profiles/person_relationships; invitations owns
   // the transitive enrollment dependency required by the progress foreign keys.

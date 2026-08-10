@@ -33,6 +33,7 @@ test("user-unit memberships migration declares canonical schema contract", () =>
 test("user-unit memberships migration follows canonical dependency ordering", () => {
   assert.deepEqual(MIGRATION_DEPENDENCIES["20260724123000_create_user_unit_memberships_table"], [
     "20260724120000_create_auth_identities_table",
+    "20260810171000_reconcile_j12_unidades_id_bigint",
   ]);
 });
 

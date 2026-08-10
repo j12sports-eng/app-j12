@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const c = (columnType, nullable, options = {}) => ({ columnType, nullable, ...options });
 const i = (columns, unique = false) => ({ columns, unique });
@@ -385,6 +385,41 @@ raw.push(
       ],
     },
     tables: [multiunitTable()],
+  },
+  {
+    id: "20260810171000_reconcile_j12_unidades_id_bigint",
+    applyPolicy: {
+      reconciliation: true,
+      allowedPhysicalStates: ["DRIFT_DETECTED"],
+      reviewedFindingCodes: ["COLUMN_MISMATCH", "FORMAL_PHYSICAL_DRIFT"],
+      reviewedColumnMismatches: [
+        {
+          table: "j12_unidades",
+          name: "id",
+          columnType: "int(11)",
+          nullable: false,
+        },
+      ],
+      plannedActions: [
+        {
+          kind: "COLUMN",
+          table: "j12_unidades",
+          name: "id",
+          action: "CONVERT_SIGNED_INT_TO_SIGNED_BIGINT_IF_SAFE",
+        },
+      ],
+    },
+    tables: [
+      t(
+        "j12_unidades",
+        {
+          id: c("bigint", false, { autoIncrement: true }),
+        },
+        {
+          PRIMARY: i(["id"], true),
+        },
+      ),
+    ],
   },
   {
     id: "20260803130000_reconcile_enrollment_digital_invitation_unit_type",
