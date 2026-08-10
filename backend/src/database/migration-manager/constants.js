@@ -1,6 +1,12 @@
 "use strict";
 
-const SUPPORTED_COMMANDS = Object.freeze(["plan", "baseline", "apply-one", "validate"]);
+const SUPPORTED_COMMANDS = Object.freeze([
+  "plan",
+  "baseline",
+  "apply-one",
+  "retry-failed",
+  "validate",
+]);
 const RESERVED_COMMANDS = Object.freeze(["apply", "report"]);
 
 class MigrationManagerUsageError extends Error {

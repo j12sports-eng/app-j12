@@ -31,7 +31,9 @@ const EXPECTED_CANONICAL_MIGRATION_IDS = Object.freeze([
   "20260718220000_create_crm_lead_enrollment_conversions",
   "20260719200000_add_pre_enrollment_integrity_constraints",
   "20260720120000_create_enrollment_digital_invitations_table",
+  "20260803133000_reconcile_auth_runtime_charset_collation",
   "20260724120000_create_auth_identities_table",
+  "20260810171000_reconcile_j12_unidades_id_bigint",
   "20260724123000_create_user_unit_memberships_table",
   "20260803120000_prepare_enrollment_draft_ownership",
   "20260803130000_reconcile_enrollment_digital_invitation_unit_type",
@@ -207,6 +209,157 @@ test("runner refuses a pre-existing FAILED ledger record without executor calls"
     (error) => error.code === "MIGRATION_LEDGER_BLOCKED" && error.state === "FAILED",
   );
   assert.equal(calls, 0);
+});
+
+test("retryFailed aplica somente uma migration FAILED com checksum exato", async () => {
+  const migrations = catalog("20260701000000_first.sql");
+  const ledger = new InMemoryLedger([
+    {
+      checksum: migrations[0].checksum,
+      id: migrations[0].id,
+      status: "FAILED",
+    },
+  ]);
+
+  const calls = [];
+
+  const runner = new CanonicalMigrationRunner({
+    catalog: migrations,
+    executor: {
+      async apply(item) {
+        calls.push(item.id);
+      },
+    },
+    ledger,
+  });
+
+  const result = await runner.retryFailed(migrations[0].id);
+
+  assert.deepEqual(calls, [migrations[0].id]);
+  assert.deepEqual(result.applied, [migrations[0].id]);
+  assert.equal(ledger.records[0].status, "APPLIED");
+});
+
+test("retryFailed recusa migration que nao esta FAILED", async () => {
+  const migrations = catalog("20260701000000_first.sql");
+  const ledger = new InMemoryLedger();
+
+  let calls = 0;
+
+  await assert.rejects(
+    () =>
+      new CanonicalMigrationRunner({
+        catalog: migrations,
+        executor: {
+          async apply() {
+            calls += 1;
+          },
+        },
+        ledger,
+      }).retryFailed(migrations[0].id),
+    (error) => error.code === "MIGRATION_RETRY_STATE_INVALID" && error.state === "PENDING",
+  );
+
+  assert.equal(calls, 0);
+});
+
+test("retryFailed recusa APPLIED e checksum divergente sem executar", async () => {
+  const migrations = catalog("20260701000000_first.sql");
+  const cases = [
+    { checksum: migrations[0].checksum, status: "APPLIED", state: "APPLIED" },
+    { checksum: "0".repeat(64), status: "FAILED", state: "CHECKSUM_MISMATCH" },
+  ];
+
+  for (const current of cases) {
+    let calls = 0;
+    const ledger = new InMemoryLedger([{ ...current, id: migrations[0].id }]);
+
+    await assert.rejects(
+      () =>
+        new CanonicalMigrationRunner({
+          catalog: migrations,
+          executor: {
+            async apply() {
+              calls += 1;
+            },
+          },
+          ledger,
+        }).retryFailed(migrations[0].id),
+      (error) => error.code === "MIGRATION_RETRY_STATE_INVALID" && error.state === current.state,
+    );
+
+    assert.equal(calls, 0);
+  }
+});
+
+test("retryFailed bloqueia dependência não aplicada e dry-run não altera o ledger", async () => {
+  const migrations = buildMigrationCatalog(
+    [
+      { content: "-- dependent", fileName: "20260702000000_dependent.sql" },
+      { content: "-- foundation", fileName: "20260701000000_foundation.sql" },
+    ],
+    { dependencies: { "20260702000000_dependent": ["20260701000000_foundation"] } },
+  );
+  const selected = migrations.find((migration) => migration.name === "dependent");
+  const pendingLedger = new InMemoryLedger([
+    { checksum: selected.checksum, id: selected.id, status: "FAILED" },
+  ]);
+
+  await assert.rejects(
+    () =>
+      new CanonicalMigrationRunner({
+        catalog: migrations,
+        executor: { async apply() {} },
+        ledger: pendingLedger,
+      }).retryFailed(selected.id),
+    (error) => error.code === "MIGRATION_RETRY_DEPENDENCY_PENDING",
+  );
+
+  const dryLedger = new InMemoryLedger([
+    { checksum: migrations[0].checksum, id: migrations[0].id, status: "APPLIED" },
+    { checksum: selected.checksum, id: selected.id, status: "FAILED" },
+  ]);
+  const before = await dryLedger.list();
+  const result = await new CanonicalMigrationRunner({
+    catalog: migrations,
+    executor: {
+      async apply() {
+        throw new Error("must not execute");
+      },
+    },
+    ledger: dryLedger,
+  }).retryFailed(selected.id, { dryRun: true });
+
+  assert.equal(result.dryRun, true);
+  assert.deepEqual(await dryLedger.list(), before);
+});
+
+test("retryFailed volta para FAILED se a nova tentativa falhar", async () => {
+  const migrations = catalog("20260701000000_first.sql");
+  const ledger = new InMemoryLedger([
+    {
+      checksum: migrations[0].checksum,
+      id: migrations[0].id,
+      status: "FAILED",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      new CanonicalMigrationRunner({
+        catalog: migrations,
+        executor: {
+          async apply() {
+            throw new Error("retry controlled failure");
+          },
+        },
+        ledger,
+      }).retryFailed(migrations[0].id),
+    (error) => error.code === "MIGRATION_RETRY_EXECUTION_FAILED",
+  );
+
+  assert.equal(ledger.records[0].status, "FAILED");
+  assert.equal(ledger.records[0].errorMessage, "retry controlled failure");
 });
 
 test("runner records FAILED and stops after an intermediate migration failure", async () => {
@@ -403,6 +556,20 @@ class InMemoryLedger {
   }
   async markApplying(migration) {
     this.records.push({ checksum: migration.checksum, id: migration.id, status: "APPLYING" });
+  }
+
+  async markRetryApplying(migration) {
+    const record = this.records.find((item) => item.id === migration.id);
+
+    if (!record || record.status !== "FAILED" || record.checksum !== migration.checksum) {
+      const error = new Error("retry transition failed");
+      error.code = "MIGRATION_LEDGER_RETRY_TRANSITION_FAILED";
+      throw error;
+    }
+
+    Object.assign(record, {
+      status: "APPLYING",
+    });
   }
   async markApplied(migration, appliedAt, executionMs) {
     const record = this.records.find((item) => item.id === migration.id);

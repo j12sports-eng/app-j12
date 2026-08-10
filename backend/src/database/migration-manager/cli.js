@@ -27,7 +27,9 @@ const { formatConsole, formatJson } = require("./formatter");
 const { MigrationManager } = require("./manager");
 const { ControlledBaselineError } = require("./baseline-errors");
 const { ControlledApplyOneError } = require("./apply-one-errors");
+const { ControlledRetryFailedError } = require("./retry-failed-errors");
 const { createApplyOneWriteClient } = require("./apply-one-database-client");
+const { createRetryFailedWriteClient } = require("./retry-failed-database-client");
 const { createBaselineWriteClient } = require("./write-database-client");
 const {
   AUTH_RUNTIME_CORRECTIVE_MIGRATION,
@@ -39,9 +41,10 @@ const ALL_COMMANDS = new Set([...SUPPORTED_COMMANDS, ...RESERVED_COMMANDS]);
 function usage() {
   return [
     "Uso: node backend/src/database/migration-manager/cli.js <comando> --confirm-database=<nome> [--allow-remote] [--format=console|json]",
-    "Dry-run: baseline --dry-run | apply-one --dry-run --migration=<id>",
+    "Dry-run: baseline --dry-run | apply-one --dry-run --migration=<id> | retry-failed --migration=<id>",
     "Baseline write: baseline --write --only=<id1,id2> --confirm-baseline=<token>",
     "Apply-one write: apply-one --write --migration=<id> --confirm-apply=<token> --confirm-backup=<id> --confirm-tables=<t1,t2>",
+    "Retry write: retry-failed --write --migration=<id> --confirm-retry=<token> --confirm-backup=<id>",
     "Comandos disponíveis: plan, baseline, apply-one, validate",
     "Reservados e bloqueados: apply, report",
   ].join("\n");
@@ -60,6 +63,7 @@ function parseArguments(argv) {
     confirmBaseline: null,
     migrationId: null,
     confirmApply: null,
+    confirmRetry: null,
     backupIdentifier: null,
     confirmedTables: null,
     format: "console",
@@ -79,6 +83,8 @@ function parseArguments(argv) {
       options.migrationId = argument.slice("--migration=".length);
     else if (argument.startsWith("--confirm-apply="))
       options.confirmApply = argument.slice("--confirm-apply=".length);
+    else if (argument.startsWith("--confirm-retry="))
+      options.confirmRetry = argument.slice("--confirm-retry=".length);
     else if (argument.startsWith("--confirm-backup="))
       options.backupIdentifier = argument.slice("--confirm-backup=".length);
     else if (argument.startsWith("--confirm-tables="))
@@ -93,7 +99,8 @@ function parseArguments(argv) {
     else throw new MigrationManagerUsageError(`Argumento desconhecido.\n${usage()}`);
   }
   if (!SUPPORTED_COMMANDS.includes(command)) throw new MigrationManagerUnavailableError(command);
-  const controlledCommand = command === "baseline" || command === "apply-one";
+  const controlledCommand = ["baseline", "apply-one", "retry-failed"].includes(command);
+  if (command === "retry-failed" && !options.write) options.dryRun = true;
   if (controlledCommand && options.dryRun === options.write)
     throw new MigrationManagerUsageError(
       `${command} exige exatamente um modo: --dry-run ou --write.`,
@@ -122,13 +129,21 @@ function parseArguments(argv) {
   }
   if (command === "apply-one" && !options.migrationId)
     throw new MigrationManagerUsageError("apply-one exige --migration=<id>.");
-  if (command !== "apply-one" && options.migrationId)
+  if (command === "retry-failed" && !options.migrationId)
+    throw new MigrationManagerUsageError("retry-failed requires --migration=<id>.");
+  if (!["apply-one", "retry-failed"].includes(command) && options.migrationId)
     throw new MigrationManagerUsageError("--migration é aceito apenas por apply-one.");
   if (command === "apply-one" && options.write && !options.confirmApply)
     throw new MigrationManagerUsageError("apply-one --write exige --confirm-apply=<token>.");
+  if (command === "retry-failed" && options.write && !options.confirmRetry)
+    throw new MigrationManagerUsageError("retry-failed --write requires --confirm-retry=<token>.");
   if (command === "apply-one" && options.write && !options.backupIdentifier)
     throw new MigrationManagerUsageError(
       "apply-one --write exige --confirm-backup=<identificador>.",
+    );
+  if (command === "retry-failed" && options.write && !options.backupIdentifier)
+    throw new MigrationManagerUsageError(
+      "retry-failed --write requires --confirm-backup=<identifier>.",
     );
   if (
     command === "apply-one" &&
@@ -152,7 +167,7 @@ function parseArguments(argv) {
     throw new MigrationManagerUsageError(
       "A lista --confirm-tables deve corresponder exatamente a users,user_sessions,password_reset_tokens.",
     );
-  if (command !== "apply-one" || !options.write) {
+  if (!["apply-one", "retry-failed"].includes(command) || !options.write) {
     if (options.confirmApply)
       throw new MigrationManagerUsageError(
         "--confirm-apply é aceito apenas com apply-one --write.",
@@ -166,6 +181,30 @@ function parseArguments(argv) {
         "--confirm-tables é aceito apenas com apply-one --write.",
       );
   }
+  if ((command !== "baseline" || !options.write) && options.onlyIds)
+    throw new MigrationManagerUsageError("--only is accepted only with baseline --write.");
+  if ((command !== "baseline" || !options.write) && options.confirmBaseline)
+    throw new MigrationManagerUsageError(
+      "--confirm-baseline is accepted only with baseline --write.",
+    );
+  if ((command !== "apply-one" || !options.write) && options.confirmApply)
+    throw new MigrationManagerUsageError(
+      "--confirm-apply is accepted only with apply-one --write.",
+    );
+  if ((command !== "apply-one" || !options.write) && options.confirmedTables)
+    throw new MigrationManagerUsageError(
+      "--confirm-tables is accepted only with apply-one --write.",
+    );
+  if (!["apply-one", "retry-failed"].includes(command) || !options.write) {
+    if (options.backupIdentifier)
+      throw new MigrationManagerUsageError(
+        "--confirm-backup is accepted only with a controlled migration write.",
+      );
+  }
+  if ((command !== "retry-failed" || !options.write) && options.confirmRetry)
+    throw new MigrationManagerUsageError(
+      "--confirm-retry is accepted only with retry-failed --write.",
+    );
   if (!["console", "json"].includes(options.format))
     throw new MigrationManagerUsageError("--format deve ser console ou json.");
   return options;
@@ -208,6 +247,7 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
   const createClient = dependencies.createClient || createDoctorDatabaseClient;
   const createWriteClient = dependencies.createWriteClient || createBaselineWriteClient;
   const createApplyClient = dependencies.createApplyClient || createApplyOneWriteClient;
+  const createRetryClient = dependencies.createRetryClient || createRetryFailedWriteClient;
   const manager = dependencies.manager || new MigrationManager();
   let client;
   try {
@@ -243,6 +283,13 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
         confirmedTables: options.confirmedTables,
         writeClientFactory: () => createApplyClient(config),
       });
+    } else if (options.command === "retry-failed" && options.write) {
+      result = await manager.runRetryFailedWrite({
+        ...context,
+        confirmationToken: options.confirmRetry,
+        backupIdentifier: options.backupIdentifier,
+        writeClientFactory: () => createRetryClient(config),
+      });
     } else {
       result = await manager.run(options.command, context);
     }
@@ -262,7 +309,11 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
       errorOutput.write(`Falha de conexão com o banco confirmado (${code}).\n`);
       return EXIT_CODES.CONNECTION;
     }
-    if (error instanceof ControlledBaselineError || error instanceof ControlledApplyOneError) {
+    if (
+      error instanceof ControlledBaselineError ||
+      error instanceof ControlledApplyOneError ||
+      error instanceof ControlledRetryFailedError
+    ) {
       errorOutput.write(`${code}: ${error.message}\n`);
       return EXIT_CODES.CRITICAL;
     }

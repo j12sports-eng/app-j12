@@ -112,6 +112,30 @@ class MySqlMigrationLedger {
     );
   }
 
+  async markRetryApplying(migration, startedAt) {
+    const [result] = await this.execute(
+      `UPDATE ${LEDGER_TABLE}
+      SET status = 'APPLYING',
+          started_at = ?,
+          applied_at = NULL,
+          failed_at = NULL,
+          execution_ms = NULL,
+          error_message = NULL
+      WHERE id = ?
+        AND checksum = ?
+        AND status = 'FAILED'
+        AND applied_at IS NULL`,
+      [startedAt, migration.id, migration.checksum],
+    );
+
+    if (Number(result?.affectedRows) !== 1) {
+      throw ledgerError(
+        `Failed retry transition for ${migration.id}.`,
+        "MIGRATION_LEDGER_RETRY_TRANSITION_FAILED",
+      );
+    }
+  }
+
   async registerBaseline(migration, appliedAt) {
     const [result] = await this.execute(
       `INSERT INTO ${LEDGER_TABLE} (id, migration_timestamp, name, checksum, status, started_at, applied_at, execution_ms, error_message) VALUES (?, ?, ?, ?, 'APPLIED', ?, ?, 0, NULL)`,

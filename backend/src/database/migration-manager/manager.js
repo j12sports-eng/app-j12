@@ -3,6 +3,7 @@
 const { buildBaselinePlan } = require("./baseline-manager");
 const { executeControlledBaseline } = require("./baseline-write-manager");
 const { buildApplyOnePlan, executeApplyOne } = require("./apply-manager");
+const { buildRetryFailedPlan, executeRetryFailed } = require("./retry-failed-manager");
 const { MigrationManagerUnavailableError, RESERVED_COMMANDS } = require("./constants");
 const { buildMigrationPlan } = require("./plan-manager");
 const { collectMigrationState } = require("./report-manager");
@@ -32,6 +33,7 @@ class MigrationManager {
     let result;
     if (command === "plan") result = buildMigrationPlan(state);
     else if (command === "apply-one") result = buildApplyOnePlan(state, context.migrationId);
+    else if (command === "retry-failed") result = buildRetryFailedPlan(state, context.migrationId);
     else if (command === "baseline") result = buildBaselinePlan(state);
     else if (command === "validate") result = buildValidationReport(state);
     else throw new MigrationManagerUnavailableError(command);
@@ -65,6 +67,18 @@ class MigrationManager {
       confirmationToken: context.confirmationToken,
       backupIdentifier: context.backupIdentifier,
       confirmedTables: context.confirmedTables,
+      clock: context.clock,
+    });
+  }
+
+  async runRetryFailedWrite(context) {
+    return executeRetryFailed({
+      stateCollector: this.stateCollector,
+      writeClientFactory: context.writeClientFactory,
+      context,
+      migrationId: context.migrationId,
+      confirmationToken: context.confirmationToken,
+      backupIdentifier: context.backupIdentifier,
       clock: context.clock,
     });
   }

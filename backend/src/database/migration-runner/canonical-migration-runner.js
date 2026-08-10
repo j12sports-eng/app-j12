@@ -1,4 +1,4 @@
-const { migrationError } = require("./migration-catalog.js");
+﻿const { migrationError } = require("./migration-catalog.js");
 
 const MigrationLedgerStatus = Object.freeze({
   APPLIED: "APPLIED",
@@ -145,6 +145,81 @@ class CanonicalMigrationRunner {
       }
     });
   }
+
+  async retryFailed(migrationId, { dryRun = false } = {}) {
+    const migration = this.catalog.find((candidate) => candidate.id === migrationId);
+
+    if (!migration) {
+      throw migrationError(
+        `Migration ${migrationId} does not exist in the canonical catalog.`,
+        "MIGRATION_NOT_FOUND",
+        { migrationId },
+      );
+    }
+
+    assertRetryLedger(this.ledger);
+
+    if (!dryRun) {
+      assertRuntimeDependencies(this.executor, this.ledger);
+
+      if (typeof this.ledger.markRetryApplying !== "function") {
+        throw new TypeError("CanonicalMigrationRunner retry requires ledger.markRetryApplying().");
+      }
+    }
+
+    if (dryRun) {
+      const status = buildStatus(this.catalog, await this.ledger.list());
+      const selected = assertRetryEligible(migration, status);
+
+      return {
+        applied: [],
+        dryRun: true,
+        plan: [toPlanItem(selected)],
+        skipped: [],
+      };
+    }
+
+    return this.ledger.withLock(async () => {
+      await this.ledger.ensureLedger();
+
+      const status = buildStatus(this.catalog, await this.ledger.list());
+      const selected = assertRetryEligible(migration, status);
+
+      const startedAt = this.clock();
+
+      await this.ledger.markRetryApplying(migration, startedAt);
+
+      try {
+        await this.executor.apply(migration);
+
+        const appliedAt = this.clock();
+
+        await this.ledger.markApplied(
+          migration,
+          appliedAt,
+          Math.max(0, appliedAt.getTime() - startedAt.getTime()),
+        );
+
+        return {
+          applied: [migration.id],
+          dryRun: false,
+          plan: [toPlanItem(selected)],
+          skipped: [],
+        };
+      } catch (error) {
+        await this.ledger.markFailed(migration, this.clock(), sanitizeError(error));
+
+        throw migrationError(
+          `Migration ${migration.id} failed during retry.`,
+          "MIGRATION_RETRY_EXECUTION_FAILED",
+          {
+            cause: error,
+            migrationId: migration.id,
+          },
+        );
+      }
+    });
+  }
 }
 
 function buildStatus(catalog, records) {
@@ -183,6 +258,46 @@ function assertRuntimeDependencies(executor, ledger) {
   const methods = ["ensureLedger", "list", "markApplied", "markApplying", "markFailed", "withLock"];
   if (!ledger || methods.some((method) => typeof ledger[method] !== "function"))
     throw new TypeError("CanonicalMigrationRunner requires a complete ledger adapter.");
+}
+
+function assertRetryLedger(ledger) {
+  if (!ledger || typeof ledger.list !== "function" || typeof ledger.withLock !== "function")
+    throw new TypeError("CanonicalMigrationRunner retry requires a ledger adapter.");
+}
+
+function assertRetryEligible(migration, status) {
+  const selected = status.find((item) => item.id === migration.id);
+
+  if (selected?.state !== MigrationLedgerStatus.FAILED) {
+    throw migrationError(
+      `Migration ${migration.id} is ${selected?.state || "UNKNOWN"}; retry requires FAILED.`,
+      "MIGRATION_RETRY_STATE_INVALID",
+      { migrationId: migration.id, state: selected?.state || "UNKNOWN" },
+    );
+  }
+
+  if (selected.appliedAt) {
+    throw migrationError(
+      `Migration ${migration.id} has applied_at; retry requires an unapplied FAILED record.`,
+      "MIGRATION_RETRY_APPLIED_AT_INVALID",
+      { migrationId: migration.id },
+    );
+  }
+
+  const statusById = new Map(status.map((item) => [item.id, item]));
+  const blockedDependencies = (migration.dependencies || []).filter(
+    (dependencyId) => statusById.get(dependencyId)?.state !== MigrationLedgerStatus.APPLIED,
+  );
+
+  if (blockedDependencies.length) {
+    throw migrationError(
+      `Migration ${migration.id} has unapplied dependencies.`,
+      "MIGRATION_RETRY_DEPENDENCY_PENDING",
+      { migrationId: migration.id, dependencyIds: blockedDependencies },
+    );
+  }
+
+  return selected;
 }
 
 function sanitizeError(error) {

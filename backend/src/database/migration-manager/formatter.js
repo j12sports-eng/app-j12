@@ -110,6 +110,33 @@ function formatConsole(report) {
       "Motivos de bloqueio",
       report.reasons.map((reason) => ({ id: reason })),
     );
+  } else if (report.command === "retry-failed" && report.mode === "WRITE") {
+    lines.push(
+      "Mode: WRITE",
+      `Migration retried: ${report.migrationId}`,
+      `Checksum: ${report.checksum}`,
+      `Backup confirmed: ${report.backupIdentifier}`,
+      `Token confirmed: ${report.tokenConfirmed}`,
+      `Post-validation: ${report.postValidation?.passed ? "approved" : "rejected"}`,
+      `Timestamp: ${report.timestamp}`,
+    );
+  } else if (report.command === "retry-failed") {
+    lines.push(
+      "Mode: DRY_RUN",
+      "Writes performed: no",
+      `Migration: ${report.migration.id}`,
+      `Checksum: ${report.migration.checksum}`,
+      `Dependencies: ${report.migration.dependencies.join(",") || "none"}`,
+      `Ledger status: ${report.migration.ledgerStatus}`,
+      `Physical state: ${report.migration.physicalState}`,
+      `Eligible: ${report.eligible ? "yes" : "no"}`,
+      `Expected token: ${report.confirmation.expectedToken}`,
+    );
+    appendIds(
+      lines,
+      "Block reasons",
+      report.reasons.map((reason) => ({ id: reason })),
+    );
   } else if (report.command === "validate") {
     lines.push(
       `Válido: ${report.valid ? "sim" : "não"}`,

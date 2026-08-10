@@ -234,6 +234,59 @@ test("adapter MySQL registra baseline somente no ledger oficial com campos APPLI
   assert.equal(harness.state.releases, 1);
 });
 
+test("adapter MySQL rearma FAILED para APPLYING somente com checksum exato", async () => {
+  const calls = [];
+
+  const connection = {
+    async execute(sql, params = []) {
+      calls.push({ sql, params });
+
+      if (/GET_LOCK/iu.test(sql)) {
+        return [[{ acquired: 1 }], []];
+      }
+
+      if (/RELEASE_LOCK/iu.test(sql)) {
+        return [[{ released: 1 }], []];
+      }
+
+      if (/UPDATE j12_schema_migrations/iu.test(sql)) {
+        return [{ affectedRows: 1 }, []];
+      }
+
+      return [{ affectedRows: 1 }, []];
+    },
+
+    release() {},
+  };
+
+  const ledger = new MySqlMigrationLedger({
+    pool: {
+      async getConnection() {
+        return connection;
+      },
+    },
+  });
+
+  const selected = migration("20260724123000_create_user_unit_memberships_table", "b");
+  const startedAt = new Date("2026-08-10T18:30:00.000Z");
+
+  await ledger.withLock(() => ledger.markRetryApplying(selected, startedAt));
+
+  const update = calls.find(({ sql }) => /UPDATE j12_schema_migrations/iu.test(sql));
+
+  assert.ok(update);
+  assert.match(update.sql, /status = 'APPLYING'/u);
+  assert.match(update.sql, /status = 'FAILED'/u);
+  assert.match(update.sql, /applied_at IS NULL/u);
+  assert.match(update.sql, /failed_at = NULL/u);
+  assert.match(update.sql, /checksum = \?/u);
+
+  assert.deepEqual(update.params, [startedAt, selected.id, selected.checksum]);
+
+  assert.match(calls.map(({ sql }) => sql).join("\n"), /GET_LOCK/u);
+
+  assert.match(calls.map(({ sql }) => sql).join("\n"), /RELEASE_LOCK/u);
+});
 test("adapter MySQL faz rollback da transação e sempre libera o lock", async () => {
   const harness = mysqlHarness();
   const ledger = new MySqlMigrationLedger({ pool: harness.pool });
