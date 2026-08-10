@@ -5,9 +5,9 @@ const test = require("node:test");
 
 const { criticalEnrollmentManifests } = require("../manifests");
 
-test("publica os 21 manifests críticos com artefatos declarativos", () => {
-  assert.equal(criticalEnrollmentManifests.length, 21);
-  assert.equal(new Set(criticalEnrollmentManifests.map((item) => item.migrationId)).size, 21);
+test("publica os 22 manifests operacionais com artefatos declarativos", () => {
+  assert.equal(criticalEnrollmentManifests.length, 22);
+  assert.equal(new Set(criticalEnrollmentManifests.map((item) => item.migrationId)).size, 22);
   for (const manifest of criticalEnrollmentManifests) {
     assert.match(manifest.migrationId, /^\d{14}_[a-z0-9_]+$/);
     assert.ok(Array.isArray(manifest.requiredTables));
