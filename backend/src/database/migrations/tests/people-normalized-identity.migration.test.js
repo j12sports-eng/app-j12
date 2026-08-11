@@ -8,13 +8,22 @@ const {
   auditRawCpfConflicts,
   backfillPeopleIdentity,
   createPeopleNormalizedIdentityMigration,
+  down,
   normalizeBackfillRow,
+  status,
+  up,
 } = require("../20260717220000_add_people_normalized_identity_columns.js");
 const {
   CREATE_PEOPLE_TABLE_SQL,
   PersonRepository,
   withNormalizedIdentity,
 } = require("../../../domains/pessoas/person.repository.js");
+
+test("exports the up/down/status contract required by the canonical runner", () => {
+  assert.equal(typeof up, "function");
+  assert.equal(typeof down, "function");
+  assert.equal(typeof status, "function");
+});
 
 test("backfill uses the canonical normalizer without truncating or inventing values", () => {
   const normalized = normalizeBackfillRow({

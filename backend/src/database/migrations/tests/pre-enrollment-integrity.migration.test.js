@@ -1,10 +1,37 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+const migrationModule = require("../20260719200000_add_pre_enrollment_integrity_constraints.js");
 const {
   INTEGRITY_MIGRATION_ERRORS,
   createPreEnrollmentIntegrityMigration,
-} = require("../20260719200000_add_pre_enrollment_integrity_constraints.js");
+} = migrationModule;
+
+test("exports the up/down/status contract required by the canonical runner", () => {
+  assert.equal(typeof migrationModule.up, "function");
+  assert.equal(typeof migrationModule.down, "function");
+  assert.equal(typeof migrationModule.status, "function");
+});
+
+test("default exports are lazy and delegate through the default factory", async () => {
+  const fake = database();
+  const { migration, restore } = loadModuleWithDefaultQuery(fake.query);
+  try {
+    assert.equal(fake.sql.length, 0);
+
+    const before = await migration.status();
+    const applied = await migration.up();
+    const reverted = await migration.down();
+
+    assert.equal(before.profileUniqueIndex, false);
+    assert.equal(applied.profileUniqueIndex, true);
+    assert.equal(applied.relationshipUniqueIndex, true);
+    assert.equal(reverted.profileUniqueIndex, false);
+    assert.equal(reverted.relationshipUniqueIndex, false);
+  } finally {
+    restore();
+  }
+});
 
 test("up creates compatible profile and active-relationship uniqueness idempotently", async () => {
   const fake = database();
@@ -158,5 +185,29 @@ function generatedColumn(length, source) {
     EXTRA: "VIRTUAL GENERATED",
     GENERATION_EXPRESSION: `case when status = 'active' then ${source} else null end`,
     IS_NULLABLE: "YES",
+  };
+}
+
+function loadModuleWithDefaultQuery(query) {
+  const databasePath = require.resolve("../../../config/db.js");
+  const migrationPath = require.resolve("../20260719200000_add_pre_enrollment_integrity_constraints.js");
+  const cachedDatabase = require.cache[databasePath];
+  const cachedMigration = require.cache[migrationPath];
+  delete require.cache[migrationPath];
+  require.cache[databasePath] = {
+    exports: { query },
+    filename: databasePath,
+    id: databasePath,
+    loaded: true,
+  };
+
+  return {
+    migration: require(migrationPath),
+    restore() {
+      if (cachedMigration) require.cache[migrationPath] = cachedMigration;
+      else delete require.cache[migrationPath];
+      if (cachedDatabase) require.cache[databasePath] = cachedDatabase;
+      else delete require.cache[databasePath];
+    },
   };
 }

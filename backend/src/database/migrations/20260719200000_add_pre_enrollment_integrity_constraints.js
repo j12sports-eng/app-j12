@@ -274,9 +274,15 @@ function getDefaultMigration() {
   return defaultMigration;
 }
 
+// CanonicalMigrationRunner invokes JavaScript migrations through module.up().
+// Keep the injectable factory above for tests while exposing the runner contract lazily.
+const up = (...args) => getDefaultMigration().up(...args);
+const down = (...args) => getDefaultMigration().down(...args);
+const status = (...args) => getDefaultMigration().status(...args);
+
 async function main() {
   const command = process.argv[2] || "status";
-  const operation = getDefaultMigration()[command];
+  const operation = { down, status, up }[command];
   if (typeof operation !== "function") throw new Error(`Unknown command: ${command}.`);
   console.log(JSON.stringify(await operation()));
 }
@@ -304,5 +310,8 @@ module.exports = Object.freeze({
   PROFILE_UNIQUE_INDEX,
   RELATIONSHIP_UNIQUE_INDEX,
   createPreEnrollmentIntegrityMigration,
+  down,
   readDuplicateCounts,
+  status,
+  up,
 });
