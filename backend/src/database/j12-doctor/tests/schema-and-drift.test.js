@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { assessManifest } = require("../checks/schema-manifest-check");
+const { assessManifest, normalizeColumnType } = require("../checks/schema-manifest-check");
 const { PHYSICAL_STATES } = require("../constants");
 const { inspectSchema } = require("../schema-inspector");
 
@@ -17,6 +17,14 @@ function fakeReader(results) {
     },
   };
 }
+
+test("normaliza somente largura de exibição inteira do MySQL", () => {
+  assert.equal(normalizeColumnType("BIGINT"), "bigint");
+  assert.equal(normalizeColumnType("bigint(20)"), "bigint");
+  assert.equal(normalizeColumnType("BIGINT UNSIGNED"), "bigint unsigned");
+  assert.notEqual(normalizeColumnType("BIGINT UNSIGNED"), normalizeColumnType("BIGINT"));
+  assert.notEqual(normalizeColumnType("INT(11)"), normalizeColumnType("BIGINT"));
+});
 
 test("normaliza tabelas, colunas, índices e FKs do INFORMATION_SCHEMA", async () => {
   const reader = fakeReader([

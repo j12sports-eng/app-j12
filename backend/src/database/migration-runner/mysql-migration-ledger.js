@@ -136,6 +136,91 @@ class MySqlMigrationLedger {
     }
   }
 
+  async reconcileFailedChecksum(migration, oldChecksum) {
+    const [result] = await this.execute(
+      `UPDATE ${LEDGER_TABLE}
+      SET checksum = ?
+      WHERE id = ?
+        AND migration_timestamp = ?
+        AND name = ?
+        AND checksum = ?
+        AND status = 'FAILED'
+        AND applied_at IS NULL`,
+      [migration.checksum, migration.id, migration.timestamp, migration.name, oldChecksum],
+    );
+
+    if (Number(result?.affectedRows) !== 1) {
+      throw ledgerError(
+        `Failed checksum reconciliation for ${migration.id}.`,
+        "MIGRATION_LEDGER_CHECKSUM_RECONCILIATION_FAILED",
+      );
+    }
+  }
+
+  async queryReadOnly(sql, params = []) {
+    if (!/^\s*SELECT\b/iu.test(sql))
+      throw ledgerError(
+        "Materialized finalization only permits SELECT validation queries.",
+        "MIGRATION_LEDGER_READ_ONLY_QUERY_REJECTED",
+      );
+    return this.execute(sql, params);
+  }
+
+  async readMaterializedFailedRecord(migration) {
+    const [rows] = await this.execute(
+      `SELECT id, migration_timestamp, name, checksum, status, started_at, applied_at, failed_at, execution_ms, error_message
+      FROM ${LEDGER_TABLE}
+      WHERE id = ?`,
+      [migration.id],
+    );
+    if (!Array.isArray(rows) || rows.length !== 1)
+      throw ledgerError(
+        `Materialized finalization requires exactly one ledger record for ${migration.id}.`,
+        "MIGRATION_LEDGER_MATERIALIZED_RECORD_INVALID",
+      );
+    const row = rows[0];
+    return {
+      id: row.id,
+      timestamp: row.migration_timestamp,
+      name: row.name,
+      checksum: row.checksum,
+      status: row.status,
+      startedAt: row.started_at || null,
+      appliedAt: row.applied_at || null,
+      failedAt: row.failed_at || null,
+      executionMs: row.execution_ms == null ? null : Number(row.execution_ms),
+      errorMessage: row.error_message || null,
+    };
+  }
+
+  async finalizeMaterializedFailed(migration, { appliedAt, auditEvidence }) {
+    const [result] = await this.execute(
+      `UPDATE ${LEDGER_TABLE}
+      SET status = 'APPLIED',
+          applied_at = ?,
+          error_message = ?
+      WHERE id = ?
+        AND migration_timestamp = ?
+        AND name = ?
+        AND checksum = ?
+        AND status = 'FAILED'
+        AND applied_at IS NULL`,
+      [
+        appliedAt,
+        auditEvidence,
+        migration.id,
+        migration.timestamp,
+        migration.name,
+        migration.checksum,
+      ],
+    );
+    if (Number(result?.affectedRows) !== 1)
+      throw ledgerError(
+        `Materialized finalization transition failed for ${migration.id}.`,
+        "MIGRATION_LEDGER_MATERIALIZED_FINALIZE_REJECTED",
+      );
+  }
+
   async registerBaseline(migration, appliedAt) {
     const [result] = await this.execute(
       `INSERT INTO ${LEDGER_TABLE} (id, migration_timestamp, name, checksum, status, started_at, applied_at, execution_ms, error_message) VALUES (?, ?, ?, ?, 'APPLIED', ?, ?, 0, NULL)`,

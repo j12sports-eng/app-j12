@@ -30,6 +30,16 @@ test("user-unit memberships migration declares canonical schema contract", () =>
   assert.match(migration.CREATE_TABLE_SQL, /COLLATE=utf8mb4_unicode_ci/i);
 });
 
+test("auth identity FK avoids a MySQL 5.7-incompatible cascade from a stored generated base column", () => {
+  const authIdentityConstraint = migration.CREATE_TABLE_SQL.match(
+    /CONSTRAINT fk_user_unit_memberships_auth_identity[\s\S]*?ON DELETE RESTRICT,/u,
+  )?.[0];
+
+  assert.ok(authIdentityConstraint);
+  assert.match(authIdentityConstraint, /ON UPDATE RESTRICT/u);
+  assert.doesNotMatch(authIdentityConstraint, /ON UPDATE CASCADE/u);
+});
+
 test("user-unit memberships migration follows canonical dependency ordering", () => {
   assert.deepEqual(MIGRATION_DEPENDENCIES["20260724123000_create_user_unit_memberships_table"], [
     "20260724120000_create_auth_identities_table",

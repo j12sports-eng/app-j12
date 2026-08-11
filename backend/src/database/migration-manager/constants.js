@@ -5,6 +5,8 @@ const SUPPORTED_COMMANDS = Object.freeze([
   "baseline",
   "apply-one",
   "retry-failed",
+  "reconcile-failed-checksum",
+  "finalize-materialized-failed",
   "validate",
 ]);
 const RESERVED_COMMANDS = Object.freeze(["apply", "report"]);

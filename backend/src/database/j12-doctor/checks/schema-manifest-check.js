@@ -224,7 +224,13 @@ function assessManifest(schema, manifest) {
         JSON.stringify(actualForeignKey.columns) === JSON.stringify(expectedForeignKey.columns) &&
         actualForeignKey.referencedTable === expectedForeignKey.referencedTable &&
         JSON.stringify(actualForeignKey.referencedColumns) ===
-          JSON.stringify(expectedForeignKey.referencedColumns);
+          JSON.stringify(expectedForeignKey.referencedColumns) &&
+        (!expectedForeignKey.updateRule ||
+          String(actualForeignKey.updateRule || "").toUpperCase() ===
+            String(expectedForeignKey.updateRule).toUpperCase()) &&
+        (!expectedForeignKey.deleteRule ||
+          String(actualForeignKey.deleteRule || "").toUpperCase() ===
+            String(expectedForeignKey.deleteRule).toUpperCase());
       if (!compatible) {
         mismatchCount += 1;
         structuralMismatchCount += 1;

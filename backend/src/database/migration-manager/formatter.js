@@ -120,6 +120,65 @@ function formatConsole(report) {
       `Post-validation: ${report.postValidation?.passed ? "approved" : "rejected"}`,
       `Timestamp: ${report.timestamp}`,
     );
+  } else if (report.command === "reconcile-failed-checksum" && report.mode === "WRITE") {
+    lines.push(
+      "Mode: WRITE",
+      `Migration reconciled: ${report.migrationId}`,
+      `Old checksum: ${report.oldChecksum}`,
+      `New checksum: ${report.newChecksum}`,
+      `Backup confirmed: ${report.backupIdentifier}`,
+      `Token confirmed: ${report.tokenConfirmed}`,
+      `Post-validation: ${report.postValidation?.passed ? "approved" : "rejected"}`,
+      `Timestamp: ${report.timestamp}`,
+    );
+  } else if (report.command === "finalize-materialized-failed" && report.mode === "WRITE") {
+    lines.push(
+      "Mode: WRITE",
+      `Migration finalized: ${report.migrationId}`,
+      `Checksum: ${report.checksum}`,
+      `Backup confirmed: ${report.backupIdentifier}`,
+      `Token confirmed: ${report.tokenConfirmed}`,
+      `Failure evidence preserved: ${report.audit?.finalizationEvidenceStored ? "yes" : "no"}`,
+      `Post-validation: ${report.postValidation?.passed ? "approved" : "rejected"}`,
+      `Timestamp: ${report.timestamp}`,
+    );
+  } else if (report.command === "finalize-materialized-failed") {
+    lines.push(
+      "Mode: DRY_RUN",
+      "Writes performed: no",
+      `Migration: ${report.migration.id}`,
+      `Catalog checksum: ${report.migration.catalogChecksum}`,
+      `Ledger checksum: ${report.migration.ledgerChecksum}`,
+      `Ledger status: ${report.migration.ledgerStatus}`,
+      `Applied at: ${report.migration.appliedAt || "null"}`,
+      `Physical state: ${report.migration.physicalState}`,
+      `Structural artifacts expected/found: ${report.structuralValidation.expectedArtifacts}/${report.structuralValidation.foundArtifacts}`,
+      `Structural mismatches: ${report.structuralValidation.mismatches}`,
+      `Eligible: ${report.eligible ? "yes" : "no"}`,
+      `Expected token: ${report.confirmation.expectedToken}`,
+    );
+    appendIds(
+      lines,
+      "Block reasons",
+      report.reasons.map((reason) => ({ id: reason })),
+    );
+  } else if (report.command === "reconcile-failed-checksum") {
+    lines.push(
+      "Mode: DRY_RUN",
+      "Writes performed: no",
+      `Migration: ${report.migration.id}`,
+      `Old checksum: ${report.migration.oldChecksum}`,
+      `New checksum: ${report.migration.newChecksum}`,
+      `Ledger status: ${report.migration.ledgerStatus}`,
+      `Physical state: ${report.migration.physicalState}`,
+      `Eligible: ${report.eligible ? "yes" : "no"}`,
+      `Expected token: ${report.confirmation.expectedToken}`,
+    );
+    appendIds(
+      lines,
+      "Block reasons",
+      report.reasons.map((reason) => ({ id: reason })),
+    );
   } else if (report.command === "retry-failed") {
     lines.push(
       "Mode: DRY_RUN",

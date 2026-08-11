@@ -287,6 +287,70 @@ test("adapter MySQL rearma FAILED para APPLYING somente com checksum exato", asy
 
   assert.match(calls.map(({ sql }) => sql).join("\n"), /RELEASE_LOCK/u);
 });
+test("adapter MySQL reconcilia somente o checksum de FAILED não aplicada e preserva o histórico", async () => {
+  const calls = [];
+  const connection = {
+    async execute(sql, params = []) {
+      calls.push({ sql, params });
+      if (/GET_LOCK|RELEASE_LOCK/iu.test(sql)) return [[{ acquired: 1 }], []];
+      return [{ affectedRows: 1 }, []];
+    },
+    release() {},
+  };
+  const ledger = new MySqlMigrationLedger({
+    pool: {
+      async getConnection() {
+        return connection;
+      },
+    },
+  });
+  const selected = migration("20260724123000_create_user_unit_memberships_table", "b");
+  const oldChecksum = "a".repeat(64);
+
+  await ledger.withLock(() => ledger.reconcileFailedChecksum(selected, oldChecksum));
+
+  const update = calls.find(({ sql }) => /UPDATE j12_schema_migrations/iu.test(sql));
+  assert.ok(update);
+  assert.match(update.sql, /SET checksum = \?/u);
+  assert.match(update.sql, /migration_timestamp = \?/u);
+  assert.match(update.sql, /name = \?/u);
+  assert.match(update.sql, /status = 'FAILED'/u);
+  assert.match(update.sql, /applied_at IS NULL/u);
+  assert.doesNotMatch(update.sql, /failed_at\s*=/u);
+  assert.doesNotMatch(update.sql, /started_at\s*=/u);
+  assert.doesNotMatch(update.sql, /error_message\s*=/u);
+  assert.deepEqual(update.params, [
+    selected.checksum,
+    selected.id,
+    selected.timestamp,
+    selected.name,
+    oldChecksum,
+  ]);
+});
+
+test("adapter MySQL bloqueia reconciliação quando a linha exata não é atualizada", async () => {
+  const connection = {
+    async execute(sql) {
+      if (/GET_LOCK|RELEASE_LOCK/iu.test(sql)) return [[{ acquired: 1 }], []];
+      return [{ affectedRows: 0 }, []];
+    },
+    release() {},
+  };
+  const ledger = new MySqlMigrationLedger({
+    pool: {
+      async getConnection() {
+        return connection;
+      },
+    },
+  });
+  const selected = migration("20260724123000_create_user_unit_memberships_table", "b");
+
+  await assert.rejects(
+    () => ledger.withLock(() => ledger.reconcileFailedChecksum(selected, "a".repeat(64))),
+    (error) => error.code === "MIGRATION_LEDGER_CHECKSUM_RECONCILIATION_FAILED",
+  );
+});
+
 test("adapter MySQL faz rollback da transação e sempre libera o lock", async () => {
   const harness = mysqlHarness();
   const ledger = new MySqlMigrationLedger({ pool: harness.pool });
@@ -302,4 +366,109 @@ test("adapter MySQL faz rollback da transação e sempre libera o lock", async (
   assert.equal(harness.state.commits, 0);
   assert.equal(harness.state.rollbacks, 1);
   assert.equal(harness.state.releases, 1);
+});
+
+test("adapter MySQL finaliza FAILED materializada em transação preservando failed_at e auditando error_message", async () => {
+  const calls = [];
+  const state = { begins: 0, commits: 0, releases: 0, rollbacks: 0 };
+  const connection = {
+    async execute(sql, params = []) {
+      calls.push({ sql, params });
+      if (/GET_LOCK|RELEASE_LOCK/iu.test(sql)) return [[{ acquired: 1 }], []];
+      if (/UPDATE j12_schema_migrations/iu.test(sql)) return [{ affectedRows: 1 }, []];
+      return [[{ id: "ignored" }], []];
+    },
+    async beginTransaction() {
+      state.begins += 1;
+    },
+    async commit() {
+      state.commits += 1;
+    },
+    async rollback() {
+      state.rollbacks += 1;
+    },
+    release() {
+      state.releases += 1;
+    },
+  };
+  const ledger = new MySqlMigrationLedger({
+    pool: {
+      async getConnection() {
+        return connection;
+      },
+    },
+  });
+  const selected = migration("20260724123000_create_user_unit_memberships_table", "b");
+  const appliedAt = new Date("2026-08-10T22:00:00.000Z");
+  const auditEvidence = "MATERIALIZED_FINALIZATION; prior_error=validation mismatch";
+
+  await ledger.withLock(() =>
+    ledger.withTransaction(() =>
+      ledger.finalizeMaterializedFailed(selected, { appliedAt, auditEvidence }),
+    ),
+  );
+
+  const update = calls.find(({ sql }) => /UPDATE j12_schema_migrations/iu.test(sql));
+  assert.ok(update);
+  assert.match(update.sql, /SET status = 'APPLIED'/u);
+  assert.match(update.sql, /applied_at = \?/u);
+  assert.match(update.sql, /error_message = \?/u);
+  assert.match(update.sql, /migration_timestamp = \?/u);
+  assert.match(update.sql, /name = \?/u);
+  assert.match(update.sql, /checksum = \?/u);
+  assert.match(update.sql, /status = 'FAILED'/u);
+  assert.match(update.sql, /applied_at IS NULL/u);
+  assert.doesNotMatch(update.sql, /failed_at\s*=/u);
+  assert.doesNotMatch(update.sql, /started_at\s*=/u);
+  assert.deepEqual(update.params, [
+    appliedAt,
+    auditEvidence,
+    selected.id,
+    selected.timestamp,
+    selected.name,
+    selected.checksum,
+  ]);
+  assert.equal(state.begins, 1);
+  assert.equal(state.commits, 1);
+  assert.equal(state.rollbacks, 0);
+  assert.equal(state.releases, 1);
+});
+
+test("adapter MySQL rejeita UPDATE de finalização com affectedRows diferente de um e libera lock", async () => {
+  const state = { rollbacks: 0, releases: 0 };
+  const connection = {
+    async execute(sql) {
+      if (/GET_LOCK|RELEASE_LOCK/iu.test(sql)) return [[{ acquired: 1 }], []];
+      return [{ affectedRows: 0 }, []];
+    },
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {
+      state.rollbacks += 1;
+    },
+    release() {
+      state.releases += 1;
+    },
+  };
+  const ledger = new MySqlMigrationLedger({
+    pool: {
+      async getConnection() {
+        return connection;
+      },
+    },
+  });
+  const selected = migration("20260724123000_create_user_unit_memberships_table", "b");
+  await assert.rejects(
+    ledger.withLock(() =>
+      ledger.withTransaction(() =>
+        ledger.finalizeMaterializedFailed(selected, {
+          appliedAt: new Date("2026-08-10T22:00:00.000Z"),
+          auditEvidence: "MATERIALIZED_FINALIZATION",
+        }),
+      ),
+    ),
+    (error) => error.code === "MIGRATION_LEDGER_MATERIALIZED_FINALIZE_REJECTED",
+  );
+  assert.equal(state.rollbacks, 1);
+  assert.equal(state.releases, 1);
 });

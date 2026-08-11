@@ -1,15 +1,18 @@
 "use strict";
 
+const { createHash } = require("node:crypto");
+
 const { LEDGER_STATES, SEVERITIES } = require("../constants");
 
 async function readMigrationLedger(reader, schema) {
   if (!schema.tables.j12_schema_migrations) return { exists: false, rows: [] };
-  const requiredColumns = ["id", "checksum", "status", "applied_at", "migration_timestamp"];
+  const requiredColumns = ["id", "checksum", "status", "applied_at", "migration_timestamp", "name"];
   const missingColumns = requiredColumns.filter(
     (column) => !schema.tables.j12_schema_migrations.columns[column],
   );
   if (missingColumns.length) return { exists: true, rows: [], missingColumns };
-  const result = await reader.query(`SELECT id, checksum, status, applied_at
+  const result =
+    await reader.query(`SELECT id, checksum, status, applied_at, failed_at, error_message, migration_timestamp, name
     FROM j12_schema_migrations ORDER BY migration_timestamp, id`);
   const rows = Array.isArray(result) && Array.isArray(result[0]) ? result[0] : result;
   return {
@@ -17,6 +20,10 @@ async function readMigrationLedger(reader, schema) {
     rows: rows.map((row) => ({
       id: row.id,
       checksum: row.checksum,
+      failureEvidenceFingerprint: failureEvidenceFingerprint(row.failed_at, row.error_message),
+      failedAt: row.failed_at || null,
+      name: row.name,
+      migrationTimestamp: row.migration_timestamp,
       status: row.status,
       appliedAt: row.applied_at || null,
     })),
@@ -57,6 +64,11 @@ function assessLedger(catalog, ledger) {
       ...migration,
       ledgerState,
       ledgerStatus: row?.status || null,
+      ledgerChecksum: row?.checksum || null,
+      failureEvidenceFingerprint: row?.failureEvidenceFingerprint || null,
+      failedAt: row?.failedAt || null,
+      ledgerName: row?.name || null,
+      ledgerTimestamp: row?.migrationTimestamp || null,
       appliedAt: row?.appliedAt || null,
       checksumMatches: row ? row.checksum === migration.checksum : null,
     };
@@ -79,4 +91,14 @@ function assessLedger(catalog, ledger) {
   return { migrations, findings };
 }
 
-module.exports = { assessLedger, readMigrationLedger };
+function failureEvidenceFingerprint(failedAt, errorMessage) {
+  if (!failedAt && !errorMessage) return null;
+  return createHash("sha256")
+    .update(
+      JSON.stringify({ failedAt: failedAt || null, errorMessage: errorMessage || null }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
+module.exports = { assessLedger, failureEvidenceFingerprint, readMigrationLedger };

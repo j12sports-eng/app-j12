@@ -28,8 +28,16 @@ const { MigrationManager } = require("./manager");
 const { ControlledBaselineError } = require("./baseline-errors");
 const { ControlledApplyOneError } = require("./apply-one-errors");
 const { ControlledRetryFailedError } = require("./retry-failed-errors");
+const { ControlledChecksumReconciliationError } = require("./reconcile-failed-checksum-errors");
+const { ControlledMaterializedFinalizeError } = require("./finalize-materialized-failed-errors");
 const { createApplyOneWriteClient } = require("./apply-one-database-client");
 const { createRetryFailedWriteClient } = require("./retry-failed-database-client");
+const {
+  createReconcileFailedChecksumWriteClient,
+} = require("./reconcile-failed-checksum-database-client");
+const {
+  createMaterializedFinalizeWriteClient,
+} = require("./finalize-materialized-failed-database-client");
 const { createBaselineWriteClient } = require("./write-database-client");
 const {
   AUTH_RUNTIME_CORRECTIVE_MIGRATION,
@@ -41,11 +49,14 @@ const ALL_COMMANDS = new Set([...SUPPORTED_COMMANDS, ...RESERVED_COMMANDS]);
 function usage() {
   return [
     "Uso: node backend/src/database/migration-manager/cli.js <comando> --confirm-database=<nome> [--allow-remote] [--format=console|json]",
-    "Dry-run: baseline --dry-run | apply-one --dry-run --migration=<id> | retry-failed --migration=<id>",
+    "Dry-run: baseline --dry-run | apply-one --dry-run --migration=<id> | retry-failed --migration=<id> | reconcile-failed-checksum --migration=<id> | finalize-materialized-failed --migration=<id>",
     "Baseline write: baseline --write --only=<id1,id2> --confirm-baseline=<token>",
     "Apply-one write: apply-one --write --migration=<id> --confirm-apply=<token> --confirm-backup=<id> --confirm-tables=<t1,t2>",
     "Retry write: retry-failed --write --migration=<id> --confirm-retry=<token> --confirm-backup=<id>",
-    "Comandos disponíveis: plan, baseline, apply-one, validate",
+    "Checksum reconcile write: reconcile-failed-checksum --write --migration=<id> --confirm-checksum-reconcile=<token> --confirm-backup=<id>",
+    "Materialized finalize dry-run: finalize-materialized-failed --dry-run --migration=<id>",
+    "Materialized finalize write: finalize-materialized-failed --write --migration=<id> --confirm-materialized-finalize=<token> --confirm-backup=<id>",
+    "Comandos disponíveis: plan, baseline, apply-one, retry-failed, reconcile-failed-checksum, validate",
     "Reservados e bloqueados: apply, report",
   ].join("\n");
 }
@@ -64,6 +75,8 @@ function parseArguments(argv) {
     migrationId: null,
     confirmApply: null,
     confirmRetry: null,
+    confirmChecksumReconcile: null,
+    confirmMaterializedFinalize: null,
     backupIdentifier: null,
     confirmedTables: null,
     format: "console",
@@ -85,6 +98,12 @@ function parseArguments(argv) {
       options.confirmApply = argument.slice("--confirm-apply=".length);
     else if (argument.startsWith("--confirm-retry="))
       options.confirmRetry = argument.slice("--confirm-retry=".length);
+    else if (argument.startsWith("--confirm-checksum-reconcile="))
+      options.confirmChecksumReconcile = argument.slice("--confirm-checksum-reconcile=".length);
+    else if (argument.startsWith("--confirm-materialized-finalize="))
+      options.confirmMaterializedFinalize = argument.slice(
+        "--confirm-materialized-finalize=".length,
+      );
     else if (argument.startsWith("--confirm-backup="))
       options.backupIdentifier = argument.slice("--confirm-backup=".length);
     else if (argument.startsWith("--confirm-tables="))
@@ -99,18 +118,30 @@ function parseArguments(argv) {
     else throw new MigrationManagerUsageError(`Argumento desconhecido.\n${usage()}`);
   }
   if (!SUPPORTED_COMMANDS.includes(command)) throw new MigrationManagerUnavailableError(command);
-  const controlledCommand = ["baseline", "apply-one", "retry-failed"].includes(command);
-  if (command === "retry-failed" && !options.write) options.dryRun = true;
+  const controlledCommand = [
+    "baseline",
+    "apply-one",
+    "retry-failed",
+    "reconcile-failed-checksum",
+    "finalize-materialized-failed",
+  ].includes(command);
+  if (
+    ["retry-failed", "reconcile-failed-checksum", "finalize-materialized-failed"].includes(
+      command,
+    ) &&
+    !options.write
+  )
+    options.dryRun = true;
   if (controlledCommand && options.dryRun === options.write)
     throw new MigrationManagerUsageError(
       `${command} exige exatamente um modo: --dry-run ou --write.`,
     );
   if (!controlledCommand && options.dryRun)
-    throw new MigrationManagerUsageError("--dry-run é aceito apenas por baseline e apply-one.");
+    throw new MigrationManagerUsageError("--dry-run é aceito apenas por comandos controlados.");
   if (options.dryRun && options.write)
     throw new MigrationManagerUsageError("--dry-run e --write são mutuamente exclusivos.");
   if (!controlledCommand && options.write)
-    throw new MigrationManagerUsageError("--write é aceito apenas por baseline e apply-one.");
+    throw new MigrationManagerUsageError("--write é aceito apenas por comandos controlados.");
   if (
     command === "baseline" &&
     options.write &&
@@ -131,12 +162,38 @@ function parseArguments(argv) {
     throw new MigrationManagerUsageError("apply-one exige --migration=<id>.");
   if (command === "retry-failed" && !options.migrationId)
     throw new MigrationManagerUsageError("retry-failed requires --migration=<id>.");
-  if (!["apply-one", "retry-failed"].includes(command) && options.migrationId)
-    throw new MigrationManagerUsageError("--migration é aceito apenas por apply-one.");
+  if (command === "reconcile-failed-checksum" && !options.migrationId)
+    throw new MigrationManagerUsageError("reconcile-failed-checksum requires --migration=<id>.");
+  if (command === "finalize-materialized-failed" && !options.migrationId)
+    throw new MigrationManagerUsageError("finalize-materialized-failed requires --migration=<id>.");
+  if (
+    ![
+      "apply-one",
+      "retry-failed",
+      "reconcile-failed-checksum",
+      "finalize-materialized-failed",
+    ].includes(command) &&
+    options.migrationId
+  )
+    throw new MigrationManagerUsageError(
+      "--migration é aceito apenas por apply-one, retry-failed e reconcile-failed-checksum.",
+    );
   if (command === "apply-one" && options.write && !options.confirmApply)
     throw new MigrationManagerUsageError("apply-one --write exige --confirm-apply=<token>.");
   if (command === "retry-failed" && options.write && !options.confirmRetry)
     throw new MigrationManagerUsageError("retry-failed --write requires --confirm-retry=<token>.");
+  if (command === "reconcile-failed-checksum" && options.write && !options.confirmChecksumReconcile)
+    throw new MigrationManagerUsageError(
+      "reconcile-failed-checksum --write requires --confirm-checksum-reconcile=<token>.",
+    );
+  if (
+    command === "finalize-materialized-failed" &&
+    options.write &&
+    !options.confirmMaterializedFinalize
+  )
+    throw new MigrationManagerUsageError(
+      "finalize-materialized-failed --write requires --confirm-materialized-finalize=<token>.",
+    );
   if (command === "apply-one" && options.write && !options.backupIdentifier)
     throw new MigrationManagerUsageError(
       "apply-one --write exige --confirm-backup=<identificador>.",
@@ -144,6 +201,14 @@ function parseArguments(argv) {
   if (command === "retry-failed" && options.write && !options.backupIdentifier)
     throw new MigrationManagerUsageError(
       "retry-failed --write requires --confirm-backup=<identifier>.",
+    );
+  if (command === "reconcile-failed-checksum" && options.write && !options.backupIdentifier)
+    throw new MigrationManagerUsageError(
+      "reconcile-failed-checksum --write requires --confirm-backup=<identifier>.",
+    );
+  if (command === "finalize-materialized-failed" && options.write && !options.backupIdentifier)
+    throw new MigrationManagerUsageError(
+      "finalize-materialized-failed --write requires --confirm-backup=<identifier>.",
     );
   if (
     command === "apply-one" &&
@@ -167,7 +232,15 @@ function parseArguments(argv) {
     throw new MigrationManagerUsageError(
       "A lista --confirm-tables deve corresponder exatamente a users,user_sessions,password_reset_tokens.",
     );
-  if (!["apply-one", "retry-failed"].includes(command) || !options.write) {
+  if (
+    ![
+      "apply-one",
+      "retry-failed",
+      "reconcile-failed-checksum",
+      "finalize-materialized-failed",
+    ].includes(command) ||
+    !options.write
+  ) {
     if (options.confirmApply)
       throw new MigrationManagerUsageError(
         "--confirm-apply é aceito apenas com apply-one --write.",
@@ -195,7 +268,15 @@ function parseArguments(argv) {
     throw new MigrationManagerUsageError(
       "--confirm-tables is accepted only with apply-one --write.",
     );
-  if (!["apply-one", "retry-failed"].includes(command) || !options.write) {
+  if (
+    ![
+      "apply-one",
+      "retry-failed",
+      "reconcile-failed-checksum",
+      "finalize-materialized-failed",
+    ].includes(command) ||
+    !options.write
+  ) {
     if (options.backupIdentifier)
       throw new MigrationManagerUsageError(
         "--confirm-backup is accepted only with a controlled migration write.",
@@ -204,6 +285,20 @@ function parseArguments(argv) {
   if ((command !== "retry-failed" || !options.write) && options.confirmRetry)
     throw new MigrationManagerUsageError(
       "--confirm-retry is accepted only with retry-failed --write.",
+    );
+  if (
+    (command !== "reconcile-failed-checksum" || !options.write) &&
+    options.confirmChecksumReconcile
+  )
+    throw new MigrationManagerUsageError(
+      "--confirm-checksum-reconcile is accepted only with reconcile-failed-checksum --write.",
+    );
+  if (
+    (command !== "finalize-materialized-failed" || !options.write) &&
+    options.confirmMaterializedFinalize
+  )
+    throw new MigrationManagerUsageError(
+      "--confirm-materialized-finalize is accepted only with finalize-materialized-failed --write.",
     );
   if (!["console", "json"].includes(options.format))
     throw new MigrationManagerUsageError("--format deve ser console ou json.");
@@ -248,6 +343,10 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
   const createWriteClient = dependencies.createWriteClient || createBaselineWriteClient;
   const createApplyClient = dependencies.createApplyClient || createApplyOneWriteClient;
   const createRetryClient = dependencies.createRetryClient || createRetryFailedWriteClient;
+  const createChecksumReconcileClient =
+    dependencies.createChecksumReconcileClient || createReconcileFailedChecksumWriteClient;
+  const createMaterializedFinalizeClient =
+    dependencies.createMaterializedFinalizeClient || createMaterializedFinalizeWriteClient;
   const manager = dependencies.manager || new MigrationManager();
   let client;
   try {
@@ -290,6 +389,20 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
         backupIdentifier: options.backupIdentifier,
         writeClientFactory: () => createRetryClient(config),
       });
+    } else if (options.command === "reconcile-failed-checksum" && options.write) {
+      result = await manager.runChecksumReconciliationWrite({
+        ...context,
+        confirmationToken: options.confirmChecksumReconcile,
+        backupIdentifier: options.backupIdentifier,
+        writeClientFactory: () => createChecksumReconcileClient(config),
+      });
+    } else if (options.command === "finalize-materialized-failed" && options.write) {
+      result = await manager.runMaterializedFinalizeWrite({
+        ...context,
+        confirmationToken: options.confirmMaterializedFinalize,
+        backupIdentifier: options.backupIdentifier,
+        writeClientFactory: () => createMaterializedFinalizeClient(config),
+      });
     } else {
       result = await manager.run(options.command, context);
     }
@@ -312,7 +425,9 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
     if (
       error instanceof ControlledBaselineError ||
       error instanceof ControlledApplyOneError ||
-      error instanceof ControlledRetryFailedError
+      error instanceof ControlledRetryFailedError ||
+      error instanceof ControlledChecksumReconciliationError ||
+      error instanceof ControlledMaterializedFinalizeError
     ) {
       errorOutput.write(`${code}: ${error.message}\n`);
       return EXIT_CODES.CRITICAL;

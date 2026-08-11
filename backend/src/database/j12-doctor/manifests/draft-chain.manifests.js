@@ -236,16 +236,24 @@ const raw = [
           idx_user_unit_memberships_status: i(["status"]),
         },
         {
-          fk_user_unit_memberships_auth_identity: fk(["auth_identity_id"], "auth_identities"),
+          fk_user_unit_memberships_auth_identity: fk(["auth_identity_id"], "auth_identities", {
+            updateRule: "RESTRICT",
+            deleteRule: "RESTRICT",
+          }),
           fk_user_unit_memberships_created_by_auth_identity: fk(
             ["created_by_auth_identity_id"],
             "auth_identities",
+            { updateRule: "CASCADE", deleteRule: "RESTRICT" },
           ),
           fk_user_unit_memberships_revoked_by_auth_identity: fk(
             ["revoked_by_auth_identity_id"],
             "auth_identities",
+            { updateRule: "CASCADE", deleteRule: "SET NULL" },
           ),
-          fk_user_unit_memberships_unit: fk(["unit_id"], "j12_unidades"),
+          fk_user_unit_memberships_unit: fk(["unit_id"], "j12_unidades", {
+            updateRule: "CASCADE",
+            deleteRule: "RESTRICT",
+          }),
         },
         { engine: "InnoDB", charset: "utf8mb4", collation: "utf8mb4_unicode_ci" },
       ),

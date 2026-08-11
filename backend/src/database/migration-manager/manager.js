@@ -4,6 +4,14 @@ const { buildBaselinePlan } = require("./baseline-manager");
 const { executeControlledBaseline } = require("./baseline-write-manager");
 const { buildApplyOnePlan, executeApplyOne } = require("./apply-manager");
 const { buildRetryFailedPlan, executeRetryFailed } = require("./retry-failed-manager");
+const {
+  buildReconcileFailedChecksumPlan,
+  executeChecksumReconciliation,
+} = require("./reconcile-failed-checksum-manager");
+const {
+  buildFinalizeMaterializedFailedPlan,
+  executeMaterializedFinalize,
+} = require("./finalize-materialized-failed-manager");
 const { MigrationManagerUnavailableError, RESERVED_COMMANDS } = require("./constants");
 const { buildMigrationPlan } = require("./plan-manager");
 const { collectMigrationState } = require("./report-manager");
@@ -34,6 +42,10 @@ class MigrationManager {
     if (command === "plan") result = buildMigrationPlan(state);
     else if (command === "apply-one") result = buildApplyOnePlan(state, context.migrationId);
     else if (command === "retry-failed") result = buildRetryFailedPlan(state, context.migrationId);
+    else if (command === "reconcile-failed-checksum")
+      result = buildReconcileFailedChecksumPlan(state, context.migrationId);
+    else if (command === "finalize-materialized-failed")
+      result = buildFinalizeMaterializedFailedPlan(state, context.migrationId);
     else if (command === "baseline") result = buildBaselinePlan(state);
     else if (command === "validate") result = buildValidationReport(state);
     else throw new MigrationManagerUnavailableError(command);
@@ -73,6 +85,30 @@ class MigrationManager {
 
   async runRetryFailedWrite(context) {
     return executeRetryFailed({
+      stateCollector: this.stateCollector,
+      writeClientFactory: context.writeClientFactory,
+      context,
+      migrationId: context.migrationId,
+      confirmationToken: context.confirmationToken,
+      backupIdentifier: context.backupIdentifier,
+      clock: context.clock,
+    });
+  }
+
+  async runChecksumReconciliationWrite(context) {
+    return executeChecksumReconciliation({
+      stateCollector: this.stateCollector,
+      writeClientFactory: context.writeClientFactory,
+      context,
+      migrationId: context.migrationId,
+      confirmationToken: context.confirmationToken,
+      backupIdentifier: context.backupIdentifier,
+      clock: context.clock,
+    });
+  }
+
+  async runMaterializedFinalizeWrite(context) {
+    return executeMaterializedFinalize({
       stateCollector: this.stateCollector,
       writeClientFactory: context.writeClientFactory,
       context,

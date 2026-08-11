@@ -53,10 +53,7 @@ const REQUIRED_INDEXES = Object.freeze({
 });
 
 const REQUIRED_FOREIGN_KEYS = Object.freeze({
-  fk_user_unit_memberships_auth_identity: Object.freeze([
-    "auth_identity_id",
-    "auth_identities",
-  ]),
+  fk_user_unit_memberships_auth_identity: Object.freeze(["auth_identity_id", "auth_identities"]),
   fk_user_unit_memberships_created_by_auth_identity: Object.freeze([
     "created_by_auth_identity_id",
     "auth_identities",
@@ -68,6 +65,8 @@ const REQUIRED_FOREIGN_KEYS = Object.freeze({
   fk_user_unit_memberships_unit: Object.freeze(["unit_id", "j12_unidades"]),
 });
 
+// MySQL 5.7 rejects ON UPDATE CASCADE on a foreign-key base column used by a
+// stored generated column. active_default_key depends on auth_identity_id.
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
     id VARCHAR(64) NOT NULL,
@@ -95,7 +94,7 @@ const CREATE_TABLE_SQL = `
     INDEX idx_user_unit_memberships_status (status),
     CONSTRAINT fk_user_unit_memberships_auth_identity
       FOREIGN KEY (auth_identity_id) REFERENCES auth_identities (id)
-      ON UPDATE CASCADE
+      ON UPDATE RESTRICT
       ON DELETE RESTRICT,
     CONSTRAINT fk_user_unit_memberships_created_by_auth_identity
       FOREIGN KEY (created_by_auth_identity_id) REFERENCES auth_identities (id)
@@ -190,7 +189,12 @@ async function ensureSchema() {
 
   for (const [columnName, expectedExtra] of Object.entries(REQUIRED_GENERATED_COLUMNS)) {
     const column = columns.find((candidate) => candidate.COLUMN_NAME === columnName);
-    if (!column || !String(column.EXTRA || "").toUpperCase().includes(expectedExtra)) {
+    if (
+      !column ||
+      !String(column.EXTRA || "")
+        .toUpperCase()
+        .includes(expectedExtra)
+    ) {
       throw new Error(`Missing generated column ${TABLE_NAME}.${columnName}.`);
     }
   }
@@ -203,7 +207,10 @@ async function ensureSchema() {
   }
 
   const foreignKeyMap = new Map(
-    foreignKeys.map((item) => [item.CONSTRAINT_NAME, `${item.COLUMN_NAME}:${item.REFERENCED_TABLE_NAME}`]),
+    foreignKeys.map((item) => [
+      item.CONSTRAINT_NAME,
+      `${item.COLUMN_NAME}:${item.REFERENCED_TABLE_NAME}`,
+    ]),
   );
   for (const [constraintName, [columnName, tableName]] of Object.entries(REQUIRED_FOREIGN_KEYS)) {
     if (foreignKeyMap.get(constraintName) !== `${columnName}:${tableName}`) {
@@ -237,7 +244,10 @@ async function readState() {
 
   const indexMap = new Map(indexes.map((index) => [index.INDEX_NAME, String(index.columns)]));
   const foreignKeyMap = new Map(
-    foreignKeys.map((item) => [item.CONSTRAINT_NAME, `${item.COLUMN_NAME}:${item.REFERENCED_TABLE_NAME}`]),
+    foreignKeys.map((item) => [
+      item.CONSTRAINT_NAME,
+      `${item.COLUMN_NAME}:${item.REFERENCED_TABLE_NAME}`,
+    ]),
   );
 
   return {
