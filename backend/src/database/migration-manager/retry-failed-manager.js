@@ -3,8 +3,14 @@
 const { createHash } = require("node:crypto");
 const { LEDGER_STATES, PHYSICAL_STATES } = require("../j12-doctor/constants");
 const { retryFailedError } = require("./retry-failed-errors");
+const {
+  assessReviewedReconciliationState,
+  databaseIdentity,
+  dependencyFingerprint,
+  recoveryFingerprints,
+} = require("./reconciliation-policy");
 
-const RETRY_FAILED_TOKEN_VERSION = "retry-failed-v1";
+const RETRY_FAILED_TOKEN_VERSION = "retry-failed-v2";
 
 function buildRetryFailedPlan(state, migrationId) {
   const assessment = assessRetryFailedRequest(state, migrationId);
@@ -28,6 +34,12 @@ function buildRetryFailedPlan(state, migrationId) {
       checksumMatches: assessment.migration.checksumMatches,
       appliedAt: assessment.migration.appliedAt || null,
       physicalState: assessment.migration.physicalState,
+    },
+    evidence: {
+      policyFingerprint: assessment.fingerprints.policy,
+      findingsFingerprint: assessment.fingerprints.findings,
+      physicalFingerprint: assessment.fingerprints.physical,
+      dependenciesFingerprint: assessment.dependenciesFingerprint,
     },
     confirmation: {
       algorithm: "SHA-256",
@@ -77,16 +89,28 @@ function assessRetryFailedRequest(state, migrationId) {
     reasons.push("MIGRATION_MANIFEST_UNAVAILABLE");
   }
 
-  if (migration.physicalState !== PHYSICAL_STATES.ABSENT) {
-    reasons.push("PHYSICAL_STATE_NOT_ABSENT");
+  if (
+    migration.ledgerName !== migration.name ||
+    migration.ledgerTimestamp !== migration.timestamp
+  ) {
+    reasons.push("LEDGER_IDENTITY_MISMATCH");
   }
 
-  // The Doctor marks expected missing artifacts as structuralDrift. For a fully absent
-  // FAILED migration, that is the expected evidence that no partial application remains.
-  // Continue to fail closed for any present/partial state, table-option difference, or
-  // incompatible artifact reported independently by the manifest assessment.
-  if (hasUnsafeRetryPhysicalEvidence(migration)) {
-    reasons.push("PHYSICAL_STATE_UNSAFE");
+  const reconciliation =
+    migration.applyPolicy?.reconciliation === true
+      ? assessReviewedReconciliationState({
+          doctorReport: state.doctorReport,
+          migration,
+          allowPartial: false,
+          allowTableOptionDrift: false,
+        })
+      : null;
+  if (reconciliation) reasons.push(...reconciliation.reasons);
+  else {
+    if (migration.physicalState !== PHYSICAL_STATES.ABSENT)
+      reasons.push("PHYSICAL_STATE_NOT_ABSENT");
+    // Expected missing artifacts are safe only for a fully absent normal migration.
+    if (hasUnsafeRetryPhysicalEvidence(migration)) reasons.push("PHYSICAL_STATE_UNSAFE");
   }
 
   const dependencies = (migration.dependencies || []).map((id) => byId.get(id)).filter(Boolean);
@@ -120,10 +144,16 @@ function assessRetryFailedRequest(state, migrationId) {
     reasons.push("DEPENDENCY_PHYSICAL_STATE_UNSAFE");
   }
 
+  const fingerprints =
+    reconciliation?.fingerprints ||
+    recoveryFingerprints({ doctorReport: state.doctorReport, migration });
+  const dependenciesFingerprint = dependencyFingerprint(dependencies);
   const token = computeRetryFailedToken({
-    databaseName: state.doctorReport.database.name,
+    database: state.doctorReport.database,
     migration,
     dependencies,
+    fingerprints,
+    dependenciesFingerprint,
   });
 
   return {
@@ -131,23 +161,42 @@ function assessRetryFailedRequest(state, migrationId) {
     reasons: [...new Set(reasons)],
     migration,
     dependencies,
+    dependenciesFingerprint,
+    fingerprints,
     token,
   };
 }
 
-function computeRetryFailedToken({ databaseName, migration, dependencies = [] }) {
+function computeRetryFailedToken({
+  database,
+  databaseName,
+  migration,
+  dependencies = [],
+  fingerprints = {},
+  dependenciesFingerprint = dependencyFingerprint(dependencies),
+}) {
   const payload = {
     version: RETRY_FAILED_TOKEN_VERSION,
-    databaseName,
+    database: databaseIdentity(database || { name: databaseName }),
     migration: {
       id: migration.id,
+      timestamp: migration.timestamp,
+      name: migration.name,
       checksum: migration.checksum,
       ledgerState: migration.ledgerState,
       ledgerStatus: migration.ledgerStatus,
+      ledgerName: migration.ledgerName || null,
+      ledgerTimestamp: migration.ledgerTimestamp || null,
       checksumMatches: migration.checksumMatches,
       appliedAt: migration.appliedAt || null,
+      failedAt: migration.failedAt || null,
+      failureEvidenceFingerprint: migration.failureEvidenceFingerprint || null,
       physicalState: migration.physicalState,
+      policyFingerprint: fingerprints.policy || null,
+      findingsFingerprint: fingerprints.findings || null,
+      physicalFingerprint: fingerprints.physical || null,
     },
+    dependenciesFingerprint,
     dependencies: [...dependencies]
       .sort((left, right) => left.id.localeCompare(right.id))
       .map((dependency) => ({

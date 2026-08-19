@@ -104,6 +104,7 @@ test("retry-failed continua bloqueando evidência independente de artefato incom
 
 test("retry-failed gera plano somente leitura com token deterministico", () => {
   const input = state();
+  const assessment = assessRetryFailedRequest(input, TARGET);
 
   const first = buildRetryFailedPlan(input, TARGET);
   const second = buildRetryFailedPlan(input, TARGET);
@@ -119,9 +120,11 @@ test("retry-failed gera plano somente leitura com token deterministico", () => {
   assert.equal(
     first.confirmation.expectedToken,
     computeRetryFailedToken({
-      databaseName: input.doctorReport.database.name,
+      database: input.doctorReport.database,
       migration: input.doctorReport.migrations[2],
       dependencies: input.doctorReport.migrations.slice(0, 2),
+      fingerprints: assessment.fingerprints,
+      dependenciesFingerprint: assessment.dependenciesFingerprint,
     }),
   );
 });

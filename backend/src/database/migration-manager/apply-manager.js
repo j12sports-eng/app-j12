@@ -7,6 +7,10 @@ const { applyOneError } = require("./apply-one-errors");
 const { APPLY_ONE_TOKEN_VERSION, computeApplyOneToken } = require("./apply-one-token");
 const { analyzeDuplicateMigrations } = require("./duplicate-manager");
 const { evaluateTableOptionAdoption } = require("./baseline-adoption-policy");
+const {
+  assessReviewedReconciliationState,
+  isReviewedReconciliationFinding,
+} = require("./reconciliation-policy");
 
 function buildApplyOnePlan(state, migrationId) {
   const assessment = assessApplyOneRequest(state, migrationId);
@@ -72,27 +76,25 @@ function assessApplyOneRequest(state, migrationId) {
   );
   if (unappliedDependencies.length) reasons.push("DEPENDENCY_NOT_APPLIED");
   if (
-    dependencies.some(
-      (dependency) => {
-        const driftObserved =
-          dependency.structuralDrift === true ||
+    dependencies.some((dependency) => {
+      const driftObserved =
+        dependency.structuralDrift === true ||
         [
           PHYSICAL_STATES.PARTIAL,
           PHYSICAL_STATES.INCOMPATIBLE,
           PHYSICAL_STATES.NOT_ASSESSED,
         ].includes(dependency.physicalState);
-        if (!driftObserved) return false;
-        const adoption = evaluateTableOptionAdoption({
-          migration: dependency,
-          findings: (state.doctorReport.findings || []).filter(
-            (finding) => finding.details?.migrationId === dependency.id,
-          ),
-          catalogMigrations: state.doctorReport.migrations || [],
-          schemaSnapshot: state.doctorReport.schemaSnapshot,
-        });
-        return !adoption.accepted;
-      },
-    )
+      if (!driftObserved) return false;
+      const adoption = evaluateTableOptionAdoption({
+        migration: dependency,
+        findings: (state.doctorReport.findings || []).filter(
+          (finding) => finding.details?.migrationId === dependency.id,
+        ),
+        catalogMigrations: state.doctorReport.migrations || [],
+        schemaSnapshot: state.doctorReport.schemaSnapshot,
+      });
+      return !adoption.accepted;
+    })
   )
     reasons.push("DEPENDENCY_STRUCTURAL_DRIFT");
 
@@ -100,15 +102,14 @@ function assessApplyOneRequest(state, migrationId) {
   if (duplicateAnalysis.ambiguousMigrationIds.has(migration.id))
     reasons.push("AMBIGUOUS_MIGRATION_OWNERSHIP");
 
-  const findings = (state.doctorReport.findings || []).filter(
-    (finding) => finding.details?.migrationId === migration.id,
-  );
   const policy = migration.applyPolicy;
   if (policy?.reconciliation) {
-    if (!(policy.allowedPhysicalStates || []).includes(migration.physicalState))
-      reasons.push("RECONCILIATION_STATE_NOT_REVIEWED");
-    if (findings.some((finding) => !isReviewedReconciliationFinding(policy, finding)))
-      reasons.push("UNREVIEWED_STRUCTURAL_DRIFT");
+    const reconciliation = assessReviewedReconciliationState({
+      doctorReport: state.doctorReport,
+      migration,
+      allowPartial: true,
+    });
+    reasons.push(...reconciliation.reasons);
   } else if (migration.manifestAvailable && migration.physicalState !== PHYSICAL_STATES.ABSENT) {
     reasons.push(
       migration.physicalState === PHYSICAL_STATES.PRESENT
@@ -160,39 +161,6 @@ function assessApplyOneRequest(state, migrationId) {
       reconciliation: Boolean(policy?.reconciliation),
     },
   };
-}
-
-function isReviewedReconciliationFinding(policy, finding) {
-  if (!(policy.reviewedFindingCodes || []).includes(finding.code)) return false;
-  if (finding.code === "INDEX_MISMATCH" && policy.reviewedIndexMismatches) {
-    const actualColumns = (finding.details?.actual?.columns || []).map((column) =>
-      typeof column === "string" ? column : column.name,
-    );
-    return policy.reviewedIndexMismatches.some(
-      (reviewed) =>
-        reviewed.table === finding.details?.table &&
-        reviewed.name === finding.details?.index &&
-        reviewed.unique === finding.details?.actual?.unique &&
-        reviewed.columns.join(",") === actualColumns.join(","),
-    );
-  }
-  if (finding.code === "COLUMN_MISMATCH" && policy.reviewedColumnMismatches) {
-    const actual = finding.details?.actual || {};
-    return policy.reviewedColumnMismatches.some(
-      (reviewed) =>
-        reviewed.table === finding.details?.table &&
-        reviewed.name === finding.details?.column &&
-        normalizeType(reviewed.columnType) === normalizeType(actual.columnType) &&
-        reviewed.nullable === actual.nullable,
-    );
-  }
-  return true;
-}
-
-function normalizeType(value) {
-  return String(value || "")
-    .replace(/\s+/gu, "")
-    .toLowerCase();
 }
 
 function summarizeActions(expectedSchema, policy = null) {

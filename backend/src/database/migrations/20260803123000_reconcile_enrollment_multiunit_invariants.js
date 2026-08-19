@@ -124,7 +124,7 @@ function assertGeneratedColumn(columnName, column, expected) {
   const expression = normalizeExpression(column?.GENERATION_EXPRESSION);
   if (
     !column ||
-    String(column.COLUMN_TYPE || "").toLowerCase() !== expected.type ||
+    !hasCompatibleColumnType(column, expected.type) ||
     String(column.IS_NULLABLE || "").toUpperCase() !== "YES" ||
     !String(column.EXTRA || "")
       .toUpperCase()
@@ -148,13 +148,28 @@ function sameIndex(index, expectedColumns) {
 
 function normalizeExpression(value) {
   return String(value || "")
+    // MySQL 5.7 exposes `column IS NULL` as `isnull(column)` in INFORMATION_SCHEMA.
+    .replace(/isnull\(\s*`?([a-z0-9_]+)`?\s*\)/giu, "$1 IS NULL")
     .replace(/[`'()\s]/gu, "")
     .toLowerCase();
 }
 
+function hasCompatibleColumnType(column, expectedType) {
+  const dataType = String(column?.DATA_TYPE ?? "").toLowerCase();
+  const columnType = String(column?.COLUMN_TYPE ?? "").toLowerCase();
+  if (expectedType === "bigint") {
+    return (
+      dataType === "bigint" &&
+      /^bigint(?:\(\d+\))?$/u.test(columnType) &&
+      !columnType.includes("unsigned")
+    );
+  }
+  return columnType === expectedType;
+}
+
 async function readColumn(queryRunner, columnName) {
   const rows = await queryRunner(
-    "SELECT COLUMN_TYPE,IS_NULLABLE,EXTRA,GENERATION_EXPRESSION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=? LIMIT 1",
+    "SELECT DATA_TYPE,COLUMN_TYPE,IS_NULLABLE,EXTRA,GENERATION_EXPRESSION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=? LIMIT 1",
     [TABLE_NAME, columnName],
   );
   return rows?.[0] || null;

@@ -1,15 +1,73 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+const MIGRATION_PATH = require.resolve(
+  "../20260729210000_add_people_digital_enrollment_fields.js",
+);
+
 const {
   PEOPLE_DIGITAL_ENROLLMENT_COLUMNS,
   PEOPLE_DIGITAL_ENROLLMENT_MIGRATION_ERRORS,
   createPeopleDigitalEnrollmentFieldsMigration,
 } = require("../20260729210000_add_people_digital_enrollment_fields.js");
 
+const EXPECTED_ADD_SQL = Object.freeze([
+  "ALTER TABLE people ADD COLUMN birth_city VARCHAR(191) NULL",
+  "ALTER TABLE people ADD COLUMN birth_state VARCHAR(50) NULL",
+  "ALTER TABLE people ADD COLUMN nationality VARCHAR(191) NULL",
+  "ALTER TABLE people ADD COLUMN blood_type VARCHAR(20) NULL",
+]);
+
+test("module import is query-free and default operations support the runner contract", async () => {
+  const fake = createFakeDatabase();
+  const databasePath = require.resolve("../../../config/db.js");
+  const cachedDatabase = require.cache[databasePath];
+  const cachedMigration = require.cache[MIGRATION_PATH];
+
+  require.cache[databasePath] = {
+    exports: { pool: { async end() {} }, query: fake.query },
+    filename: databasePath,
+    id: databasePath,
+    loaded: true,
+  };
+  delete require.cache[MIGRATION_PATH];
+
+  try {
+    const migrationModule = require(MIGRATION_PATH);
+    assert.deepEqual(fake.sql, []);
+
+    const upResult = await migrationModule.up();
+    assert.deepEqual(upResult.added, Object.keys(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS));
+    assert.deepEqual(
+      fake.sql.filter((sql) => /^ALTER TABLE/iu.test(sql)),
+      EXPECTED_ADD_SQL,
+    );
+
+    const statusResult = await migrationModule.status();
+    assert.equal(statusResult.complete, true);
+
+    const downResult = await migrationModule.down();
+    assert.deepEqual(downResult.removed, [
+      "blood_type",
+      "nationality",
+      "birth_state",
+      "birth_city",
+    ]);
+  } finally {
+    if (cachedDatabase) require.cache[databasePath] = cachedDatabase;
+    else delete require.cache[databasePath];
+    if (cachedMigration) require.cache[MIGRATION_PATH] = cachedMigration;
+    else delete require.cache[MIGRATION_PATH];
+  }
+});
+
 test("migration adds only four nullable canonical columns and rolls back empty fields", async () => {
   const fake = createFakeDatabase();
-  const migration = createPeopleDigitalEnrollmentFieldsMigration({ queryRunner: fake.query });
+  const logged = [];
+  const migration = createPeopleDigitalEnrollmentFieldsMigration({
+    logger: (entry) => logged.push(entry),
+    queryRunner: fake.query,
+  });
 
   const result = await migration.up();
   assert.deepEqual(result.added.sort(), Object.keys(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS).sort());
@@ -17,10 +75,15 @@ test("migration adds only four nullable canonical columns and rolls back empty f
     Object.keys(fake.columns).sort(),
     Object.keys(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS).sort(),
   );
-  assert.equal(fake.sql.filter((sql) => /^ALTER TABLE people ADD COLUMN/u.test(sql)).length, 4);
-  assert.equal(
-    fake.sql.some((sql) => /(?:UPDATE|DELETE)/iu.test(sql)),
-    false,
+  assert.deepEqual(
+    fake.sql.filter((sql) => /^ALTER TABLE people ADD COLUMN/iu.test(sql)),
+    EXPECTED_ADD_SQL,
+  );
+  assert.equal(fake.sql.some((sql) => /(?:CREATE|INSERT|UPDATE|DELETE)/iu.test(sql)), false);
+  assert.equal(fake.sql.some((sql) => /(?:INDEX|FOREIGN KEY)/iu.test(sql)), false);
+  assert.deepEqual(
+    logged.map((entry) => entry.column),
+    Object.keys(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS),
   );
   for (const metadata of Object.values(fake.columns)) {
     assert.equal(metadata.IS_NULLABLE, "YES");

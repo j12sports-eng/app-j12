@@ -84,9 +84,11 @@ test("FAILED ausente com checksum antigo explícito é elegível e gera token es
   assert.equal(
     assessment.token,
     computeChecksumReconciliationToken({
-      databaseName: input.doctorReport.database.name,
+      database: input.doctorReport.database,
       migration: input.doctorReport.migrations[2],
       dependencies: input.doctorReport.migrations.slice(0, 2),
+      fingerprints: assessment.fingerprints,
+      dependenciesFingerprint: assessment.dependenciesFingerprint,
     }),
   );
 });

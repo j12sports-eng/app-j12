@@ -3,8 +3,14 @@
 const { createHash } = require("node:crypto");
 const { LEDGER_STATES, PHYSICAL_STATES } = require("../j12-doctor/constants");
 const { checksumReconciliationError } = require("./reconcile-failed-checksum-errors");
+const {
+  assessReviewedReconciliationState,
+  databaseIdentity,
+  dependencyFingerprint,
+  recoveryFingerprints,
+} = require("./reconciliation-policy");
 
-const CHECKSUM_RECONCILIATION_TOKEN_VERSION = "reconcile-failed-checksum-v1";
+const CHECKSUM_RECONCILIATION_TOKEN_VERSION = "reconcile-failed-checksum-v2";
 
 function buildReconcileFailedChecksumPlan(state, migrationId) {
   const assessment = assessChecksumReconciliationRequest(state, migrationId);
@@ -19,6 +25,12 @@ function buildReconcileFailedChecksumPlan(state, migrationId) {
     reasons: assessment.reasons,
     database: state.doctorReport.database,
     migration: describeMigration(assessment.migration),
+    evidence: {
+      policyFingerprint: assessment.fingerprints.policy,
+      findingsFingerprint: assessment.fingerprints.findings,
+      physicalFingerprint: assessment.fingerprints.physical,
+      dependenciesFingerprint: assessment.dependenciesFingerprint,
+    },
     confirmation: {
       algorithm: "SHA-256",
       tokenVersion: CHECKSUM_RECONCILIATION_TOKEN_VERSION,
@@ -52,8 +64,21 @@ function assessChecksumReconciliationRequest(state, migrationId) {
   if (!migration.ledgerChecksum) reasons.push("LEDGER_CHECKSUM_UNAVAILABLE");
   if (migration.appliedAt) reasons.push("MIGRATION_HAS_APPLIED_AT");
   if (migration.manifestAvailable !== true) reasons.push("MIGRATION_MANIFEST_UNAVAILABLE");
-  if (migration.physicalState !== PHYSICAL_STATES.ABSENT) reasons.push("PHYSICAL_STATE_NOT_ABSENT");
-  if (hasUnsafePhysicalEvidence(migration)) reasons.push("PHYSICAL_STATE_UNSAFE");
+  const reconciliation =
+    migration.applyPolicy?.reconciliation === true
+      ? assessReviewedReconciliationState({
+          doctorReport: state.doctorReport,
+          migration,
+          allowPartial: false,
+          allowTableOptionDrift: false,
+        })
+      : null;
+  if (reconciliation) reasons.push(...reconciliation.reasons);
+  else {
+    if (migration.physicalState !== PHYSICAL_STATES.ABSENT)
+      reasons.push("PHYSICAL_STATE_NOT_ABSENT");
+    if (hasUnsafePhysicalEvidence(migration)) reasons.push("PHYSICAL_STATE_UNSAFE");
+  }
   if (migration.ledgerName !== migration.name || migration.ledgerTimestamp !== migration.timestamp)
     reasons.push("LEDGER_IDENTITY_MISMATCH");
 
@@ -74,10 +99,16 @@ function assessChecksumReconciliationRequest(state, migrationId) {
   )
     reasons.push("DEPENDENCY_UNSAFE");
 
+  const fingerprints =
+    reconciliation?.fingerprints ||
+    recoveryFingerprints({ doctorReport: state.doctorReport, migration });
+  const dependenciesFingerprint = dependencyFingerprint(dependencies);
   const token = computeChecksumReconciliationToken({
-    databaseName: state.doctorReport.database.name,
+    database: state.doctorReport.database,
     migration,
     dependencies,
+    fingerprints,
+    dependenciesFingerprint,
   });
 
   return {
@@ -85,6 +116,8 @@ function assessChecksumReconciliationRequest(state, migrationId) {
     reasons: [...new Set(reasons)],
     migration,
     dependencies,
+    dependenciesFingerprint,
+    fingerprints,
     oldChecksum: migration.ledgerChecksum || null,
     token,
   };
@@ -96,20 +129,36 @@ function hasUnsafePhysicalEvidence(migration) {
   return Array.isArray(migration.artifactMismatches) && migration.artifactMismatches.length > 0;
 }
 
-function computeChecksumReconciliationToken({ databaseName, migration, dependencies = [] }) {
+function computeChecksumReconciliationToken({
+  database,
+  databaseName,
+  migration,
+  dependencies = [],
+  fingerprints = {},
+  dependenciesFingerprint = dependencyFingerprint(dependencies),
+}) {
   const payload = {
     version: CHECKSUM_RECONCILIATION_TOKEN_VERSION,
-    databaseName,
+    database: databaseIdentity(database || { name: databaseName }),
     migration: {
       id: migration.id,
       timestamp: migration.timestamp,
       name: migration.name,
       oldChecksum: migration.ledgerChecksum || null,
       newChecksum: migration.checksum,
+      ledgerState: migration.ledgerState,
       ledgerStatus: migration.ledgerStatus,
+      ledgerName: migration.ledgerName || null,
+      ledgerTimestamp: migration.ledgerTimestamp || null,
       appliedAt: migration.appliedAt || null,
+      failedAt: migration.failedAt || null,
+      failureEvidenceFingerprint: migration.failureEvidenceFingerprint || null,
       physicalState: migration.physicalState,
+      policyFingerprint: fingerprints.policy || null,
+      findingsFingerprint: fingerprints.findings || null,
+      physicalFingerprint: fingerprints.physical || null,
     },
+    dependenciesFingerprint,
     dependencies: [...dependencies]
       .sort((left, right) => left.id.localeCompare(right.id))
       .map((dependency) => ({
@@ -226,6 +275,20 @@ function validateChecksumReconciliationPostState({ beforeState, afterState, asse
   const migration = afterState.doctorReport.migrations.find(
     (entry) => entry.id === assessment.migration.id,
   );
+  const afterDependencies = (migration?.dependencies || [])
+    .map((id) => afterState.doctorReport.migrations.find((entry) => entry.id === id))
+    .filter(Boolean);
+  const afterFingerprints = migration
+    ? recoveryFingerprints({ doctorReport: afterState.doctorReport, migration })
+    : {};
+  const reconciliation = migration?.applyPolicy?.reconciliation
+    ? assessReviewedReconciliationState({
+        doctorReport: afterState.doctorReport,
+        migration,
+        allowPartial: false,
+        allowTableOptionDrift: false,
+      })
+    : null;
   const checks = {
     selectedIdentityUnchanged:
       migration?.id === assessment.migration.id &&
@@ -235,7 +298,15 @@ function validateChecksumReconciliationPostState({ beforeState, afterState, asse
       migration?.ledgerState === LEDGER_STATES.UNKNOWN && migration?.ledgerStatus === "FAILED",
     selectedStillUnapplied: migration?.appliedAt == null,
     selectedChecksumMatches: migration?.checksumMatches === true,
-    selectedPhysicalStateAbsent: migration?.physicalState === PHYSICAL_STATES.ABSENT,
+    selectedPhysicalStateSafe: reconciliation
+      ? reconciliation.eligible
+      : migration?.physicalState === PHYSICAL_STATES.ABSENT &&
+        !hasUnsafePhysicalEvidence(migration),
+    selectedPolicyFingerprintUnchanged: afterFingerprints.policy === assessment.fingerprints.policy,
+    selectedPhysicalFingerprintUnchanged:
+      afterFingerprints.physical === assessment.fingerprints.physical,
+    dependenciesUnchanged:
+      dependencyFingerprint(afterDependencies) === assessment.dependenciesFingerprint,
     unselectedLedgerUnchanged:
       ledgerFingerprint(beforeState.doctorReport, assessment.migration.id) ===
       ledgerFingerprint(afterState.doctorReport, assessment.migration.id),

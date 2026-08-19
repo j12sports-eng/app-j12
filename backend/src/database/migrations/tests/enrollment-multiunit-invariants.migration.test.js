@@ -238,7 +238,13 @@ function applyDdl(fixture, sql) {
 }
 
 function column(name, type, nullable) {
-  return { COLUMN_NAME: name, COLUMN_TYPE: type, EXTRA: "", IS_NULLABLE: nullable };
+  return {
+    COLUMN_NAME: name,
+    DATA_TYPE: type.replace(/\(.+$/u, ""),
+    COLUMN_TYPE: type,
+    EXTRA: "",
+    IS_NULLABLE: nullable,
+  };
 }
 function generatedColumn(name, type) {
   return {

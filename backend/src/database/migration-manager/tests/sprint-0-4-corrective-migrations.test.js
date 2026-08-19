@@ -218,6 +218,70 @@ test("down do ownership falha fechado para preservar dados futuros", async () =>
   );
 });
 
+test("MySQL 5.7 isnull canonicalization is accepted without repeated DDL", async () => {
+  const fixture = createMultiunitFixture({ canonical: true });
+  fixture.columns.set(
+    `enrollments.${legacy.DRAFT_UNIT_COLUMN}`,
+    generated(
+      "bigint",
+      "(case when ((`status` = 'DRAFT') and isnull(`deleted_at`)) then `unit_id` else NULL end)",
+    ),
+  );
+  fixture.columns.set(
+    `enrollments.${legacy.CURRENT_UNIT_COLUMN}`,
+    generated(
+      "bigint",
+      "(case when ((`status` in ('DRAFT','ACTIVE')) and isnull(`deleted_at`)) then `unit_id` else NULL end)",
+    ),
+  );
+  fixture.columns.set(
+    `enrollments.${legacy.CURRENT_STUDENT_PERSON_COLUMN}`,
+    generated(
+      "varchar(64)",
+      "(case when ((`status` in ('DRAFT','ACTIVE')) and isnull(`deleted_at`)) then `student_person_id` else NULL end)",
+    ),
+  );
+  fixture.columns.set(
+    `enrollments.${legacy.CURRENT_STUDENT_PROFILE_COLUMN}`,
+    generated(
+      "varchar(64)",
+      "(case when ((`status` in ('DRAFT','ACTIVE')) and isnull(`deleted_at`)) then `student_profile_id` else NULL end)",
+    ),
+  );
+
+  const migration = createMultiunitMigration(fixture);
+  await migration.up();
+
+  assert.equal((await migration.status()).reconciliationReady, true);
+  assert.deepEqual(fixture.ddl, []);
+});
+
+test("MySQL 5.7 bigint(20) metadata is accepted for unit columns", async () => {
+  const fixture = createMultiunitFixture({ canonical: true });
+  fixture.columns.set("enrollments.unit_id", column("bigint(20)", "YES"));
+  fixture.columns.set("j12_unidades.id", column("bigint(20)", "NO"));
+  fixture.columns.set(
+    `enrollments.${legacy.DRAFT_UNIT_COLUMN}`,
+    generated(
+      "bigint(20)",
+      "CASE WHEN status = 'DRAFT' AND deleted_at IS NULL THEN unit_id ELSE NULL END",
+    ),
+  );
+  fixture.columns.set(
+    `enrollments.${legacy.CURRENT_UNIT_COLUMN}`,
+    generated(
+      "bigint(20)",
+      "CASE WHEN status IN ('DRAFT','ACTIVE') AND deleted_at IS NULL THEN unit_id ELSE NULL END",
+    ),
+  );
+
+  const migration = createMultiunitMigration(fixture);
+  await migration.up();
+
+  assert.equal((await migration.status()).reconciliationReady, true);
+  assert.deepEqual(fixture.ddl, []);
+});
+
 function createMultiunitMigration(fixture) {
   return multiunit.createEnrollmentMultiunitReconciliation({
     queryRunner: fixture.query,
@@ -528,6 +592,7 @@ function ownershipForeignKeyRow(value) {
 
 function column(type, nullable) {
   return {
+    DATA_TYPE: type.replace(/\(.+$/u, ""),
     COLUMN_TYPE: type,
     IS_NULLABLE: nullable,
     EXTRA: "",

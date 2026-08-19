@@ -19,13 +19,13 @@ function createPeopleDigitalEnrollmentFieldsMigration({
   const query = queryRunner || require("../../config/db.js").query;
 
   return Object.freeze({
-    down: () => down({ logger, query }),
-    status: () => status({ query }),
-    up: () => up({ logger, query }),
+    down: () => runDown({ logger, query }),
+    status: () => readStatus({ query }),
+    up: () => runUp({ logger, query }),
   });
 }
 
-async function up({ logger, query }) {
+async function runUp({ logger, query }) {
   await assertPeopleTable(query);
   const added = [];
   for (const [column, definition] of Object.entries(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS)) {
@@ -38,10 +38,10 @@ async function up({ logger, query }) {
     added.push(column);
     logger({ event: "people_digital_enrollment_column_added", column });
   }
-  return Object.freeze({ added, status: await status({ query }) });
+  return Object.freeze({ added, status: await readStatus({ query }) });
 }
 
-async function down({ logger, query }) {
+async function runDown({ logger, query }) {
   await assertPeopleTable(query);
   const existing = [];
   for (const column of Object.keys(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS)) {
@@ -75,7 +75,7 @@ async function down({ logger, query }) {
   return Object.freeze({ removed, skipped: false });
 }
 
-async function status({ query }) {
+async function readStatus({ query }) {
   await assertPeopleTable(query);
   const columns = {};
   for (const column of Object.keys(PEOPLE_DIGITAL_ENROLLMENT_COLUMNS)) {
@@ -145,6 +145,12 @@ function getDefaultMigration() {
   }
   return defaultMigration;
 }
+
+// CanonicalMigrationRunner invokes JavaScript migrations through module.up().
+// Keep dependency injection in the factory while exposing the zero-argument runner contract.
+const up = (...args) => getDefaultMigration().up(...args);
+const down = (...args) => getDefaultMigration().down(...args);
+const status = (...args) => getDefaultMigration().status(...args);
 
 async function main() {
   const command = process.argv[2] || "status";

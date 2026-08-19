@@ -262,8 +262,7 @@ async function assertSchemaReady(queryRunner, tableExists) {
   });
   for (const [columnName, expectedType] of Object.entries(required)) {
     const column = await readColumn(queryRunner, columnName);
-    const actualType = String(column?.COLUMN_TYPE ?? "").toLowerCase();
-    if (!column || actualType !== expectedType || actualType.includes("unsigned")) {
+    if (!column || !hasCompatibleColumnType(column, expectedType)) {
       throw migrationError(
         ERROR_CODES.SCHEMA_UNSAFE,
         `Incompatible ${TABLE_NAME}.${columnName}; expected ${expectedType}.`,
@@ -272,7 +271,7 @@ async function assertSchemaReady(queryRunner, tableExists) {
   }
   const unitColumn = await readTableColumn(queryRunner, UNIT_TABLE_NAME, "id");
   if (
-    String(unitColumn?.COLUMN_TYPE ?? "").toLowerCase() !== "bigint" ||
+    !hasCompatibleColumnType(unitColumn, "bigint") ||
     String(unitColumn?.IS_NULLABLE ?? "").toUpperCase() !== "NO"
   ) {
     throw migrationError(
@@ -405,10 +404,23 @@ async function readColumn(queryRunner, columnName) {
 
 async function readTableColumn(queryRunner, tableName, columnName) {
   const rows = await queryRunner(
-    "SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,EXTRA,GENERATION_EXPRESSION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=? LIMIT 1",
+    "SELECT COLUMN_NAME,DATA_TYPE,COLUMN_TYPE,IS_NULLABLE,EXTRA,GENERATION_EXPRESSION FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=? LIMIT 1",
     [tableName, columnName],
   );
   return rows?.[0] ?? null;
+}
+
+function hasCompatibleColumnType(column, expectedType) {
+  const dataType = String(column?.DATA_TYPE ?? "").toLowerCase();
+  const columnType = String(column?.COLUMN_TYPE ?? "").toLowerCase();
+  if (expectedType === "bigint") {
+    return (
+      dataType === "bigint" &&
+      /^bigint(?:\(\d+\))?$/u.test(columnType) &&
+      !columnType.includes("unsigned")
+    );
+  }
+  return columnType === expectedType;
 }
 
 async function readIndex(queryRunner, indexName) {
