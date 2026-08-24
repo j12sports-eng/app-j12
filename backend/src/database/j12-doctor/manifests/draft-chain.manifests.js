@@ -383,6 +383,16 @@ raw.push(
           columns: ["active_draft_student_person_id", "active_draft_student_profile_id"],
         },
       ],
+      supersedesHistoricalArtifacts: [
+        {
+          historicalMigrationId: "20260629190607_add_active_draft_unique_constraint_to_enrollments",
+          findingCode: "INDEX_MISMATCH",
+          kind: "INDEX",
+          table: "enrollments",
+          name: "ux_enrollments_active_draft_student_profile",
+          replacementAction: "REPLACE_LEGACY_IF_EXACT",
+        },
+      ],
       plannedActions: [
         {
           kind: "INDEX",

@@ -3,6 +3,7 @@
 const { LEDGER_STATES, PHYSICAL_STATES } = require("../j12-doctor/constants");
 const { analyzeDuplicateMigrations } = require("./duplicate-manager");
 const { evaluateTableOptionAdoption } = require("./baseline-adoption-policy");
+const { assessHistoricalArtifactSupersession } = require("./historical-supersession-policy");
 
 const MISSING_ARTIFACT_CODES = new Set([
   "TABLE_MISSING",
@@ -27,6 +28,7 @@ function evaluateBaselineEligibility({
   findings = [],
   dependenciesSatisfied = true,
   unresolvedDependencies = [],
+  dependencySupersessions = [],
   ambiguousOwnership = false,
   catalogMigrations = [],
   schemaSnapshot = null,
@@ -121,6 +123,7 @@ function evaluateBaselineEligibility({
     checksumMismatch,
     dependenciesSatisfied,
     unresolvedDependencies: [...unresolvedDependencies],
+    dependencySupersessions: [...dependencySupersessions],
     manifestCoverage,
     requiredArtifactMissing,
     requiredArtifactsMissing,
@@ -148,22 +151,32 @@ function evaluateCatalogBaselineEligibility({ doctorReport, canonicalPlan = [] }
   const evaluationById = new Map();
 
   for (const migration of ordered) {
+    const dependencySupersessions = [];
     const unresolvedDependencies = (migration.dependencies || []).filter((dependencyId) => {
       if (readyIds.has(dependencyId)) return false;
       const dependency = byId.get(dependencyId);
       if (!dependency || dependency.ledgerState !== LEDGER_STATES.APPLIED) return true;
       const dependencyEvaluation = evaluationById.get(dependencyId);
-      return Boolean(
-        dependencyEvaluation?.structuralDrift ||
-        dependencyEvaluation?.checksumMismatch ||
-        dependencyEvaluation?.ambiguousOwnership,
-      );
+      if (!dependencyEvaluation) return true;
+      if (dependencyEvaluation.checksumMismatch || dependencyEvaluation.ambiguousOwnership)
+        return true;
+      if (!dependencyEvaluation.structuralDrift) return false;
+      const supersession = assessHistoricalArtifactSupersession({
+        doctorReport,
+        historicalMigration: dependency,
+        historicalEvaluation: dependencyEvaluation,
+        catalogMigrations: ordered,
+      });
+      if (!supersession.satisfied) return true;
+      dependencySupersessions.push({ dependencyId, ...supersession });
+      return false;
     });
     const evaluation = evaluateBaselineEligibility({
       migration,
       findings: findingsForMigration(doctorReport, migration.id),
       dependenciesSatisfied: unresolvedDependencies.length === 0,
       unresolvedDependencies,
+      dependencySupersessions,
       ambiguousOwnership: duplicateAnalysis.ambiguousMigrationIds.has(migration.id),
       catalogMigrations: ordered,
       schemaSnapshot: doctorReport.schemaSnapshot,
