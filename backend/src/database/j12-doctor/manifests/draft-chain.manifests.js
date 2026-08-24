@@ -122,6 +122,55 @@ const raw = [
       ),
     ],
   },
+
+  {
+    id: "20260713100000_create_classes_foundation_table",
+    createdTables: ["j12_turmas"],
+    tables: [
+      t(
+        "j12_turmas",
+        {
+          id: c("bigint", false, { autoIncrement: true }),
+          nome: c("varchar(191)", false),
+          modalidade: c("varchar(191)", true),
+          unidade: c("varchar(191)", true),
+          professor_id: c("bigint", true),
+          professor_nome: c("varchar(191)", true),
+          modalidade_id: c("bigint", true),
+          unidade_id: c("bigint", true),
+          dias_semana: c("varchar(191)", true),
+          dias_semana_json: c("longtext", true),
+          horario: c("varchar(50)", true),
+          horario_inicio: c("varchar(20)", true),
+          horario_fim: c("varchar(20)", true),
+          capacidade: c("int", true),
+          status: c("varchar(30)", false, { default: "ativa" }),
+          aluno_ids_json: c("longtext", true),
+          presencas_json: c("longtext", true),
+          created_at: c("datetime", false, {
+            default: "CURRENT_TIMESTAMP",
+          }),
+          updated_at: c("datetime", false, {
+            default: "CURRENT_TIMESTAMP",
+            onUpdate: "CURRENT_TIMESTAMP",
+          }),
+        },
+        {
+          PRIMARY: i(["id"], true),
+          idx_j12_turmas_nome: i(["nome"]),
+          idx_j12_turmas_status: i(["status"]),
+          idx_j12_turmas_professor_id: i(["professor_id"]),
+        },
+        {},
+        {
+          engine: "InnoDB",
+          charset: "utf8mb4",
+          collation: "utf8mb4_unicode_ci",
+        },
+      ),
+    ],
+  },
+
   {
     id: "20260717220000_add_people_normalized_identity_columns",
     tables: [

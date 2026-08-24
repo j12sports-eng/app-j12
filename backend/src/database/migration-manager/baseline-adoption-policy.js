@@ -1,10 +1,18 @@
 "use strict";
 
+const {
+  classesFoundationBaselineAdoption,
+} = require("./baseline-adoptions/classes-foundation.adoption");
 const { authRuntimeBaselineAdoption } = require("./baseline-adoptions/auth-runtime.adoption");
 const { LEDGER_STATES, PHYSICAL_STATES } = require("../j12-doctor/constants");
 const { normalize, normalizeTableOption } = require("../j12-doctor/checks/schema-manifest-check");
 
-const ADOPTIONS = new Map([[authRuntimeBaselineAdoption.migrationId, authRuntimeBaselineAdoption]]);
+const ADOPTIONS = new Map(
+  [authRuntimeBaselineAdoption, classesFoundationBaselineAdoption].map((adoption) => [
+    adoption.migrationId,
+    adoption,
+  ]),
+);
 
 function differenceMatches(finding, accepted) {
   const details = finding.details || {};
@@ -59,16 +67,21 @@ function evaluateTableOptionAdoption({
 
   const reasons = [];
   const legacyStructure = adoption
-    ? assessExactLegacyTable(schemaSnapshot, adoption.legacyTable)
+    ? assessExactLegacyTable(schemaSnapshot, adoption.legacyTable, adoption)
     : { accepted: false, differences: [{ path: "adoption", code: "ADOPTION_MISSING" }] };
   if (!adoption) reasons.push("TABLE_OPTION_RECONCILIATION_REQUIRED");
   else {
-    const corrective = catalogMigrations.find(
-      (candidate) => candidate.id === adoption.mandatoryCorrectiveMigrationId,
-    );
+    const requiresCorrective = Boolean(adoption.mandatoryCorrectiveMigrationId);
+
+    const corrective = requiresCorrective
+      ? catalogMigrations.find(
+          (candidate) => candidate.id === adoption.mandatoryCorrectiveMigrationId,
+        )
+      : null;
 
     const correctiveApplied =
-      corrective?.ledgerState === LEDGER_STATES.APPLIED && corrective?.checksumMatches === true;
+      !requiresCorrective ||
+      (corrective?.ledgerState === LEDGER_STATES.APPLIED && corrective?.checksumMatches === true);
 
     if (migration.checksum !== adoption.migrationChecksum)
       reasons.push("LEGACY_ADOPTION_CHECKSUM_MISMATCH");
@@ -108,9 +121,10 @@ function evaluateTableOptionAdoption({
       reasons.push("TABLE_OPTION_ADOPTION_DIFFERENCE_MISSING");
 
     if (
-      !corrective ||
-      corrective.manifestAvailable !== true ||
-      !(corrective.dependencies || []).includes(adoption.migrationId)
+      requiresCorrective &&
+      (!corrective ||
+        corrective.manifestAvailable !== true ||
+        !(corrective.dependencies || []).includes(adoption.migrationId))
     )
       reasons.push("TABLE_OPTION_ADOPTION_CORRECTIVE_MIGRATION_REQUIRED");
   }
@@ -119,7 +133,9 @@ function evaluateTableOptionAdoption({
   return {
     applicable: true,
     accepted,
-    state: accepted ? "LEGACY_AUTH_STRUCTURE_ACCEPTED" : "LEGACY_AUTH_ADOPTION_REQUIRED",
+    state: accepted
+      ? adoption?.acceptedState || "LEGACY_STRUCTURE_ACCEPTED"
+      : adoption?.requiredState || "LEGACY_ADOPTION_REQUIRED",
     reasons: [...new Set(reasons)],
     adoption: adoption || null,
     legacyClassification: adoption?.classification || null,
@@ -127,16 +143,17 @@ function evaluateTableOptionAdoption({
   };
 }
 
-function assessExactLegacyTable(schemaSnapshot, expectedTable) {
+function assessExactLegacyTable(schemaSnapshot, expectedTable, adoption = null) {
   const actualTable = schemaSnapshot?.tables?.[expectedTable?.name];
   if (!actualTable || !expectedTable) {
     return {
       accepted: false,
-      classification: authRuntimeBaselineAdoption.classification,
+      classification: adoption?.classification || null,
+      role: adoption?.role || null,
       differences: [
         {
           code: "LEGACY_TABLE_MISSING",
-          path: expectedTable?.name || "j12_usuarios",
+          path: expectedTable?.name || "legacy_table",
           actual: actualTable || null,
           expected: "EXACT_AUDITED_TABLE",
         },
@@ -216,8 +233,8 @@ function assessExactLegacyTable(schemaSnapshot, expectedTable) {
 
   return {
     accepted: differences.length === 0,
-    classification: authRuntimeBaselineAdoption.classification,
-    role: authRuntimeBaselineAdoption.role,
+    classification: adoption?.classification || null,
+    role: adoption?.role || null,
     table: expectedTable.name,
     differences,
   };

@@ -107,7 +107,10 @@ function evaluateBaselineEligibility({
         : "BASELINE_BLOCKED",
     reasons: uniqueReasons,
     informationalReasons: readyWithAdoption
-      ? ["AUDITED_LEGACY_AUTH_ADOPTION", "AUDITED_TABLE_OPTION_ADOPTION"]
+      ? [
+          tableOptionAdoption.adoption?.informationalReason || "AUDITED_LEGACY_ADOPTION",
+          "AUDITED_TABLE_OPTION_ADOPTION",
+        ]
       : [],
     physicalState: migration.physicalState,
     ledgerState: migration.ledgerState,
