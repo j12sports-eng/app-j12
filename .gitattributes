@@ -1,1 +1,2 @@
 deploy/almalinux/*.sh text eol=lf
+backend/src/database/migrations/*.js text eol=lf
