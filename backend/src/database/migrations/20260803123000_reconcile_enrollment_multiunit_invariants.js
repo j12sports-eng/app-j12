@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 "use strict";
 
-const {
-  normalizeGenerationExpression: normalizeExpression,
-} = require("../generation-expression.js");
 const legacyMigration = require("./20260729180000_enforce_enrollment_multiunit_invariants.js");
 
 const TABLE_NAME = "enrollments";
@@ -147,6 +144,14 @@ function sameIndex(index, expectedColumns) {
     Array.isArray(index?.columns) &&
     index.columns.join(",") === expectedColumns.join(",")
   );
+}
+
+function normalizeExpression(value) {
+  return String(value || "")
+    // MySQL 5.7 exposes `column IS NULL` as `isnull(column)` in INFORMATION_SCHEMA.
+    .replace(/isnull\(\s*`?([a-z0-9_]+)`?\s*\)/giu, "$1 IS NULL")
+    .replace(/[`'()\s]/gu, "")
+    .toLowerCase();
 }
 
 function hasCompatibleColumnType(column, expectedType) {
