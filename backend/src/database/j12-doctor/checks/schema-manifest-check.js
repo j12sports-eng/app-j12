@@ -1,5 +1,6 @@
 "use strict";
 
+const { normalizeGenerationExpression } = require("../../generation-expression.js");
 const { PHYSICAL_STATES, SEVERITIES } = require("../constants");
 
 function normalize(value) {
@@ -129,8 +130,8 @@ function assessManifest(schema, manifest) {
         mismatches.push("generated");
       if (
         expectedColumn.generationExpression &&
-        normalize(actualColumn.generationExpression) !==
-          normalize(expectedColumn.generationExpression)
+        normalizeGenerationExpression(actualColumn.generationExpression) !==
+          normalizeGenerationExpression(expectedColumn.generationExpression)
       )
         mismatches.push("generationExpression");
       if (
