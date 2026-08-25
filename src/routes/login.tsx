@@ -1,56 +1,15 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  ArrowRight,
-  CalendarDays,
-  ClipboardList,
-  Eye,
-  EyeOff,
-  LockKeyhole,
-  Mail,
-  UserPlus,
-  UserRound,
-  WalletCards,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRight, Eye, EyeOff, GraduationCap, KeyRound, LockKeyhole, Mail } from "lucide-react";
 import { toast } from "sonner";
 
-import loginHeroImage from "@/assets/login-j12-jessiquinha.png";
-import { Skeleton, SkeletonForm } from "@/components/ui/skeleton";
+import logoUrl from "@/assets/logo.png?url";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getRoleHomePath, useAuth } from "@/lib/auth";
 import { logSsr, logSsrRoute } from "@/lib/ssr-debug";
 
 const REMEMBER_LOGIN_KEY = "j12:login:remember";
 const REMEMBER_EMAIL_KEY = "j12:login:email";
-
-type FeatureCard = {
-  label: string;
-  to: string;
-  icon: LucideIcon;
-};
-
-const featureCards: FeatureCard[] = [
-  {
-    label: "Perfil",
-    to: "/perfil",
-    icon: UserRound,
-  },
-  {
-    label: "Presença",
-    to: "/presenca",
-    icon: ClipboardList,
-  },
-  {
-    label: "Financeiro",
-    to: "/financeiro",
-    icon: WalletCards,
-  },
-  {
-    label: "Agenda",
-    to: "/agenda",
-    icon: CalendarDays,
-  },
-];
 
 export const Route = createFileRoute("/login")({
   loader: () => {
@@ -166,56 +125,57 @@ function LoginPage() {
   }
 
   return (
-    <main className="j12-login-page">
-      <div className="j12-login-shell">
-        <section className="j12-login-hero" aria-labelledby="login-hero-title">
-          <img
-            src={loginHeroImage}
-            alt="Jessiquinha bicampeã mundial ao lado do escudo J12 e do texto App J12"
-            className="j12-login-hero-image"
+    <main className="relative min-h-screen overflow-x-hidden bg-[#050505] text-white">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.14),transparent_42%)]"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -left-24 top-1/3 h-64 w-64 rounded-full bg-orange-500/5 blur-3xl"
+        aria-hidden="true"
+      />
+
+      <div className="relative flex min-h-screen items-center justify-center py-8 sm:px-6 sm:py-12">
+        <section
+          className="relative w-[92%] max-w-[29rem] overflow-hidden rounded-[2rem] border border-white/10 bg-[#111111]/95 p-5 shadow-[0_28px_80px_rgba(0,0,0,0.55)] backdrop-blur sm:w-full sm:p-8"
+          aria-labelledby="login-title"
+        >
+          <div
+            className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orange-600 via-orange-400 to-orange-600"
+            aria-hidden="true"
           />
-          <div className="sr-only">
-            <h1 id="login-hero-title">JESSIQUINHA</h1>
-            <p>BICAMPEÃ MUNDIAL</p>
-            <p>App J12</p>
-          </div>
-        </section>
 
-        <section className="j12-login-content">
-          <nav aria-label="Atalhos do App J12">
-            <div className="j12-login-shortcuts">
-              {featureCards.map((card) => (
-                <button
-                  key={card.label}
-                  type="button"
-                  onClick={() => handleFeatureNavigation(card.to)}
-                  className="j12-login-shortcut"
-                  aria-label={`Abrir ${card.label}`}
-                >
-                  <card.icon
-                    className="j12-login-shortcut-icon"
-                    strokeWidth={card.label === "Financeiro" ? 2.4 : 2.8}
-                    aria-hidden="true"
-                  />
-                  <span className="j12-login-shortcut-label">{card.label}</span>
-                </button>
-              ))}
-            </div>
-          </nav>
+          <header className="mb-7 text-center sm:mb-8">
+            <img
+              src={logoUrl}
+              alt="J12 Sports Hub"
+              className="mx-auto mb-4 h-20 w-auto max-w-[11rem] object-contain sm:h-24"
+            />
+            <h1 id="login-title" className="text-2xl font-black tracking-tight sm:text-3xl">
+              Bem-vindo à J12
+            </h1>
+            <p className="mt-2 text-sm text-zinc-400 sm:text-base">
+              Acesse sua conta para continuar
+            </p>
+          </header>
 
-          <form onSubmit={handleSubmit} className="j12-login-form" aria-label="Login J12">
-            <div>
-              <label htmlFor="login-email" className="sr-only">
+          <form onSubmit={handleSubmit} className="space-y-5" aria-label="Login J12">
+            <div className="space-y-2">
+              <label htmlFor="login-email" className="text-sm font-semibold text-zinc-200">
                 E-mail
               </label>
-              <div className={`j12-login-field ${errors.email ? "j12-login-field-error" : ""}`}>
-                <Mail className="j12-login-field-icon" aria-hidden />
+              <div
+                className={`flex min-h-13 items-center rounded-2xl border bg-black/40 px-4 transition focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/10 ${
+                  errors.email ? "border-red-500/80" : "border-white/10"
+                }`}
+              >
+                <Mail className="h-5 w-5 shrink-0 text-orange-400" aria-hidden />
                 <input
                   id="login-email"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
-                  placeholder="E-mail"
+                  placeholder="seu@email.com"
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
@@ -229,22 +189,26 @@ function LoginPage() {
                   }}
                   aria-invalid={Boolean(errors.email)}
                   aria-describedby={errors.email ? "login-email-error" : undefined}
-                  className="j12-login-input"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-white outline-none placeholder:text-zinc-600"
                 />
               </div>
               {errors.email ? (
-                <p id="login-email-error" className="j12-login-error">
+                <p id="login-email-error" className="text-xs font-medium text-red-400">
                   {errors.email}
                 </p>
               ) : null}
             </div>
 
-            <div>
-              <label htmlFor="login-password" className="sr-only">
+            <div className="space-y-2">
+              <label htmlFor="login-password" className="text-sm font-semibold text-zinc-200">
                 Senha
               </label>
-              <div className={`j12-login-field ${errors.senha ? "j12-login-field-error" : ""}`}>
-                <LockKeyhole className="j12-login-field-icon" aria-hidden />
+              <div
+                className={`flex min-h-13 items-center rounded-2xl border bg-black/40 px-4 transition focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/10 ${
+                  errors.senha ? "border-red-500/80" : "border-white/10"
+                }`}
+              >
+                <LockKeyhole className="h-5 w-5 shrink-0 text-orange-400" aria-hidden />
                 <input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
@@ -263,74 +227,89 @@ function LoginPage() {
                   }}
                   aria-invalid={Boolean(errors.senha)}
                   aria-describedby={errors.senha ? "login-password-error" : undefined}
-                  className="j12-login-input"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base text-white outline-none placeholder:text-zinc-600"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="j12-login-eye"
+                  className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 transition hover:bg-white/5 hover:text-orange-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 >
-                  {showPassword ? (
-                    <EyeOff className="j12-login-eye-icon" />
-                  ) : (
-                    <Eye className="j12-login-eye-icon" />
-                  )}
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
               {errors.senha ? (
-                <p id="login-password-error" className="j12-login-error">
+                <p id="login-password-error" className="text-xs font-medium text-red-400">
                   {errors.senha}
                 </p>
               ) : null}
             </div>
 
-            <div className="j12-login-actions">
-              <label className="j12-login-remember">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-zinc-400">
                 <input
                   type="checkbox"
                   checked={rememberLogin}
                   onChange={(event) => setRememberLogin(event.target.checked)}
-                  className="j12-login-checkbox"
+                  className="h-4 w-4 rounded border-white/20 bg-black accent-orange-500"
                   aria-label="Lembrar meus dados"
                 />
                 <span>Lembrar meus dados</span>
               </label>
 
-              <Link to="/forgot-password" className="j12-login-link">
+              <Link
+                to="/forgot-password"
+                className="rounded-lg px-1 py-2 font-semibold text-orange-400 transition hover:text-orange-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+              >
                 Esqueci minha senha
               </Link>
             </div>
 
-            <button type="submit" disabled={submitting || loading} className="j12-login-submit">
+            <button
+              type="submit"
+              disabled={submitting || loading}
+              className="flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 py-3 text-base font-black text-black shadow-[0_14px_35px_rgba(249,115,22,0.24)] transition hover:bg-orange-400 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {submitting ? (
                 "Entrando..."
               ) : (
                 <>
                   Entrar
-                  <ArrowRight className="j12-login-submit-icon" aria-hidden />
+                  <ArrowRight className="h-5 w-5" aria-hidden />
                 </>
               )}
             </button>
 
-            <div className="j12-login-divider">
-              <span className="j12-login-divider-line" />
-              <span>ou</span>
-              <span className="j12-login-divider-line" />
+            <div className="flex items-center gap-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <span className="h-px flex-1 bg-white/10" />
+              <span>Novo por aqui?</span>
+              <span className="h-px flex-1 bg-white/10" />
             </div>
 
-            <Link to="/primeiro-acesso" className="j12-login-first-access">
-              <UserPlus className="j12-login-first-access-icon" aria-hidden />
-              Primeiro acesso
-            </Link>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => handleFeatureNavigation("/matricula")}
+                className="flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl border border-orange-500/80 bg-orange-500/5 px-5 py-3 text-base font-bold text-orange-400 transition hover:bg-orange-500/10 hover:text-orange-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/20"
+              >
+                <GraduationCap className="h-5 w-5" aria-hidden />
+                Fazer matrícula
+              </button>
 
-            <p className="j12-login-signup">
-              Ainda não é aluno?{" "}
-              <Link to="/matricula" className="j12-login-link">
-                Matricule-se
-              </Link>
-            </p>
+              <button
+                type="button"
+                onClick={() => handleFeatureNavigation("/primeiro-acesso")}
+                className="flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3 text-base font-bold text-zinc-200 transition hover:border-white/20 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/20"
+              >
+                <KeyRound className="h-5 w-5 text-orange-400" aria-hidden />
+                Primeiro acesso
+              </button>
+            </div>
           </form>
+
+          <footer className="mt-7 border-t border-white/5 pt-5 text-center text-xs text-zinc-600">
+            © J12 Sports. Todos os direitos reservados.
+          </footer>
         </section>
       </div>
     </main>
@@ -339,28 +318,36 @@ function LoginPage() {
 
 function LoginSkeleton() {
   return (
-    <main className="j12-login-page">
-      <div className="j12-login-shell" role="status" aria-busy="true">
-        <section className="j12-login-hero p-4 md:p-8" aria-label="Carregando imagem do login">
-          <Skeleton className="aspect-[4/5] w-full max-w-[34rem] rounded-3xl md:aspect-[5/4] lg:aspect-[4/5]" />
-        </section>
+    <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#050505] py-8 sm:px-6 sm:py-12">
+      <section
+        className="w-[92%] max-w-[29rem] rounded-[2rem] border border-white/10 bg-[#111111] p-5 sm:w-full sm:p-8"
+        role="status"
+        aria-busy="true"
+      >
+        <div className="flex flex-col items-center">
+          <Skeleton className="h-20 w-28 rounded-2xl sm:h-24" />
+          <Skeleton className="mt-5 h-8 w-56 rounded-xl" />
+          <Skeleton className="mt-3 h-5 w-64 max-w-full rounded-lg" />
+        </div>
 
-        <section className="j12-login-content">
-          <div className="j12-login-shortcuts">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="j12-login-shortcut border-white/10" />
-            ))}
+        <div className="mt-8 space-y-5">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <div key={index} className="space-y-2">
+              <Skeleton className="h-4 w-16 rounded" />
+              <Skeleton className="h-13 w-full rounded-2xl" />
+            </div>
+          ))}
+          <div className="flex justify-between gap-4">
+            <Skeleton className="h-5 w-32 rounded" />
+            <Skeleton className="h-5 w-36 rounded" />
           </div>
-
-          <SkeletonForm fields={2} className="border-0 bg-transparent p-0 shadow-none" />
-
-          <div className="space-y-4">
-            <Skeleton className="h-16 rounded-2xl md:h-20" />
-            <Skeleton className="h-14 rounded-2xl md:h-16" />
-          </div>
-        </section>
+          <Skeleton className="h-13 w-full rounded-2xl" />
+          <Skeleton className="h-4 w-36 rounded" />
+          <Skeleton className="h-13 w-full rounded-2xl" />
+          <Skeleton className="h-13 w-full rounded-2xl" />
+        </div>
         <span className="sr-only">Carregando login J12</span>
-      </div>
+      </section>
     </main>
   );
 }
