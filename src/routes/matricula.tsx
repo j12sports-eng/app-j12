@@ -7,7 +7,6 @@ import {
   ChevronRight,
   FileImage,
   Loader2,
-  ShieldCheck,
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -50,14 +49,31 @@ type HorarioOption = {
   description: string;
 };
 
+// Mantém a associação visual entre os campos; o payload continua usando os arrays de esportivas.
+type TrainingBlock = {
+  id: number;
+  modalidade: string;
+  unidade: string;
+  turmaId: string;
+};
+
 type UploadedDocumentField = keyof FormState["documentos"];
 
 type AsyncStatus = "idle" | "loading" | "success" | "error";
 
+function createTrainingBlock(id: number): TrainingBlock {
+  return {
+    id,
+    modalidade: "",
+    unidade: "",
+    turmaId: "",
+  };
+}
+
 const steps: StepDefinition[] = [
   {
-    title: "Dados do Aluno",
-    description: "Dados pessoais essenciais e categoria/turma da matricula.",
+    title: "Aluno",
+    description: "Dados essenciais do aluno e escolha do treino.",
     fields: [
       "dadosAluno.nomeCompleto",
       "dadosAluno.dataNascimento",
@@ -66,8 +82,8 @@ const steps: StepDefinition[] = [
     ],
   },
   {
-    title: "Dados do Responsavel",
-    description: "Contato principal e identificacao do responsavel.",
+    title: "Responsável",
+    description: "Contato e identificação do responsável.",
     fields: [
       "responsavel.nomeCompleto",
       "responsavel.cpf",
@@ -76,13 +92,13 @@ const steps: StepDefinition[] = [
     ],
   },
   {
-    title: "Informacoes Complementares",
-    description: "Campos opcionais para completar o cadastro agora ou depois.",
+    title: "Adicionais",
+    description: "Informações opcionais que também podem ser completadas depois.",
     fields: [],
   },
   {
-    title: "Revisao e Finalizacao",
-    description: "Conferencia final antes de registrar a matricula.",
+    title: "Revisão",
+    description: "Confira os dados principais antes de concluir.",
     fields: [],
   },
 ];
@@ -217,6 +233,10 @@ function MatriculaPage() {
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(() => buildEmptyAlunoMatricula());
+  const [trainingBlocks, setTrainingBlocks] = useState<TrainingBlock[]>(() => [
+    createTrainingBlock(0),
+  ]);
+  const nextTrainingBlockIdRef = useRef(1);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [protocol, setProtocol] = useState("");
@@ -224,7 +244,7 @@ function MatriculaPage() {
   const [photoPreview, setPhotoPreview] = useState("");
   const [assignedEnrollmentNumber, setAssignedEnrollmentNumber] = useState("");
   const [enrollmentNumberStatus, setEnrollmentNumberStatus] = useState<AsyncStatus>("idle");
-  const [enrollmentNumberMessage, setEnrollmentNumberMessage] = useState("");
+  const [, setEnrollmentNumberMessage] = useState("");
   const [cepLookupStatus, setCepLookupStatus] = useState<AsyncStatus>("idle");
   const [cepLookupMessage, setCepLookupMessage] = useState("");
   const lastFetchedCepRef = useRef("");
@@ -337,16 +357,6 @@ function MatriculaPage() {
     });
   }, [consolidatedTurmas]);
 
-  const filteredHorarioOptions = useMemo(() => {
-    return horarioOptions.filter((option) => {
-      const matchesModalidade =
-        form.esportivas.modalidades.length === 0 ||
-        form.esportivas.modalidades.includes(option.modalidade);
-      const matchesUnidade =
-        form.esportivas.unidades.length === 0 || form.esportivas.unidades.includes(option.unidade);
-      return matchesModalidade && matchesUnidade;
-    });
-  }, [horarioOptions, form.esportivas.modalidades, form.esportivas.unidades]);
   const hasAvailableTurmas = horarioOptions.length > 0;
 
   useEffect(() => {
@@ -378,7 +388,6 @@ function MatriculaPage() {
     console.log("Modalidades (options):", modalityOptions);
     console.log("Unidades (options):", unitOptions);
     console.log("Horários (options):", horarioOptions);
-    console.log("Horários filtrados:", filteredHorarioOptions);
   }, [
     settings,
     turmas,
@@ -388,29 +397,27 @@ function MatriculaPage() {
     modalityOptions,
     unitOptions,
     horarioOptions,
-    filteredHorarioOptions,
     isLoadingCatalog,
     catalogError,
   ]);
 
-  const allErrors = useMemo(
-    () => validateMatriculaForm(form, hasAvailableTurmas),
-    [form, hasAvailableTurmas],
-  );
-  const currentStepErrors = useMemo(
-    () =>
-      uniqueValues(
-        steps[step].fields
-          .map((field) => allErrors[field])
-          .filter((message): message is string => Boolean(message)),
-      ),
-    [allErrors, step],
-  );
+  const allErrors = useMemo(() => {
+    const errors = validateMatriculaForm(form, hasAvailableTurmas);
+    const hasIncompleteTraining =
+      hasAvailableTurmas &&
+      trainingBlocks.some(
+        (training) => !training.modalidade || !training.unidade || !training.turmaId,
+      );
 
-  const attachedDocumentsCount = useMemo(
-    () => Object.values(form.documentos).filter(Boolean).length,
-    [form.documentos],
-  );
+    if (hasIncompleteTraining) {
+      errors["esportivas.horarios"] =
+        trainingBlocks.length > 1
+          ? "Complete todos os blocos de treino."
+          : "Selecione modalidade, unidade e categoria/turma.";
+    }
+
+    return errors;
+  }, [form, hasAvailableTurmas, trainingBlocks]);
   const progress = ((step + 1) / steps.length) * 100;
 
   useEffect(() => {
@@ -583,81 +590,123 @@ function MatriculaPage() {
     markTouched(fieldsToTouch);
   }
 
-  function toggleSimpleArray(key: "modalidades" | "unidades", value: string, fieldPath: string) {
-    setForm((current) => {
-      const currentValues = current.esportivas[key];
-      const nextValues = currentValues.includes(value)
-        ? currentValues.filter((item) => item !== value)
-        : [...currentValues, value];
+  function syncTrainingBlocks(nextBlocks: TrainingBlock[], shouldTouch = true) {
+    const selectedOptions = nextBlocks
+      .map((training) =>
+        horarioOptions.find(
+          (option) =>
+            option.turmaId === training.turmaId &&
+            option.modalidade === training.modalidade &&
+            option.unidade === training.unidade,
+        ),
+      )
+      .filter((option): option is HorarioOption => Boolean(option));
 
-      const nextSports = {
+    setTrainingBlocks(nextBlocks);
+    setForm((current) => ({
+      ...current,
+      esportivas: {
         ...current.esportivas,
-        [key]: uniqueValues(nextValues),
-      };
-
-      const allowedTurmas = new Set(
-        horarioOptions
-          .filter((option) => {
-            const matchesModalidade =
-              key === "modalidades"
-                ? nextSports.modalidades.length === 0 ||
-                  nextSports.modalidades.includes(option.modalidade)
-                : nextSports.modalidades.length === 0 ||
-                  nextSports.modalidades.includes(option.modalidade);
-            const matchesUnidade =
-              key === "unidades"
-                ? nextSports.unidades.length === 0 || nextSports.unidades.includes(option.unidade)
-                : nextSports.unidades.length === 0 || nextSports.unidades.includes(option.unidade);
-            return matchesModalidade && matchesUnidade;
-          })
-          .map((option) => option.turmaNome),
-      );
-
-      const selectedTurmas = nextSports.turmas.filter((turma) => allowedTurmas.has(turma));
-      const selectedHorarios = horarioOptions
-        .filter((option) => selectedTurmas.includes(option.turmaNome))
-        .map((option) => option.horarioLabel);
-
-      return {
-        ...current,
-        esportivas: {
-          ...nextSports,
-          turmas: selectedTurmas,
-          horarios: uniqueValues(selectedHorarios),
-        },
-      };
-    });
-    markTouched([fieldPath, "esportivas.horarios"]);
+        modalidades: uniqueValues(nextBlocks.map((training) => training.modalidade)),
+        unidades: uniqueValues(nextBlocks.map((training) => training.unidade)),
+        turmas: uniqueValues(selectedOptions.map((option) => option.turmaNome)),
+        horarios: uniqueValues(selectedOptions.map((option) => option.horarioLabel)),
+      },
+    }));
+    if (shouldTouch) {
+      markTouched(["esportivas.modalidades", "esportivas.unidades", "esportivas.horarios"]);
+    }
   }
 
-  function selectTurma(turmaId: string) {
-    const option = horarioOptions.find((item) => item.turmaId === turmaId);
+  function updateTrainingBlock(
+    blockId: number,
+    field: "modalidade" | "unidade" | "turmaId",
+    value: string,
+  ) {
+    let duplicateSelection = false;
+    const nextBlocks = trainingBlocks.map((training) => {
+      if (training.id !== blockId) return training;
 
-    setForm((current) => {
-      if (!option) {
+      if (field === "modalidade") {
+        const availableUnits = new Set(
+          horarioOptions
+            .filter((option) => option.modalidade === value)
+            .map((option) => option.unidade),
+        );
+
         return {
-          ...current,
-          esportivas: {
-            ...current.esportivas,
-            turmas: [],
-            horarios: [],
-          },
+          ...training,
+          modalidade: value,
+          unidade: availableUnits.has(training.unidade) ? training.unidade : "",
+          turmaId: "",
         };
       }
 
+      if (field === "unidade") {
+        return {
+          ...training,
+          unidade: value,
+          turmaId: "",
+        };
+      }
+
+      const option = horarioOptions.find((candidate) => candidate.turmaId === value);
+      if (!option) {
+        return {
+          ...training,
+          turmaId: "",
+        };
+      }
+
+      duplicateSelection = trainingBlocks.some(
+        (candidate) =>
+          candidate.id !== blockId &&
+          candidate.modalidade === option.modalidade &&
+          candidate.unidade === option.unidade &&
+          candidate.turmaId === option.turmaId,
+      );
+
+      if (duplicateSelection) return training;
+
       return {
-        ...current,
-        esportivas: {
-          ...current.esportivas,
-          modalidades: uniqueValues([...current.esportivas.modalidades, option.modalidade]),
-          unidades: uniqueValues([...current.esportivas.unidades, option.unidade]),
-          turmas: [option.turmaNome],
-          horarios: [option.horarioLabel],
-        },
+        ...training,
+        modalidade: option.modalidade,
+        unidade: option.unidade,
+        turmaId: option.turmaId,
       };
     });
 
-    markTouched(["esportivas.modalidades", "esportivas.unidades", "esportivas.horarios"]);
+    if (duplicateSelection) {
+      toast.error("Essa combinação de modalidade, unidade e turma já foi adicionada.");
+      return;
+    }
+
+    syncTrainingBlocks(nextBlocks);
+  }
+
+  function addTrainingBlock() {
+    const hasIncompleteTraining = trainingBlocks.some(
+      (training) => !training.modalidade || !training.unidade || !training.turmaId,
+    );
+
+    if (hasIncompleteTraining) {
+      markTouched(["esportivas.horarios"]);
+      toast.error("Complete o treino atual antes de adicionar outro.");
+      return;
+    }
+
+    const nextId = nextTrainingBlockIdRef.current;
+    nextTrainingBlockIdRef.current += 1;
+    syncTrainingBlocks([...trainingBlocks, createTrainingBlock(nextId)], false);
+    setTouched((current) => ({
+      ...current,
+      "esportivas.horarios": false,
+    }));
+  }
+
+  function removeTrainingBlock(blockId: number) {
+    if (trainingBlocks.length === 1) return;
+    syncTrainingBlocks(trainingBlocks.filter((training) => training.id !== blockId));
   }
 
   function handlePhotoChange(file: File | null) {
@@ -736,6 +785,8 @@ function MatriculaPage() {
 
   function resetForm() {
     setForm(buildEmptyAlunoMatricula());
+    setTrainingBlocks([createTrainingBlock(0)]);
+    nextTrainingBlockIdRef.current = 1;
     setTouched({});
     setStep(0);
     setProtocol("");
@@ -824,7 +875,7 @@ function MatriculaPage() {
             <button
               type="button"
               onClick={resetForm}
-              className="rounded-2xl border border-[#ff6b00]/35 bg-[#ff6b00]/12 px-5 py-3 text-sm font-semibold text-[#ffb07e] transition hover:bg-[#ff6b00]/18"
+              className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-[#ff6b00]/35 bg-[#ff6b00]/12 px-5 text-sm font-semibold text-[#ffb07e] transition hover:bg-[#ff6b00]/18"
             >
               Nova matrícula
             </button>
@@ -832,14 +883,14 @@ function MatriculaPage() {
               <button
                 type="button"
                 onClick={() => navigate({ to: "/alunos" })}
-                className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white/80 transition hover:border-[#ff6b00]/35 hover:text-white"
+                className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-white/80 transition hover:border-[#ff6b00]/35 hover:text-white"
               >
                 Ir para alunos
               </button>
             ) : (
               <Link
                 to="/login"
-                className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white/80 transition hover:border-[#ff6b00]/35 hover:text-white"
+                className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-semibold text-white/80 transition hover:border-[#ff6b00]/35 hover:text-white"
               >
                 Ir para login
               </Link>
@@ -851,261 +902,230 @@ function MatriculaPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,107,0,0.22),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(255,69,0,0.18),_transparent_28%),linear-gradient(180deg,_rgba(10,10,10,0.96),_rgba(4,4,4,1))]" />
-      <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur">
+    <div className="relative min-h-screen overflow-x-hidden bg-[#050505] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,107,0,0.18),_transparent_34%),linear-gradient(180deg,_rgba(12,12,12,0.98),_#050505)]" />
+      <div className="relative mx-auto w-full max-w-[760px] px-4 py-5 sm:px-6 sm:py-8">
+        <header className="mb-5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/35 shadow-[0_0_35px_-16px_rgba(255,107,0,0.85)]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/45 shadow-[0_0_30px_-14px_rgba(255,107,0,0.85)]">
               <img
                 src={branding.logo}
                 alt={`Logo ${branding.name}`}
-                className="h-9 w-9 object-contain"
+                className="h-8 w-8 object-contain"
               />
             </div>
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ff9f6b]">
-                Módulo de matrícula
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#ff9f6b]">
+                J12 Sports
               </div>
-              <h1 className="text-2xl font-black">Cadastro completo do aluno J12</h1>
+              <h1 className="text-lg font-bold sm:text-xl">Nova matrícula</h1>
             </div>
           </div>
           <button
             type="button"
             onClick={() => navigate({ to: user ? "/alunos" : "/login" })}
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm font-medium text-white/75 transition hover:border-[#ff6b00]/35 hover:text-white"
+            aria-label={user ? "Voltar para alunos" : "Voltar ao login"}
+            className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-3 text-sm font-medium text-white/75 transition hover:border-[#ff6b00]/35 hover:text-white sm:px-4"
           >
             <ArrowLeft className="h-4 w-4" />
-            {user ? "Voltar para alunos" : "Voltar ao login"}
+            <span className="hidden sm:inline">{user ? "Alunos" : "Login"}</span>
           </button>
-        </div>
+        </header>
 
-        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <aside className="rounded-[32px] border border-white/10 bg-white/[0.03] p-5 backdrop-blur xl:sticky xl:top-6 xl:h-fit">
-            <div className="space-y-3">
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#ff6b00]/20 bg-[#ff6b00]/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#ff9f6b]">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Fluxo existente aprimorado
+        <section className="rounded-[28px] border border-white/10 bg-[#0d0d0d]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur sm:p-6">
+          <div className="mb-6 md:hidden">
+            <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+              <span className="font-semibold text-white">
+                Etapa {step + 1} de {steps.length} — {steps[step].title}
               </span>
-              <h2 className="text-3xl font-black">Matrícula em etapas com validação completa.</h2>
-              <p className="text-sm leading-7 text-white/68">
-                A estrutura original do fluxo foi mantida, agora com ortografia ajustada, campos
-                obrigatórios, máscaras, múltiplas seleções esportivas e integração direta com o
-                perfil do aluno.
-              </p>
+              <span className="text-xs text-white/45">{Math.round(progress)}%</span>
             </div>
-
-            <div className="mt-6 rounded-3xl border border-white/10 bg-black/25 p-4">
-              <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.24em] text-white/40">
-                <span>Progresso</span>
-                <span>{Math.round(progress)}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-white/8">
-                <div
-                  className="h-2 rounded-full bg-[linear-gradient(90deg,#ff6b00,#ff9248)] transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+            <div
+              className="h-2 overflow-hidden rounded-full bg-white/10"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              aria-label="Progresso da matrícula"
+            >
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#ff6b00,#ff9248)] transition-all"
+                style={{ width: `${progress}%` }}
+              />
             </div>
+          </div>
 
-            <div className="mt-6 space-y-3">
+          <nav aria-label="Etapas da matrícula" className="mb-7 hidden md:block">
+            <ol className="grid grid-cols-4 gap-2">
               {steps.map((item, index) => {
                 const active = index === step;
                 const complete = index < step;
+
                 return (
-                  <button
-                    key={item.title}
-                    type="button"
-                    onClick={() => {
-                      if (index > step) return;
-                      setStep(index);
-                    }}
-                    className={`w-full rounded-3xl border px-4 py-4 text-left transition ${
-                      active
-                        ? "border-[#ff6b00]/45 bg-[#ff6b00]/12"
-                        : complete
-                          ? "border-emerald-500/25 bg-emerald-500/10"
-                          : "border-white/8 bg-white/[0.02]"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-2xl text-xs font-bold ${
-                          complete
-                            ? "bg-emerald-500/20 text-emerald-300"
-                            : active
-                              ? "bg-[#ff6b00] text-white"
-                              : "bg-white/10 text-white/60"
+                  <li key={item.title}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (index <= step) setStep(index);
+                      }}
+                      disabled={index > step}
+                      aria-current={active ? "step" : undefined}
+                      className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border px-2 text-sm font-medium transition ${
+                        active
+                          ? "border-[#ff6b00]/55 bg-[#ff6b00]/12 text-white"
+                          : complete
+                            ? "border-emerald-500/20 bg-emerald-500/8 text-emerald-200"
+                            : "border-white/8 bg-white/[0.02] text-white/40"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                          active
+                            ? "bg-[#ff6b00] text-white"
+                            : complete
+                              ? "bg-emerald-500/15 text-emerald-300"
+                              : "bg-white/8 text-white/45"
                         }`}
                       >
-                        {complete ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-white">{item.title}</div>
-                        <div className="mt-1 text-xs leading-5 text-white/50">
-                          {item.description}
-                        </div>
-                      </div>
-                      <ChevronRight className="ml-auto mt-1 h-4 w-4 text-white/30" />
-                    </div>
-                  </button>
+                        {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
+                      </span>
+                      <span>{item.title}</span>
+                    </button>
+                  </li>
                 );
               })}
+            </ol>
+          </nav>
+
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ff9f6b]">
+              Etapa {step + 1}
+            </p>
+            <h2 className="mt-2 text-2xl font-black sm:text-3xl">{steps[step].title}</h2>
+            <p className="mt-2 text-sm leading-6 text-white/60">{steps[step].description}</p>
+          </div>
+
+          {isLoadingCatalog && step === 0 && (
+            <div className="mb-5 flex items-center gap-2 rounded-2xl border border-blue-500/20 bg-blue-500/8 px-4 py-3 text-sm text-blue-100">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Carregando categorias e turmas...</span>
             </div>
-          </aside>
+          )}
 
-          <section className="rounded-[32px] border border-white/10 bg-white/[0.03] p-5 backdrop-blur sm:p-6">
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#ff9f6b]">
-                  Etapa {step + 1} de {steps.length}
-                </div>
-                <h2 className="mt-2 text-2xl font-black">{steps[step].title}</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-white/65">
-                  {steps[step].description}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-right">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">
-                  Documentos anexados
-                </div>
-                <div className="mt-1 text-lg font-bold text-white">{attachedDocumentsCount}</div>
-              </div>
+          {catalogError && step === 0 && (
+            <div className="mb-5 flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-100">
+              <AlertCircle className="h-4 w-4" />
+              <span>Não foi possível atualizar as categorias. Tentando novamente...</span>
             </div>
+          )}
 
-            {/* Indicador de carregamento de catálogo */}
-            {isLoadingCatalog && step === 0 && (
-              <div className="mb-5 rounded-3xl border border-blue-500/25 bg-blue-500/10 px-4 py-4 text-sm text-blue-100 flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Carregando categorias e turmas...</span>
-              </div>
-            )}
-
-            {/* Indicador de erro de catálogo */}
-            {catalogError && step === 0 && (
-              <div className="mb-5 rounded-3xl border border-red-500/25 bg-red-500/10 px-4 py-4 text-sm text-red-100 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                <span>Erro ao carregar dados cadastrados. Tentando novamente...</span>
-              </div>
-            )}
-
-            {currentStepErrors.length > 0 && (
-              <div className="mb-5 rounded-3xl border border-amber-500/25 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
-                <div className="font-semibold">Revise os campos obrigatórios desta etapa.</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {currentStepErrors.map((message) => (
-                    <span
-                      key={message}
-                      className="rounded-full border border-amber-500/25 bg-black/10 px-3 py-1 text-[11px]"
-                    >
-                      {message}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-6">
-              {step === 0 && (
-                <>
-                  <StepStudent
-                    form={form}
-                    updateSection={updateSection}
-                    getFieldError={getFieldError}
-                    enrollmentNumberStatus={enrollmentNumberStatus}
-                    enrollmentNumberMessage={enrollmentNumberMessage}
-                  />
-                  <StepClassSelection
-                    form={form}
-                    modalityOptions={modalityOptions}
-                    unitOptions={unitOptions}
-                    hasAnyTurma={hasAvailableTurmas}
-                    filteredHorarioOptions={filteredHorarioOptions}
-                    toggleSimpleArray={toggleSimpleArray}
-                    selectTurma={selectTurma}
-                    getFieldError={getFieldError}
-                    isLoading={isLoadingCatalog}
-                  />
-                </>
-              )}
-              {step === 1 && (
-                <StepGuardian
+          <div className="space-y-6">
+            {step === 0 && (
+              <>
+                <StepStudent
                   form={form}
                   updateSection={updateSection}
                   getFieldError={getFieldError}
+                  enrollmentNumberStatus={enrollmentNumberStatus}
+                  retryEnrollmentNumber={() => void loadEnrollmentNumberLegacy(true)}
                 />
-              )}
-              {step === 2 && (
-                <StepComplementary
-                  form={form}
-                  updateSection={updateSection}
+                <StepClassSelection
+                  trainingBlocks={trainingBlocks}
+                  modalityOptions={modalityOptions}
+                  unitOptions={unitOptions}
+                  hasAnyTurma={hasAvailableTurmas}
+                  horarioOptions={horarioOptions}
+                  updateTrainingBlock={updateTrainingBlock}
+                  addTrainingBlock={addTrainingBlock}
+                  removeTrainingBlock={removeTrainingBlock}
                   getFieldError={getFieldError}
-                  cepLookupStatus={cepLookupStatus}
-                  cepLookupMessage={cepLookupMessage}
-                  photoPreview={photoPreview}
-                  handlePhotoChange={handlePhotoChange}
-                  handleDocumentChange={handleDocumentChange}
-                  updateMedicalExpiry={updateMedicalExpiry}
+                  isLoading={isLoadingCatalog}
                 />
-              )}
-              {step === 3 && <StepReview form={form} />}
-            </div>
+              </>
+            )}
+            {step === 1 && (
+              <StepGuardian
+                form={form}
+                updateSection={updateSection}
+                getFieldError={getFieldError}
+              />
+            )}
+            {step === 2 && (
+              <StepComplementary
+                form={form}
+                updateSection={updateSection}
+                getFieldError={getFieldError}
+                cepLookupStatus={cepLookupStatus}
+                cepLookupMessage={cepLookupMessage}
+                photoPreview={photoPreview}
+                handlePhotoChange={handlePhotoChange}
+                handleDocumentChange={handleDocumentChange}
+                updateMedicalExpiry={updateMedicalExpiry}
+              />
+            )}
+            {step === 3 && (
+              <StepReview
+                form={form}
+                trainingBlocks={trainingBlocks}
+                horarioOptions={horarioOptions}
+              />
+            )}
+          </div>
 
-            <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-6">
+          <div className="mt-8 flex flex-col-reverse gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={goBack}
+              disabled={step === 0}
+              className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-5 text-sm font-medium text-white/80 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </button>
+
+            {step < steps.length - 1 ? (
               <button
                 type="button"
-                onClick={goBack}
-                disabled={step === 0}
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-white/80 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={goNext}
+                disabled={step === 0 && isLoadingCatalog}
+                className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                style={{ background: "linear-gradient(135deg,#ff6b00,#ff8f47)" }}
               >
-                <ArrowLeft className="h-4 w-4" />
-                Voltar
+                {step === 0 && isLoadingCatalog ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando categorias...
+                  </>
+                ) : (
+                  <>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
-
-              {step < steps.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={goNext}
-                  disabled={step === 0 && isLoadingCatalog}
-                  className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ background: "linear-gradient(135deg,#ff6b00,#ff8f47)" }}
-                >
-                  {step === 0 && isLoadingCatalog ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Carregando categorias...
-                    </>
-                  ) : (
-                    <>
-                      Próxima etapa
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                  className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:opacity-60"
-                  style={{ background: "linear-gradient(135deg,#ff6b00,#ff8f47)" }}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Salvando matrícula...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Finalizar matrícula
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </section>
-        </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
+                style={{ background: "linear-gradient(135deg,#ff6b00,#ff8f47)" }}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando matrícula...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Concluir matrícula
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -1260,51 +1280,6 @@ function TextareaField({
   );
 }
 
-function MultiSelectCard({
-  label,
-  description,
-  checked,
-  onToggle,
-  disabled,
-}: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={disabled}
-      className={`rounded-3xl border p-4 text-left transition ${
-        disabled
-          ? "border-white/5 bg-white/[0.02] cursor-not-allowed opacity-50"
-          : checked
-            ? "border-[#ff6b00]/50 bg-[#ff6b00]/12"
-            : "border-white/10 bg-white/[0.03] hover:border-white/20"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-md border ${
-            checked ? "border-[#ff6b00] bg-[#ff6b00] text-white" : "border-white/20 bg-transparent"
-          }`}
-        >
-          {checked ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">{label}</div>
-          {description ? (
-            <div className="mt-1 text-xs leading-5 text-white/45">{description}</div>
-          ) : null}
-        </div>
-      </div>
-    </button>
-  );
-}
-
 function FileField({
   label,
   helper,
@@ -1349,7 +1324,7 @@ function StepStudent({
   updateSection,
   getFieldError,
   enrollmentNumberStatus,
-  enrollmentNumberMessage,
+  retryEnrollmentNumber,
 }: {
   form: FormState;
   updateSection: <K extends keyof FormState>(
@@ -1359,53 +1334,160 @@ function StepStudent({
   ) => void;
   getFieldError: (field: string) => string;
   enrollmentNumberStatus: AsyncStatus;
-  enrollmentNumberMessage: string;
+  retryEnrollmentNumber: () => void;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <InputField
-        label="Número de matrícula"
-        value={form.dadosAluno.numeroMatricula}
-        onChange={() => undefined}
-        readOnly
-        helper={
-          enrollmentNumberStatus === "loading"
-            ? "Gerando automaticamente..."
-            : enrollmentNumberMessage || "Gerado automaticamente com validação segura no backend."
-        }
-      />
-      <InputField
-        label="Nome completo"
-        required
-        value={form.dadosAluno.nomeCompleto}
-        onChange={(value) =>
-          updateSection("dadosAluno", { nomeCompleto: value }, ["dadosAluno.nomeCompleto"])
-        }
-        error={getFieldError("dadosAluno.nomeCompleto")}
-      />
-      <InputField
-        label="Data de nascimento"
-        required
-        type="date"
-        value={form.dadosAluno.dataNascimento}
-        onChange={(value) =>
-          updateSection(
-            "dadosAluno",
-            { dataNascimento: value, idade: calculateStudentAge(value) },
-            ["dadosAluno.dataNascimento"],
-          )
-        }
-        error={getFieldError("dadosAluno.dataNascimento")}
-      />
-      <InputField
-        label="Idade"
-        value={form.dadosAluno.idade}
-        onChange={() => undefined}
-        disabled
-        helper="Calculada automaticamente a partir da data de nascimento."
-      />
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <InputField
+            label="Nome completo do aluno"
+            required
+            value={form.dadosAluno.nomeCompleto}
+            onChange={(value) =>
+              updateSection("dadosAluno", { nomeCompleto: value }, ["dadosAluno.nomeCompleto"])
+            }
+            error={getFieldError("dadosAluno.nomeCompleto")}
+          />
+        </div>
+        <InputField
+          label="Data de nascimento"
+          required
+          type="date"
+          value={form.dadosAluno.dataNascimento}
+          onChange={(value) =>
+            updateSection(
+              "dadosAluno",
+              { dataNascimento: value, idade: calculateStudentAge(value) },
+              ["dadosAluno.dataNascimento"],
+            )
+          }
+          error={getFieldError("dadosAluno.dataNascimento")}
+        />
+        <InputField
+          label="Idade"
+          value={form.dadosAluno.idade}
+          onChange={() => undefined}
+          readOnly
+          helper="Calculada automaticamente."
+        />
+        <SelectField
+          label="Sexo"
+          required
+          value={form.dadosAluno.sexo}
+          onChange={(value) => updateSection("dadosAluno", { sexo: value }, ["dadosAluno.sexo"])}
+          options={["Masculino", "Feminino", "Outro"]}
+          error={getFieldError("dadosAluno.sexo")}
+        />
+      </div>
+
+      <div
+        aria-live="polite"
+        className="flex min-h-9 items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2 text-xs text-white/45"
+      >
+        <span>
+          {enrollmentNumberStatus === "loading"
+            ? "Preparando o número da matrícula..."
+            : enrollmentNumberStatus === "error"
+              ? "O número será confirmado ao concluir."
+              : "Número de matrícula gerado automaticamente."}
+        </span>
+        {enrollmentNumberStatus === "error" ? (
+          <button
+            type="button"
+            onClick={retryEnrollmentNumber}
+            className="shrink-0 font-semibold text-[#ff9f6b] hover:text-[#ffc09a]"
+          >
+            Tentar novamente
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StepGuardian({
+  form,
+  updateSection,
+  getFieldError,
+}: {
+  form: FormState;
+  updateSection: <K extends keyof FormState>(
+    section: K,
+    partial: Partial<FormState[K]>,
+    fieldsToTouch?: string[],
+  ) => void;
+  getFieldError: (field: string) => string;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <InputField
+          label="Nome completo do responsável"
+          required
+          value={form.responsavel.nomeCompleto}
+          onChange={(value) =>
+            updateSection("responsavel", { nomeCompleto: value }, ["responsavel.nomeCompleto"])
+          }
+          error={getFieldError("responsavel.nomeCompleto")}
+        />
+      </div>
       <InputField
         label="CPF"
+        required
+        value={form.responsavel.cpf}
+        onChange={(value) =>
+          updateSection("responsavel", { cpf: maskCpf(value) }, ["responsavel.cpf"])
+        }
+        error={getFieldError("responsavel.cpf")}
+      />
+      <InputField
+        label="WhatsApp"
+        required
+        value={form.responsavel.whatsapp}
+        onChange={(value) =>
+          updateSection("responsavel", { whatsapp: maskWhatsapp(value) }, ["responsavel.whatsapp"])
+        }
+        error={getFieldError("responsavel.whatsapp")}
+      />
+      <SelectField
+        label="Parentesco"
+        required
+        value={form.responsavel.parentesco}
+        onChange={(value) =>
+          updateSection("responsavel", { parentesco: value }, ["responsavel.parentesco"])
+        }
+        options={["Mãe", "Pai", "Avó", "Avô", "Tia", "Tio", "Responsável legal"]}
+        error={getFieldError("responsavel.parentesco")}
+      />
+      <InputField
+        label="E-mail"
+        type="email"
+        value={form.responsavel.email}
+        onChange={(value) => updateSection("responsavel", { email: value }, ["responsavel.email"])}
+        error={getFieldError("responsavel.email")}
+      />
+    </div>
+  );
+}
+
+function StepStudentAdditional({
+  form,
+  updateSection,
+  getFieldError,
+}: {
+  form: FormState;
+  updateSection: <K extends keyof FormState>(
+    section: K,
+    partial: Partial<FormState[K]>,
+    fieldsToTouch?: string[],
+  ) => void;
+  getFieldError: (field: string) => string;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <InputField
+        label="CPF do aluno"
         value={form.dadosAluno.cpf}
         onChange={(value) =>
           updateSection("dadosAluno", { cpf: maskCpf(value) }, ["dadosAluno.cpf"])
@@ -1413,18 +1495,10 @@ function StepStudent({
         error={getFieldError("dadosAluno.cpf")}
       />
       <InputField
-        label="RG"
+        label="RG do aluno"
         value={form.dadosAluno.rg}
         onChange={(value) => updateSection("dadosAluno", { rg: maskRg(value) }, ["dadosAluno.rg"])}
         error={getFieldError("dadosAluno.rg")}
-      />
-      <SelectField
-        label="Sexo"
-        required
-        value={form.dadosAluno.sexo}
-        onChange={(value) => updateSection("dadosAluno", { sexo: value }, ["dadosAluno.sexo"])}
-        options={["Masculino", "Feminino", "Outro"]}
-        error={getFieldError("dadosAluno.sexo")}
       />
       <InputField
         label="Nome do colégio"
@@ -1447,7 +1521,7 @@ function StepStudent({
   );
 }
 
-function StepGuardian({
+function StepGuardianAdditional({
   form,
   updateSection,
   getFieldError,
@@ -1461,70 +1535,12 @@ function StepGuardian({
   getFieldError: (field: string) => string;
 }) {
   return (
-    <div className="space-y-5">
-      <div className="rounded-3xl border border-[#ff6b00]/20 bg-[#ff6b00]/8 px-4 py-4 text-sm leading-6 text-[#ffd2bb]">
-        Este responsável ficará vinculado ao perfil do aluno, ao contrato e ao acompanhamento
-        documental.
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <InputField
-          label="Nome completo do responsável"
-          required
-          value={form.responsavel.nomeCompleto}
-          onChange={(value) =>
-            updateSection("responsavel", { nomeCompleto: value }, ["responsavel.nomeCompleto"])
-          }
-          error={getFieldError("responsavel.nomeCompleto")}
-        />
-        <InputField
-          label="CPF do responsável"
-          required
-          value={form.responsavel.cpf}
-          onChange={(value) =>
-            updateSection("responsavel", { cpf: maskCpf(value) }, ["responsavel.cpf"])
-          }
-          error={getFieldError("responsavel.cpf")}
-        />
-        <InputField
-          label="RG do responsável"
-          value={form.responsavel.rg}
-          onChange={(value) =>
-            updateSection("responsavel", { rg: maskRg(value) }, ["responsavel.rg"])
-          }
-          error={getFieldError("responsavel.rg")}
-        />
-        <InputField
-          label="Telefone principal"
-          required
-          value={form.responsavel.whatsapp}
-          onChange={(value) =>
-            updateSection("responsavel", { whatsapp: maskWhatsapp(value) }, [
-              "responsavel.whatsapp",
-            ])
-          }
-          error={getFieldError("responsavel.whatsapp")}
-        />
-        <InputField
-          label="E-mail"
-          type="email"
-          value={form.responsavel.email}
-          onChange={(value) =>
-            updateSection("responsavel", { email: value }, ["responsavel.email"])
-          }
-          error={getFieldError("responsavel.email")}
-        />
-        <SelectField
-          label="Grau de parentesco"
-          required
-          value={form.responsavel.parentesco}
-          onChange={(value) =>
-            updateSection("responsavel", { parentesco: value }, ["responsavel.parentesco"])
-          }
-          options={["Mãe", "Pai", "Avó", "Avô", "Tia", "Tio", "Responsável legal"]}
-          error={getFieldError("responsavel.parentesco")}
-        />
-      </div>
-    </div>
+    <InputField
+      label="RG do responsável"
+      value={form.responsavel.rg}
+      onChange={(value) => updateSection("responsavel", { rg: maskRg(value) }, ["responsavel.rg"])}
+      error={getFieldError("responsavel.rg")}
+    />
   );
 }
 
@@ -1703,146 +1719,210 @@ function StepDocuments({
 }
 
 function StepClassSelection({
-  form,
+  trainingBlocks,
   modalityOptions,
   unitOptions,
   hasAnyTurma,
-  filteredHorarioOptions,
-  toggleSimpleArray,
-  selectTurma,
+  horarioOptions,
+  updateTrainingBlock,
+  addTrainingBlock,
+  removeTrainingBlock,
   getFieldError,
   isLoading,
 }: {
-  form: FormState;
+  trainingBlocks: TrainingBlock[];
   modalityOptions: string[];
   unitOptions: string[];
   hasAnyTurma: boolean;
-  filteredHorarioOptions: HorarioOption[];
-  toggleSimpleArray: (key: "modalidades" | "unidades", value: string, fieldPath: string) => void;
-  selectTurma: (turmaId: string) => void;
+  horarioOptions: HorarioOption[];
+  updateTrainingBlock: (
+    blockId: number,
+    field: "modalidade" | "unidade" | "turmaId",
+    value: string,
+  ) => void;
+  addTrainingBlock: () => void;
+  removeTrainingBlock: (blockId: number) => void;
   getFieldError: (field: string) => string;
   isLoading?: boolean;
 }) {
-  const selectedTurmaId =
-    filteredHorarioOptions.find((option) => form.esportivas.turmas.includes(option.turmaNome))
-      ?.turmaId ?? "";
+  const availableModalities = uniqueValues([
+    ...modalityOptions,
+    ...horarioOptions.map((option) => option.modalidade),
+  ]);
+  const trainingError = getFieldError("esportivas.horarios");
 
   return (
-    <div
-      className="space-y-6 opacity-75 pointer-events-auto"
-      style={isLoading ? { opacity: 0.6 } : {}}
-    >
-      <div>
-        <div className="mb-3 text-sm font-medium text-white/88 flex items-center gap-2">
-          Modalidades
-          <span className="text-xs font-normal text-white/40">Opcional</span>
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {modalityOptions.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
-              {isLoading ? "Carregando modalidades..." : "Nenhuma modalidade disponível"}
-            </div>
-          ) : (
-            modalityOptions.map((option) => (
-              <MultiSelectCard
-                key={option}
-                label={option}
-                checked={form.esportivas.modalidades.includes(option)}
-                onToggle={() => toggleSimpleArray("modalidades", option, "esportivas.modalidades")}
-                disabled={isLoading}
-              />
-            ))
-          )}
-        </div>
+    <div className={`space-y-5 ${isLoading ? "opacity-60" : ""}`}>
+      <div className="border-t border-white/8 pt-5">
+        <h3 className="text-lg font-bold text-white">Treino</h3>
+        <p className="mt-1 text-sm text-white/50">
+          Adicione uma ou mais modalidades e turmas para o aluno.
+        </p>
       </div>
 
-      <div>
-        <div className="mb-3 text-sm font-medium text-white/88 flex items-center gap-2">
-          Unidades
-          <span className="text-xs font-normal text-white/40">Opcional</span>
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+      {!isLoading && !hasAnyTurma ? (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
+          Nenhuma turma cadastrada no momento.
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {unitOptions.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
-              {isLoading ? "Carregando unidades..." : "Nenhuma unidade disponível"}
-            </div>
-          ) : (
-            unitOptions.map((option) => (
-              <MultiSelectCard
-                key={option}
-                label={option}
-                checked={form.esportivas.unidades.includes(option)}
-                onToggle={() => toggleSimpleArray("unidades", option, "esportivas.unidades")}
-                disabled={isLoading}
-              />
-            ))
-          )}
-        </div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          {trainingBlocks.map((training, index) => {
+            const relatedUnits = uniqueValues(
+              horarioOptions
+                .filter((option) => option.modalidade === training.modalidade)
+                .map((option) => option.unidade),
+            );
+            const availableUnits = relatedUnits.length > 0 ? relatedUnits : unitOptions;
+            const availableClasses = horarioOptions.filter((option) => {
+              const matchesFilters =
+                option.modalidade === training.modalidade && option.unidade === training.unidade;
+              const selectedInAnotherBlock = trainingBlocks.some(
+                (candidate) =>
+                  candidate.id !== training.id &&
+                  candidate.modalidade === option.modalidade &&
+                  candidate.unidade === option.unidade &&
+                  candidate.turmaId === option.turmaId,
+              );
+              return matchesFilters && !selectedInAnotherBlock;
+            });
+            const selectedClass = horarioOptions.find(
+              (option) => option.turmaId === training.turmaId,
+            );
+            const showError =
+              Boolean(trainingError) &&
+              (!training.modalidade || !training.unidade || !training.turmaId);
 
-      <div>
-        <div className="mb-3 text-sm font-medium text-white/88 flex items-center gap-2">
-          Categoria/Turma
-          {hasAnyTurma ? <span className="text-[#ff9f6b]">*</span> : null}
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+            return (
+              <div
+                key={training.id}
+                className={`rounded-2xl border p-4 sm:p-5 ${
+                  showError
+                    ? "border-rose-500/45 bg-rose-500/[0.04]"
+                    : index === 0
+                      ? "border-[#ff6b00]/30 bg-[#ff6b00]/[0.04]"
+                      : "border-white/10 bg-white/[0.025]"
+                }`}
+              >
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-white">
+                      {index === 0 ? "Treino principal" : "Treino adicional"}
+                    </h4>
+                    {index > 0 ? (
+                      <p className="mt-0.5 text-xs text-white/40">Treino {index + 1}</p>
+                    ) : null}
+                  </div>
+                  {index > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => removeTrainingBlock(training.id)}
+                      className="min-h-11 rounded-xl border border-rose-500/25 px-3 text-xs font-semibold text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-500/10"
+                      aria-label={`Remover treino adicional ${index}`}
+                    >
+                      Remover
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-white/88">Modalidade *</span>
+                    <select
+                      value={training.modalidade}
+                      onChange={(event) =>
+                        updateTrainingBlock(training.id, "modalidade", event.target.value)
+                      }
+                      disabled={isLoading}
+                      aria-invalid={showError && !training.modalidade}
+                      className="h-[52px] w-full rounded-2xl border border-white/10 bg-[#101010] px-4 text-sm text-white outline-none transition focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">Selecione</option>
+                      {availableModalities.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-white/88">Unidade *</span>
+                    <select
+                      value={training.unidade}
+                      onChange={(event) =>
+                        updateTrainingBlock(training.id, "unidade", event.target.value)
+                      }
+                      disabled={isLoading || !training.modalidade}
+                      aria-invalid={showError && !training.unidade}
+                      className="h-[52px] w-full rounded-2xl border border-white/10 bg-[#101010] px-4 text-sm text-white outline-none transition focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">Selecione</option>
+                      {availableUnits.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2 sm:col-span-2">
+                    <span className="text-sm font-medium text-white/88">Categoria/Turma *</span>
+                    <select
+                      value={training.turmaId}
+                      onChange={(event) =>
+                        updateTrainingBlock(training.id, "turmaId", event.target.value)
+                      }
+                      disabled={isLoading || !training.modalidade || !training.unidade}
+                      aria-invalid={showError && !training.turmaId}
+                      className="h-[52px] w-full rounded-2xl border border-white/10 bg-[#101010] px-4 text-sm text-white outline-none transition focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">Selecione</option>
+                      {availableClasses.map((option) => (
+                        <option key={option.turmaId} value={option.turmaId}>
+                          {option.turmaNome}
+                        </option>
+                      ))}
+                    </select>
+                    {training.modalidade &&
+                    training.unidade &&
+                    availableClasses.length === 0 &&
+                    !training.turmaId ? (
+                      <p className="text-xs text-white/45">
+                        Não há outra turma disponível para essa modalidade e unidade.
+                      </p>
+                    ) : null}
+                  </label>
+                </div>
+
+                {selectedClass ? (
+                  <div className="mt-4 rounded-xl border border-white/8 bg-black/20 px-3 py-3">
+                    <span className="text-xs uppercase tracking-[0.16em] text-white/35">
+                      Horário
+                    </span>
+                    <p className="mt-1 text-sm font-medium text-white">
+                      {selectedClass.horarioLabel}
+                    </p>
+                    <p className="mt-1 text-xs text-white/45">{selectedClass.description}</p>
+                  </div>
+                ) : null}
+
+                {showError ? <p className="mt-3 text-xs text-rose-300">{trainingError}</p> : null}
+              </div>
+            );
+          })}
         </div>
-        {isLoading ? (
-          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
-            Carregando categorias...
-          </div>
-        ) : !hasAnyTurma ? (
-          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
-            Nenhuma turma cadastrada no momento.
-          </div>
-        ) : filteredHorarioOptions.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/55">
-            Nenhuma turma encontrada para os filtros selecionados. Remova modalidade ou unidade para
-            ver todas as turmas ativas.
-          </div>
-        ) : (
-          <label className="block space-y-2">
-            <select
-              value={selectedTurmaId}
-              onChange={(event) => selectTurma(event.target.value)}
-              aria-invalid={Boolean(getFieldError("esportivas.horarios"))}
-              className={`h-[52px] w-full rounded-2xl border px-4 text-sm outline-none transition ${
-                getFieldError("esportivas.horarios")
-                  ? "border-rose-500/70 bg-rose-500/10 text-white focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10"
-                  : "border-white/10 bg-[#101010] text-white focus:border-[#ff6b00] focus:ring-4 focus:ring-[#ff6b00]/15"
-              }`}
-            >
-              <option value="">Selecione uma categoria</option>
-              {filteredHorarioOptions.map((option) => (
-                <option key={option.turmaId} value={option.turmaId}>
-                  {option.turmaNome} - {option.horarioLabel} - {option.modalidade}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-white/40">
-              Selecione uma turma ativa. Sem filtros, todas as turmas cadastradas aparecem aqui.
-            </p>
-          </label>
-        )}
-        {filteredHorarioOptions.length > 0 ? (
-          <div className="mt-3 grid gap-3">
-            {filteredHorarioOptions.map((option) => (
-              <MultiSelectCard
-                key={option.turmaId}
-                label={`${option.turmaNome} · ${option.horarioLabel}`}
-                description={`${option.modalidade} · ${option.description}`}
-                checked={form.esportivas.turmas.includes(option.turmaNome)}
-                onToggle={() => selectTurma(option.turmaId)}
-                disabled={isLoading}
-              />
-            ))}
-          </div>
-        ) : null}
-        {getFieldError("esportivas.horarios") ? (
-          <p className="mt-2 text-xs text-rose-300">{getFieldError("esportivas.horarios")}</p>
-        ) : null}
-      </div>
+      )}
+
+      {hasAnyTurma ? (
+        <button
+          type="button"
+          onClick={addTrainingBlock}
+          disabled={isLoading}
+          className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-[#ff6b00]/45 bg-[#ff6b00]/[0.04] px-4 text-sm font-semibold text-[#ffad78] transition hover:bg-[#ff6b00]/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+        >
+          + Adicionar outra modalidade/turma
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2020,16 +2100,16 @@ function ComplementarySection({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.025] p-4 sm:p-5">
-      <div className="mb-4">
-        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ff9f6b]">
-          Opcional
-        </div>
-        <h3 className="mt-1 text-lg font-bold text-white">{title}</h3>
-        <p className="mt-1 text-sm leading-6 text-white/55">{description}</p>
-      </div>
-      {children}
-    </div>
+    <details className="group rounded-2xl border border-white/10 bg-white/[0.025] open:border-[#ff6b00]/25 open:bg-[#ff6b00]/[0.035]">
+      <summary className="flex min-h-[60px] cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none transition hover:bg-white/[0.025] focus-visible:ring-2 focus-visible:ring-[#ff6b00]/70 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-white">{title}</span>
+          <span className="mt-0.5 block text-xs leading-5 text-white/45">{description}</span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-[#ff9f6b] transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="border-t border-white/8 px-4 py-5">{children}</div>
+    </details>
   );
 }
 
@@ -2058,12 +2138,38 @@ function StepComplementary({
   handleDocumentChange: (field: UploadedDocumentField, file: File | null) => void;
   updateMedicalExpiry: (value: string) => void;
 }) {
+  const attachedDocumentsCount = Object.values(form.documentos).filter(Boolean).length;
+
   return (
     <div className="space-y-5">
+      <div className="rounded-2xl border border-[#ff6b00]/20 bg-[#ff6b00]/8 p-4">
+        <h3 className="font-semibold text-white">Informações opcionais</h3>
+        <p className="mt-1 text-sm leading-6 text-white/60">
+          Você pode completar esses dados agora ou posteriormente.
+        </p>
+      </div>
+
       <ComplementarySection
-        title="Endereco"
-        description="Complete o endereco quando quiser vincular dados de localizacao ao cadastro."
+        title="Dados pessoais e escolares"
+        description="Documentos pessoais, escola e identificação complementar."
       >
+        <div className="space-y-5">
+          <StepStudentAdditional
+            form={form}
+            updateSection={updateSection}
+            getFieldError={getFieldError}
+          />
+          <div className="border-t border-white/8 pt-5">
+            <StepGuardianAdditional
+              form={form}
+              updateSection={updateSection}
+              getFieldError={getFieldError}
+            />
+          </div>
+        </div>
+      </ComplementarySection>
+
+      <ComplementarySection title="Endereço" description="CEP e dados de localização.">
         <StepAddress
           form={form}
           updateSection={updateSection}
@@ -2074,8 +2180,19 @@ function StepComplementary({
       </ComplementarySection>
 
       <ComplementarySection
-        title="Documentos e foto"
-        description="Uploads sao opcionais e nao bloqueiam o salvamento da matricula."
+        title="Saúde"
+        description="Restrições, alergias, medicamentos e cuidados importantes."
+      >
+        <StepHealth form={form} updateSection={updateSection} getFieldError={getFieldError} />
+      </ComplementarySection>
+
+      <ComplementarySection
+        title="Documentos"
+        description={
+          attachedDocumentsCount > 0
+            ? `${attachedDocumentsCount} arquivo(s) selecionado(s).`
+            : "Foto, documentos pessoais, comprovante e atestado."
+        }
       >
         <StepDocuments
           form={form}
@@ -2088,8 +2205,8 @@ function StepComplementary({
       </ComplementarySection>
 
       <ComplementarySection
-        title="Informacoes esportivas"
-        description="Detalhes de nivel e objetivo ajudam na operacao, mas nao sao obrigatorios."
+        title="Informações esportivas"
+        description="Nível, experiência, característica e objetivo."
       >
         <StepSportsComplement
           form={form}
@@ -2099,15 +2216,8 @@ function StepComplementary({
       </ComplementarySection>
 
       <ComplementarySection
-        title="Saude"
-        description="Registre cuidados medicos quando houver informacao disponivel."
-      >
-        <StepHealth form={form} updateSection={updateSection} getFieldError={getFieldError} />
-      </ComplementarySection>
-
-      <ComplementarySection
-        title="Origem e observacoes"
-        description="Dados comerciais e observacoes gerais para enriquecer o atendimento."
+        title="Outras informações"
+        description="Origem do contato e observações gerais."
       >
         <StepStrategy form={form} updateSection={updateSection} getFieldError={getFieldError} />
       </ComplementarySection>
@@ -2115,78 +2225,55 @@ function StepComplementary({
   );
 }
 
-function StepReview({ form }: { form: FormState }) {
+function StepReview({
+  form,
+  trainingBlocks,
+  horarioOptions,
+}: {
+  form: FormState;
+  trainingBlocks: TrainingBlock[];
+  horarioOptions: HorarioOption[];
+}) {
   const sections = [
     {
-      title: "Dados do aluno",
+      title: "Aluno",
       items: [
-        ["Número de matrícula", form.dadosAluno.numeroMatricula],
         ["Nome completo", form.dadosAluno.nomeCompleto],
         ["Data de nascimento", form.dadosAluno.dataNascimento],
         ["Idade", form.dadosAluno.idade],
-        ["CPF", form.dadosAluno.cpf],
-        ["RG", form.dadosAluno.rg],
         ["Sexo", form.dadosAluno.sexo],
-        ["Colégio", form.dadosAluno.colegio],
-        ["Período escolar", form.dadosAluno.periodoEscolar],
       ],
     },
     {
       title: "Responsável",
       items: [
         ["Nome completo", form.responsavel.nomeCompleto],
-        ["CPF", form.responsavel.cpf],
-        ["RG", form.responsavel.rg],
         ["WhatsApp", form.responsavel.whatsapp],
         ["E-mail", form.responsavel.email],
         ["Parentesco", form.responsavel.parentesco],
       ],
     },
-    {
-      title: "Endereço",
-      items: [
-        ["CEP", form.endereco.cep],
-        ["Rua", form.endereco.rua],
-        ["Número", form.endereco.numero],
-        ["Complemento", form.endereco.complemento],
-        ["Bairro", form.endereco.bairro],
-        ["Cidade", form.endereco.cidade],
-        ["Estado", form.endereco.estado],
-      ],
-    },
-    {
-      title: "Informações esportivas",
-      items: [
-        ["Modalidades", uniqueValues(form.esportivas.modalidades).join(", ")],
-        ["Unidades", uniqueValues(form.esportivas.unidades).join(", ")],
-        ["Horários", uniqueValues(form.esportivas.horarios).join(", ")],
-        ["Turmas", uniqueValues(form.esportivas.turmas).join(", ")],
-        ["Nível", form.esportivas.nivel],
-        ["Já treinou antes?", form.esportivas.treinouAntes],
-        ["Característica", form.esportivas.caracteristica],
-        ["Objetivo", form.esportivas.objetivo],
-      ],
-    },
-    {
-      title: "Saúde",
-      items: [
-        ["Restrição médica", form.saude.restricaoMedica],
-        ["Medicamentos", form.saude.medicamentos],
-        ["Alergias", form.saude.alergias],
-        ["Lesões", form.saude.lesoes],
-        ["Plano de saúde", form.saude.planoSaude],
-        ["Observações importantes", form.saude.observacoesImportantes],
-      ],
-    },
-    {
-      title: "Informações estratégicas",
-      items: [
-        ["Como conheceu a J12?", form.estrategicas.comoConheceu],
-        ["Indicação", form.estrategicas.indicacaoQuem],
-        ["Observações gerais", form.estrategicas.observacoesGerais],
-      ],
-    },
   ];
+
+  const trainingSummaries = trainingBlocks
+    .map((training) => {
+      const option = horarioOptions.find(
+        (candidate) =>
+          candidate.turmaId === training.turmaId &&
+          candidate.modalidade === training.modalidade &&
+          candidate.unidade === training.unidade,
+      );
+
+      if (!option) return null;
+
+      return {
+        id: training.id,
+        text: [option.modalidade, option.unidade, option.turmaNome, option.horarioLabel].join(
+          " • ",
+        ),
+      };
+    })
+    .filter((training): training is { id: number; text: string } => Boolean(training));
 
   const docs = [
     form.documentos.fotoPerfilAluno?.name,
@@ -2198,16 +2285,15 @@ function StepReview({ form }: { form: FormState }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-3xl border border-[#ff6b00]/20 bg-[#ff6b00]/8 px-4 py-4 text-sm leading-6 text-[#ffd2bb]">
-        Revise as informacoes antes de finalizar. Campos opcionais vazios serao salvos em branco e
-        poderao ser preenchidos depois no perfil do aluno.
+      <div className="rounded-2xl border border-[#ff6b00]/20 bg-[#ff6b00]/8 px-4 py-4 text-sm leading-6 text-[#ffd2bb]">
+        Confira os dados principais. Se precisar corrigir algo, use o botão Voltar.
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         {sections.map((section) => (
           <div
             key={section.title}
-            className="rounded-3xl border border-white/10 bg-white/[0.03] p-4"
+            className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
             <h3 className="mb-4 text-lg font-semibold text-white">{section.title}</h3>
             <div className="space-y-3 text-sm text-white/72">
@@ -2223,24 +2309,41 @@ function StepReview({ form }: { form: FormState }) {
             </div>
           </div>
         ))}
+
+        <div className="rounded-2xl border border-[#ff6b00]/25 bg-[#ff6b00]/[0.035] p-4 md:col-span-2">
+          <h3 className="text-lg font-semibold text-white">Treino principal</h3>
+          <p className="mt-2 text-sm leading-6 text-white/75">
+            {trainingSummaries[0]?.text || "—"}
+          </p>
+
+          {trainingSummaries.length > 1 ? (
+            <div className="mt-5 border-t border-white/8 pt-4">
+              <h4 className="text-sm font-semibold text-white">Treinos adicionais</h4>
+              <div className="mt-3 space-y-3">
+                {trainingSummaries.slice(1).map((training, index) => (
+                  <div
+                    key={training.id}
+                    className="rounded-xl border border-white/8 bg-black/20 px-3 py-3"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff9f6b]">
+                      Treino adicional {index + 1}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-white/70">{training.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-        <h3 className="mb-4 text-lg font-semibold text-white">Documentos</h3>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <h3 className="mb-3 text-base font-semibold text-white">Informações adicionais</h3>
         {docs.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {docs.map((doc) => (
-              <span
-                key={doc}
-                className="rounded-full border border-[#ff6b00]/25 bg-[#ff6b00]/10 px-3 py-1 text-xs text-[#ffb07e]"
-              >
-                {doc}
-              </span>
-            ))}
-          </div>
+          <p className="text-sm text-white/60">{docs.length} documento(s) selecionado(s).</p>
         ) : (
           <p className="text-sm text-white/55">
-            Nenhum documento anexado. Documentos sao opcionais e podem ser enviados depois.
+            Nenhum documento selecionado. Os dados opcionais poderão ser completados depois.
           </p>
         )}
       </div>
