@@ -3,11 +3,13 @@ const path = require("node:path");
 const dotenv = require("dotenv");
 const { createDatabaseConnectivity } = require("./database-connectivity.js");
 const {
+  ENROLLMENT_NUMBER_KINDS,
   ENROLLMENT_REGISTRY_STATE_SQL,
   MAX_ENROLLMENT_SEQUENCE,
   MIN_ENROLLMENT_SEQUENCE,
   allocateEnrollmentSequence,
   buildEnrollmentNumberPreview,
+  classifyEnrollmentNumber,
   createEnrollmentNumberError,
   extractEnrollmentSequence,
   extractLegacyRegistrySequence,
@@ -229,14 +231,6 @@ function normalizeEnrollmentRegistryStatus(value) {
 
 function isReusableEnrollmentRegistryStatus(status) {
   return status === "inativo" || status === "excluido";
-}
-
-function getEnrollmentStatusPriority(status) {
-  if (status === "ativo" || status === "experimental") return 4;
-  if (status === "reservado") return 3;
-  if (status === "inativo") return 2;
-  if (status === "excluido") return 1;
-  return 0;
 }
 
 async function upsertEnrollmentNumberRegistry(connection, enrollment) {
@@ -2150,26 +2144,53 @@ async function syncJ12FinanceFromLegacy() {
   return { synced: Number(result?.affectedRows || legacyTotal), skipped: false, reason: null };
 }
 
-async function syncEnrollmentNumberRegistry() {
-  const hasJ12Table = await tableExists("j12_alunos");
-  const hasRegistryTable = await tableExists("j12_matricula_numeros");
+function classifyNonModernRegistryCollision(registryRow) {
+  const joinedEnrollmentNumber = registryRow?.numeroMatricula ?? registryRow?.numero_matricula;
+  const rawEnrollmentNumber = String(joinedEnrollmentNumber ?? "").trim();
+  if (!rawEnrollmentNumber) return "reconcilable-broken-link";
+
+  const classification = classifyEnrollmentNumber(rawEnrollmentNumber);
+  if (classification.kind === ENROLLMENT_NUMBER_KINDS.HISTORICAL_NUMERIC) {
+    return "historical-collision";
+  }
+  if (classification.kind === ENROLLMENT_NUMBER_KINDS.MODERN) {
+    return "reconcilable-broken-link";
+  }
+  return "invalid-collision";
+}
+
+async function syncEnrollmentNumberRegistry(options = {}) {
+  const tableExistsFn = options.tableExistsFn ?? tableExists;
+  const queryFn = options.queryFn ?? query;
+  const transactionFn = options.transactionFn ?? transaction;
+  const upsertFn = options.upsertFn ?? upsertEnrollmentNumberRegistry;
+  const hasJ12Table = await tableExistsFn("j12_alunos");
+  const hasRegistryTable = await tableExistsFn("j12_matricula_numeros");
 
   if (!hasJ12Table || !hasRegistryTable) {
-    return { synced: 0, skipped: true, reason: "schema-missing" };
+    return {
+      synced: 0,
+      skipped: true,
+      reason: "schema-missing",
+      ignoredHistorical: 0,
+      ignoredInvalid: 0,
+      ignoredRegistryCollisions: 0,
+      repairedModernLinks: 0,
+      ambiguousModernConflicts: 0,
+    };
   }
 
-  const rows = await query(`
+  const rows = await queryFn(`
     SELECT id, numero_matricula, nome_completo, status
     FROM j12_alunos
     WHERE numero_matricula IS NOT NULL AND numero_matricula <> ''
     ORDER BY updated_at DESC, created_at DESC
   `);
 
-  const registryEntries = new Map();
   const { modernRows, historicalRows, invalidRows } = partitionEnrollmentRowsForRegistry(rows);
   const ignoredHistorical = historicalRows.length;
   const ignoredInvalid = invalidRows.length;
-  const existingRegistryRows = await query(ENROLLMENT_REGISTRY_STATE_SQL, [
+  const existingRegistryRows = await queryFn(ENROLLMENT_REGISTRY_STATE_SQL, [
     MIN_ENROLLMENT_SEQUENCE,
     MAX_ENROLLMENT_SEQUENCE,
   ]);
@@ -2179,45 +2200,59 @@ async function syncEnrollmentNumberRegistry() {
       row,
     ]),
   );
-  let ignoredRegistryCollisions = 0;
+  const modernRowsBySequence = new Map();
+  for (const candidate of modernRows) {
+    const candidates = modernRowsBySequence.get(candidate.sequence) ?? [];
+    candidates.push(candidate);
+    modernRowsBySequence.set(candidate.sequence, candidates);
+  }
 
-  for (const { row, sequence: numero } of modernRows) {
-    const existingRegistryRow = existingRegistryBySequence.get(numero);
-    if (existingRegistryRow && !isModernEnrollmentRegistryRow(existingRegistryRow)) {
-      ignoredRegistryCollisions += 1;
+  const registryEntries = new Map();
+  let ignoredRegistryCollisions = 0;
+  let repairedModernLinks = 0;
+  let ambiguousModernConflicts = 0;
+
+  for (const [numero, candidates] of modernRowsBySequence) {
+    if (candidates.length !== 1) {
+      ambiguousModernConflicts += 1;
       continue;
     }
 
-    const entry = {
+    const [{ row }] = candidates;
+    const existingRegistryRow = existingRegistryBySequence.get(numero);
+    if (existingRegistryRow && !isModernEnrollmentRegistryRow(existingRegistryRow)) {
+      const collisionKind = classifyNonModernRegistryCollision(existingRegistryRow);
+      if (collisionKind !== "reconcilable-broken-link") {
+        ignoredRegistryCollisions += 1;
+        continue;
+      }
+      repairedModernLinks += 1;
+    }
+
+    registryEntries.set(numero, {
       enrollmentSequence: numero,
       alunoId: row.id,
       alunoNome: row.nome_completo,
       status: normalizeEnrollmentRegistryStatus(row.status),
-    };
-
-    const existing = registryEntries.get(numero);
-    if (
-      !existing ||
-      getEnrollmentStatusPriority(entry.status) >= getEnrollmentStatusPriority(existing.status)
-    ) {
-      registryEntries.set(numero, entry);
-    }
+    });
   }
 
   if (registryEntries.size === 0) {
     return {
       synced: 0,
       skipped: true,
-      reason: "j12-empty",
+      reason: modernRows.length === 0 ? "j12-empty" : "no-safe-entries",
       ignoredHistorical,
       ignoredInvalid,
       ignoredRegistryCollisions,
+      repairedModernLinks,
+      ambiguousModernConflicts,
     };
   }
 
-  await transaction(async (connection) => {
+  await transactionFn(async (connection) => {
     for (const entry of registryEntries.values()) {
-      await upsertEnrollmentNumberRegistry(connection, entry);
+      await upsertFn(connection, entry);
     }
   });
 
@@ -2230,6 +2265,8 @@ async function syncEnrollmentNumberRegistry() {
     ignoredHistorical,
     ignoredInvalid,
     ignoredRegistryCollisions,
+    repairedModernLinks,
+    ambiguousModernConflicts,
   };
 }
 

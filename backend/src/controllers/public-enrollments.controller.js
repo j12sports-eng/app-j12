@@ -289,6 +289,75 @@ async function getNextEnrollmentNumber(_req, res, next) {
   }
 }
 
+async function persistPublicEnrollment(
+  connection,
+  {
+    matricula,
+    protocol,
+    enrollmentNumber,
+    enrollmentSequence,
+    submittedAt,
+    rawSubmittedAt,
+    createdAt,
+  },
+) {
+  const aluno = buildAlunoFromPublicEnrollment(matricula, protocol, enrollmentNumber, submittedAt);
+  const persisted = await persistAluno(connection, aluno);
+  const persistedAlunoId = persisted.id;
+
+  await upsertEnrollmentNumberRegistry(connection, {
+    enrollmentSequence,
+    alunoId: persistedAlunoId,
+    alunoNome: aluno.nome,
+    status: aluno.status,
+  });
+
+  await connection.execute(
+    `
+      INSERT INTO j12_matriculas_publicas (
+        id,
+        protocolo,
+        numero_matricula,
+        aluno_id,
+        nome_aluno,
+        nome_responsavel,
+        email_responsavel,
+        status,
+        payload_json,
+        created_at,
+        synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      createId("mp"),
+      protocol,
+      enrollmentNumber,
+      persistedAlunoId,
+      aluno.nome,
+      aluno.responsavel,
+      aluno.email,
+      "recebida",
+      stringifyJson({
+        ...matricula,
+        dadosAluno: {
+          ...matricula.dadosAluno,
+          numeroMatricula: enrollmentNumber,
+        },
+        submittedAt: rawSubmittedAt ?? new Date().toISOString(),
+      }),
+      createdAt,
+      createdAt,
+    ],
+  );
+
+  return {
+    protocol,
+    status: "recebida",
+    createdAt,
+    numeroMatricula: enrollmentNumber,
+  };
+}
+
 async function createPublicEnrollment(req, res, next) {
   try {
     const matricula = buildMatriculaFromPayload(req.body);
@@ -307,65 +376,15 @@ async function createPublicEnrollment(req, res, next) {
     await transaction(async (connection) => {
       const reservation = await allocateEnrollmentSequence(connection);
       const enrollmentNumber = formatEnrollmentNumber(reservation.sequence, submittedAt);
-      const aluno = buildAlunoFromPublicEnrollment(
+      createdEnrollment = await persistPublicEnrollment(connection, {
         matricula,
         protocol,
         enrollmentNumber,
-        submittedAt,
-      );
-
-      await persistAluno(connection, aluno);
-      await upsertEnrollmentNumberRegistry(connection, {
         enrollmentSequence: reservation.sequence,
-        alunoId: aluno.id,
-        alunoNome: aluno.nome,
-        status: aluno.status,
-      });
-
-      await connection.execute(
-        `
-          INSERT INTO j12_matriculas_publicas (
-            id,
-            protocolo,
-            numero_matricula,
-            aluno_id,
-            nome_aluno,
-            nome_responsavel,
-            email_responsavel,
-            status,
-            payload_json,
-            created_at,
-            synced_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        [
-          createId("mp"),
-          protocol,
-          enrollmentNumber,
-          aluno.id,
-          aluno.nome,
-          aluno.responsavel,
-          aluno.email,
-          "recebida",
-          stringifyJson({
-            ...matricula,
-            dadosAluno: {
-              ...matricula.dadosAluno,
-              numeroMatricula: enrollmentNumber,
-            },
-            submittedAt: req.body?.submittedAt ?? new Date().toISOString(),
-          }),
-          createdAt,
-          createdAt,
-        ],
-      );
-
-      createdEnrollment = {
-        protocol,
-        status: "recebida",
+        submittedAt,
+        rawSubmittedAt: req.body?.submittedAt,
         createdAt,
-        numeroMatricula: enrollmentNumber,
-      };
+      });
     });
 
     console.log(
@@ -394,4 +413,5 @@ module.exports = {
   getNextEnrollmentNumber,
   createPublicEnrollment,
   lookupAddress,
+  persistPublicEnrollment,
 };

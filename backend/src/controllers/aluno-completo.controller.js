@@ -170,23 +170,22 @@ async function criarAlunoCompleto(req, res, next) {
       },
     });
 
-    await transaction(async (connection) => {
-      await persistAluno(connection, aluno);
-    });
+    const persisted = await transaction((connection) => persistAluno(connection, aluno));
+    const persistedAlunoId = persisted.id;
 
-    await syncStudentUsers({ onlyStudentId: aluno.id });
-    await syncResponsavelUsers({ onlyStudentId: aluno.id });
+    await syncStudentUsers({ onlyStudentId: persistedAlunoId });
+    await syncResponsavelUsers({ onlyStudentId: persistedAlunoId });
 
-    const mensalidadeInicial = await generateMonthlyChargeForStudent(aluno.id, {
+    const mensalidadeInicial = await generateMonthlyChargeForStudent(persistedAlunoId, {
       actorName: req.auth?.nome || req.auth?.email || "admin",
     });
 
-    const saved = await findStudentById(aluno.id);
+    const saved = await findStudentById(persistedAlunoId);
 
     return res.status(201).json({
       ok: true,
       message: "Aluno criado com plano, vinculo e financeiro inicial.",
-      aluno: saved ?? { id: aluno.id },
+      aluno: saved ?? { id: persistedAlunoId },
       mensalidadeInicial,
     });
   } catch (error) {

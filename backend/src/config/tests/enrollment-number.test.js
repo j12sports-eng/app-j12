@@ -184,6 +184,48 @@ test("preview apos 157 produz sequencia 158 e matricula publica completa", () =>
   });
 });
 
+test("preview considera 158 experimental vinculado e ignora historico 400 e contaminacao", () => {
+  const registryRows = [
+    {
+      numero: 157,
+      status: "ativo",
+      alunoId: 94,
+      numeroMatricula: "20260423-157",
+    },
+    {
+      numero: 158,
+      status: "experimental",
+      alunoId: 95,
+      numeroMatricula: "20260826-158",
+    },
+    { numero: 400, status: "ativo", alunoId: 40, numeroMatricula: "400" },
+    {
+      numero: 2147483647,
+      status: "ativo",
+      alunoId: 41,
+      numeroMatricula: "2147483647",
+    },
+  ];
+
+  const state = getModernEnrollmentRegistryState(registryRows);
+  assert.deepEqual(
+    state.modernRows.map((row) => row.numero),
+    [157, 158],
+  );
+
+  const preview = buildEnrollmentNumberPreview({
+    registryRows,
+    effectiveDate: "2026-08-26",
+  });
+
+  assert.deepEqual(preview, {
+    numeroMatricula: "20260826-159",
+    sequence: 159,
+    strategy: "sequential",
+    reusedFrom: null,
+  });
+});
+
 test("legado 400 e contaminacao nao determinam a proxima matricula", async () => {
   const connection = new MemoryRegistryConnection([
     {

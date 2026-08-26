@@ -38,6 +38,11 @@ function numeric(value, fallback = 0) {
   return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : fallback;
 }
 
+function normalizePersistedAlunoId(value) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function safeJsonParse(value, fallback) {
   if (!value) return fallback;
   if (typeof value === "object") return value ?? fallback;
@@ -427,7 +432,19 @@ function buildFinanceiroConfig(aluno, plano, matricula) {
   };
 }
 
-async function persistAluno(connection, aluno) {
+async function persistAluno(connection, aluno, options = {}) {
+  const hasExistingAlunoId = Object.prototype.hasOwnProperty.call(options, "existingAlunoId");
+  const existingAlunoId = hasExistingAlunoId
+    ? normalizePersistedAlunoId(options.existingAlunoId)
+    : null;
+
+  if (hasExistingAlunoId && existingAlunoId === null) {
+    const error = new Error("ID persistido do aluno invalido para atualizacao.");
+    error.code = "ALUNO_PERSISTED_ID_INVALID";
+    error.statusCode = 400;
+    throw error;
+  }
+
   const suppliedEnrollmentNumber = text(aluno.numeroMatricula, 50);
   let enrollment;
   let enrollmentSequence;
@@ -438,9 +455,17 @@ async function persistAluno(connection, aluno) {
       enrollmentSequence = classification.sequence;
       enrollment = suppliedEnrollmentNumber;
     } else if (classification.kind === ENROLLMENT_NUMBER_KINDS.HISTORICAL_NUMERIC) {
+      if (existingAlunoId === null) {
+        throw createEnrollmentNumberError(
+          "HISTORICAL_ENROLLMENT_NUMBER_IMMUTABLE",
+          "Identificador historico de matricula nao pode ser atribuido a um novo aluno.",
+          400,
+        );
+      }
+
       const [existingRows] = await connection.execute(
         "SELECT numero_matricula FROM j12_alunos WHERE id = ? LIMIT 1",
-        [aluno.id],
+        [existingAlunoId],
       );
       const existingEnrollmentNumber = text(existingRows?.[0]?.numero_matricula, 50);
       if (existingEnrollmentNumber !== suppliedEnrollmentNumber) {
@@ -503,112 +528,131 @@ async function persistAluno(connection, aluno) {
     matricula,
   );
 
-  await connection.execute(
-    `
-      INSERT INTO j12_alunos (
-        id,
-        numero_matricula,
-        nome_completo,
-        data_nascimento,
-        idade,
-        cpf,
-        rg,
-        sexo,
-        colegio,
-        periodo_escolar,
-        email_contato,
-        telefone_contato,
-        responsavel,
-        telefone_responsavel,
-        status,
-        matricula_em,
-        modalidade_principal,
-        turma_principal,
-        plano_principal,
-        planos_json,
-        origem_cadastro,
-        matricula_publica_protocolo,
-        financeiro_json,
-        matricula_snapshot_json,
-        plano_id,
-        plano_valor,
-        unidade_principal,
-        dias_horarios_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        numero_matricula = VALUES(numero_matricula),
-        nome_completo = VALUES(nome_completo),
-        data_nascimento = VALUES(data_nascimento),
-        idade = VALUES(idade),
-        cpf = VALUES(cpf),
-        rg = VALUES(rg),
-        sexo = VALUES(sexo),
-        colegio = VALUES(colegio),
-        periodo_escolar = VALUES(periodo_escolar),
-        email_contato = VALUES(email_contato),
-        telefone_contato = VALUES(telefone_contato),
-        responsavel = VALUES(responsavel),
-        telefone_responsavel = VALUES(telefone_responsavel),
-        status = VALUES(status),
-        matricula_em = VALUES(matricula_em),
-        modalidade_principal = VALUES(modalidade_principal),
-        turma_principal = VALUES(turma_principal),
-        plano_principal = VALUES(plano_principal),
-        planos_json = VALUES(planos_json),
-        origem_cadastro = VALUES(origem_cadastro),
-        matricula_publica_protocolo = VALUES(matricula_publica_protocolo),
-        financeiro_json = VALUES(financeiro_json),
-        matricula_snapshot_json = VALUES(matricula_snapshot_json),
-        plano_id = VALUES(plano_id),
-        plano_valor = VALUES(plano_valor),
-        unidade_principal = VALUES(unidade_principal),
-        dias_horarios_json = VALUES(dias_horarios_json)
-    `,
-    [
-      aluno.id,
-      enrollment,
-      aluno.nome,
-      aluno.dataNascimento,
-      aluno.idade,
-      aluno.cpf,
-      aluno.rg,
-      aluno.sexo,
-      aluno.colegio,
-      aluno.periodoEscolar,
-      aluno.email,
-      aluno.telefone,
-      aluno.responsavel,
-      aluno.telefoneResponsavel,
-      aluno.status,
-      aluno.matriculaEm,
-      nullableText(aluno.modalidade ?? modalidades[0], 191),
-      nullableText(aluno.turma ?? turmas[0], 191),
-      planoNome,
-      stringifyJson(planos),
-      aluno.origemCadastro,
-      aluno.matriculaPublicaProtocolo,
-      stringifyJson(financeiro),
-      stringifyJson({
-        ...matricula,
-        esportivas: {
-          ...matricula.esportivas,
-          modalidades,
-          unidades,
-          horarios,
-          turmas,
-        },
-      }),
-      planoId,
-      planoValor,
-      nullableText(aluno.unidade ?? unidades[0], 191),
-      stringifyJson(horarios),
-    ],
-  );
+  const studentValues = [
+    enrollment,
+    aluno.nome,
+    aluno.dataNascimento,
+    aluno.idade,
+    aluno.cpf,
+    aluno.rg,
+    aluno.sexo,
+    aluno.colegio,
+    aluno.periodoEscolar,
+    aluno.email,
+    aluno.telefone,
+    aluno.responsavel,
+    aluno.telefoneResponsavel,
+    aluno.status,
+    aluno.matriculaEm,
+    nullableText(aluno.modalidade ?? modalidades[0], 191),
+    nullableText(aluno.turma ?? turmas[0], 191),
+    planoNome,
+    stringifyJson(planos),
+    aluno.origemCadastro,
+    aluno.matriculaPublicaProtocolo,
+    stringifyJson(financeiro),
+    stringifyJson({
+      ...matricula,
+      esportivas: {
+        ...matricula.esportivas,
+        modalidades,
+        unidades,
+        horarios,
+        turmas,
+      },
+    }),
+    planoId,
+    planoValor,
+    nullableText(aluno.unidade ?? unidades[0], 191),
+    stringifyJson(horarios),
+  ];
+  let persistedAlunoId = existingAlunoId;
+
+  if (existingAlunoId === null) {
+    const [insertResult] = await connection.execute(
+      `
+        INSERT INTO j12_alunos (
+          numero_matricula,
+          nome_completo,
+          data_nascimento,
+          idade,
+          cpf,
+          rg,
+          sexo,
+          colegio,
+          periodo_escolar,
+          email_contato,
+          telefone_contato,
+          responsavel,
+          telefone_responsavel,
+          status,
+          matricula_em,
+          modalidade_principal,
+          turma_principal,
+          plano_principal,
+          planos_json,
+          origem_cadastro,
+          matricula_publica_protocolo,
+          financeiro_json,
+          matricula_snapshot_json,
+          plano_id,
+          plano_valor,
+          unidade_principal,
+          dias_horarios_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      studentValues,
+    );
+
+    persistedAlunoId = normalizePersistedAlunoId(insertResult?.insertId);
+    if (persistedAlunoId === null) {
+      const error = new Error("MySQL nao retornou um ID valido para o aluno criado.");
+      error.code = "ALUNO_INSERT_ID_INVALID";
+      error.statusCode = 500;
+      throw error;
+    }
+  } else {
+    await connection.execute(
+      `
+        UPDATE j12_alunos
+        SET
+          numero_matricula = ?,
+          nome_completo = ?,
+          data_nascimento = ?,
+          idade = ?,
+          cpf = ?,
+          rg = ?,
+          sexo = ?,
+          colegio = ?,
+          periodo_escolar = ?,
+          email_contato = ?,
+          telefone_contato = ?,
+          responsavel = ?,
+          telefone_responsavel = ?,
+          status = ?,
+          matricula_em = ?,
+          modalidade_principal = ?,
+          turma_principal = ?,
+          plano_principal = ?,
+          planos_json = ?,
+          origem_cadastro = ?,
+          matricula_publica_protocolo = ?,
+          financeiro_json = ?,
+          matricula_snapshot_json = ?,
+          plano_id = ?,
+          plano_valor = ?,
+          unidade_principal = ?,
+          dias_horarios_json = ?
+        WHERE id = ?
+      `,
+      [...studentValues, existingAlunoId],
+    );
+  }
 
   if (enrollmentSequence !== null) {
     await upsertEnrollmentNumberRegistry(connection, {
       enrollmentSequence,
-      alunoId: aluno.id,
+      alunoId: persistedAlunoId,
       alunoNome: aluno.nome,
       status: aluno.status,
     });
@@ -634,7 +678,7 @@ async function persistAluno(connection, aluno) {
         parentesco = VALUES(parentesco)
     `,
     [
-      aluno.id,
+      persistedAlunoId,
       nullableText(matricula.responsavel.nomeCompleto, 191),
       nullableText(matricula.responsavel.cpf, 20),
       nullableText(matricula.responsavel.rg, 30),
@@ -666,7 +710,7 @@ async function persistAluno(connection, aluno) {
         estado = VALUES(estado)
     `,
     [
-      aluno.id,
+      persistedAlunoId,
       nullableText(matricula.endereco.cep, 20),
       nullableText(matricula.endereco.rua, 191),
       nullableText(matricula.endereco.numero, 30),
@@ -695,7 +739,7 @@ async function persistAluno(connection, aluno) {
         atestado_medico_json = VALUES(atestado_medico_json)
     `,
     [
-      aluno.id,
+      persistedAlunoId,
       stringifyJson(matricula.documentos.fotoPerfilAluno),
       stringifyJson(matricula.documentos.rgCpfAluno),
       stringifyJson(matricula.documentos.rgCpfResponsavel),
@@ -728,7 +772,7 @@ async function persistAluno(connection, aluno) {
         objetivo = VALUES(objetivo)
     `,
     [
-      aluno.id,
+      persistedAlunoId,
       stringifyJson(modalidades),
       stringifyJson(unidades),
       stringifyJson(horarios),
@@ -760,7 +804,7 @@ async function persistAluno(connection, aluno) {
         observacoes_importantes = VALUES(observacoes_importantes)
     `,
     [
-      aluno.id,
+      persistedAlunoId,
       nullableText(matricula.saude.restricaoMedica, 191),
       nullableText(matricula.saude.medicamentos, 191),
       nullableText(matricula.saude.alergias, 191),
@@ -784,7 +828,7 @@ async function persistAluno(connection, aluno) {
         observacoes_gerais = VALUES(observacoes_gerais)
     `,
     [
-      aluno.id,
+      persistedAlunoId,
       nullableText(matricula.estrategicas.comoConheceu, 191),
       nullableText(matricula.estrategicas.indicacaoQuem, 191),
       nullableText(matricula.estrategicas.observacoesGerais, 1000),
@@ -792,7 +836,7 @@ async function persistAluno(connection, aluno) {
   );
 
   return {
-    id: aluno.id,
+    id: persistedAlunoId,
     numeroMatricula: enrollment,
     planoId,
     planoNome,
@@ -927,26 +971,25 @@ async function createAluno(req, res, next) {
 
     const aluno = normalizeAlunoPayload(req.body ?? {});
 
-    await transaction(async (connection) => {
-      await persistAluno(connection, aluno);
-    });
+    const persisted = await transaction((connection) => persistAluno(connection, aluno));
+    const persistedAlunoId = persisted.id;
 
-    await syncStudentUsers({ onlyStudentId: aluno.id });
-    await syncResponsavelUsers({ onlyStudentId: aluno.id });
+    await syncStudentUsers({ onlyStudentId: persistedAlunoId });
+    await syncResponsavelUsers({ onlyStudentId: persistedAlunoId });
 
     try {
-      await generateMonthlyChargeForStudent(aluno.id, {
+      await generateMonthlyChargeForStudent(persistedAlunoId, {
         actorName: req.auth?.nome || req.auth?.email || "admin",
       });
     } catch (error) {
       console.warn(
-        `[alunos] Falha ao gerar mensalidade inicial para ${aluno.id}:`,
+        `[alunos] Falha ao gerar mensalidade inicial para ${persistedAlunoId}:`,
         error?.message || error,
       );
     }
 
-    const saved = await findStudentRowById(aluno.id);
-    return res.status(201).json(saved ?? { id: aluno.id });
+    const saved = await findStudentRowById(persistedAlunoId);
+    return res.status(201).json(saved ?? { id: persistedAlunoId });
   } catch (error) {
     next(error);
   }
@@ -977,15 +1020,16 @@ async function updateAluno(req, res, next) {
       studentId,
     );
 
-    await transaction(async (connection) => {
-      await persistAluno(connection, aluno);
-    });
+    const persisted = await transaction((connection) =>
+      persistAluno(connection, aluno, { existingAlunoId: studentId }),
+    );
+    const persistedAlunoId = persisted.id;
 
-    await syncStudentUsers({ onlyStudentId: studentId });
-    await syncResponsavelUsers({ onlyStudentId: studentId });
+    await syncStudentUsers({ onlyStudentId: persistedAlunoId });
+    await syncResponsavelUsers({ onlyStudentId: persistedAlunoId });
 
-    const saved = await findStudentRowById(studentId);
-    return res.json(saved ?? { id: studentId });
+    const saved = await findStudentRowById(persistedAlunoId);
+    return res.json(saved ?? { id: persistedAlunoId });
   } catch (error) {
     next(error);
   }
