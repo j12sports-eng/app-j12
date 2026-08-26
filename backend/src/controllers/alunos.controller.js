@@ -13,11 +13,17 @@ const {
   stringifyJson,
 } = require("../../routes/helpers.js");
 const {
-  allocateEnrollmentNumber,
+  allocateEnrollmentSequence,
   query,
   transaction,
   upsertEnrollmentNumberRegistry,
 } = require("../config/db.js");
+const {
+  ENROLLMENT_NUMBER_KINDS,
+  classifyEnrollmentNumber,
+  createEnrollmentNumberError,
+  formatEnrollmentNumber,
+} = require("../config/enrollment-number.js");
 
 function text(value, max = 65535) {
   return sanitizeString(value, max);
@@ -422,8 +428,44 @@ function buildFinanceiroConfig(aluno, plano, matricula) {
 }
 
 async function persistAluno(connection, aluno) {
-  const enrollment =
-    text(aluno.numeroMatricula, 50) || (await allocateEnrollmentNumber(connection)).numeroMatricula;
+  const suppliedEnrollmentNumber = text(aluno.numeroMatricula, 50);
+  let enrollment;
+  let enrollmentSequence;
+
+  if (suppliedEnrollmentNumber) {
+    const classification = classifyEnrollmentNumber(suppliedEnrollmentNumber);
+    if (classification.kind === ENROLLMENT_NUMBER_KINDS.MODERN) {
+      enrollmentSequence = classification.sequence;
+      enrollment = suppliedEnrollmentNumber;
+    } else if (classification.kind === ENROLLMENT_NUMBER_KINDS.HISTORICAL_NUMERIC) {
+      const [existingRows] = await connection.execute(
+        "SELECT numero_matricula FROM j12_alunos WHERE id = ? LIMIT 1",
+        [aluno.id],
+      );
+      const existingEnrollmentNumber = text(existingRows?.[0]?.numero_matricula, 50);
+      if (existingEnrollmentNumber !== suppliedEnrollmentNumber) {
+        throw createEnrollmentNumberError(
+          "HISTORICAL_ENROLLMENT_NUMBER_IMMUTABLE",
+          "Identificador historico de matricula nao pode ser atribuido a um novo aluno.",
+          400,
+        );
+      }
+
+      enrollmentSequence = null;
+      enrollment = suppliedEnrollmentNumber;
+    } else {
+      throw createEnrollmentNumberError(
+        "ENROLLMENT_NUMBER_INVALID",
+        "Numero publico de matricula invalido.",
+        400,
+      );
+    }
+  } else {
+    const reservation = await allocateEnrollmentSequence(connection);
+    enrollmentSequence = reservation.sequence;
+    enrollment = formatEnrollmentNumber(enrollmentSequence, aluno.matriculaEm);
+  }
+
   const plano = await resolvePlanoForAluno(connection, aluno);
   const matricula = buildMatriculaSnapshot({
     ...aluno,
@@ -563,12 +605,14 @@ async function persistAluno(connection, aluno) {
     ],
   );
 
-  await upsertEnrollmentNumberRegistry(connection, {
-    numeroMatricula: enrollment,
-    alunoId: aluno.id,
-    alunoNome: aluno.nome,
-    status: aluno.status,
-  });
+  if (enrollmentSequence !== null) {
+    await upsertEnrollmentNumberRegistry(connection, {
+      enrollmentSequence,
+      alunoId: aluno.id,
+      alunoNome: aluno.nome,
+      status: aluno.status,
+    });
+  }
 
   await connection.execute(
     `
@@ -992,12 +1036,17 @@ async function deleteAluno(req, res, next) {
         [studentId],
       );
 
-      await upsertEnrollmentNumberRegistry(connection, {
-        numeroMatricula: current[0].numero_matricula,
-        alunoId: studentId,
-        alunoNome: null,
-        status: "excluido",
-      });
+      if (
+        classifyEnrollmentNumber(current[0].numero_matricula).kind ===
+        ENROLLMENT_NUMBER_KINDS.MODERN
+      ) {
+        await upsertEnrollmentNumberRegistry(connection, {
+          numeroMatricula: current[0].numero_matricula,
+          alunoId: studentId,
+          alunoNome: null,
+          status: "excluido",
+        });
+      }
 
       await connection.execute("DELETE FROM j12_alunos WHERE id = ?", [studentId]);
     });

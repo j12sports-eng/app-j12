@@ -2,6 +2,19 @@ const mysql = require("mysql2/promise");
 const path = require("node:path");
 const dotenv = require("dotenv");
 const { createDatabaseConnectivity } = require("./database-connectivity.js");
+const {
+  ENROLLMENT_REGISTRY_STATE_SQL,
+  MAX_ENROLLMENT_SEQUENCE,
+  MIN_ENROLLMENT_SEQUENCE,
+  allocateEnrollmentSequence,
+  buildEnrollmentNumberPreview,
+  createEnrollmentNumberError,
+  extractEnrollmentSequence,
+  extractLegacyRegistrySequence,
+  getModernEnrollmentRegistryState,
+  isModernEnrollmentRegistryRow,
+  partitionEnrollmentRowsForRegistry,
+} = require("./enrollment-number.js");
 const { createNoopDdlResult, createRuntimeDdlPolicy } = require("./runtime-ddl-policy.js");
 const { logger } = require("../observability/structured-logger.js");
 
@@ -204,17 +217,6 @@ function normalizeDocument(value) {
   };
 }
 
-function normalizeEnrollmentNumber(value) {
-  const digits = String(value ?? "")
-    .replace(/\D/g, "")
-    .trim();
-
-  if (!digits) return null;
-
-  const parsed = Number.parseInt(digits, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
 function normalizeEnrollmentRegistryStatus(value) {
   const normalized = text(value, 30).toLowerCase();
 
@@ -238,12 +240,18 @@ function getEnrollmentStatusPriority(status) {
 }
 
 async function upsertEnrollmentNumberRegistry(connection, enrollment) {
-  const numero = normalizeEnrollmentNumber(
-    enrollment?.numeroMatricula ?? enrollment?.numero ?? enrollment?.numero_matricula,
-  );
+  const explicitSequence = enrollment?.enrollmentSequence ?? enrollment?.sequence;
+  const numero =
+    explicitSequence === undefined || explicitSequence === null
+      ? extractEnrollmentSequence(enrollment?.numeroMatricula ?? enrollment?.numero_matricula)
+      : extractLegacyRegistrySequence(explicitSequence);
 
-  if (!numero) {
-    return null;
+  if (numero === null) {
+    throw createEnrollmentNumberError(
+      "ENROLLMENT_NUMBER_INVALID",
+      "Numero publico ou sequencia de matricula invalida.",
+      400,
+    );
   }
 
   const status = normalizeEnrollmentRegistryStatus(enrollment?.status);
@@ -288,115 +296,28 @@ async function upsertEnrollmentNumberRegistry(connection, enrollment) {
   return numero;
 }
 
-async function getNextEnrollmentNumberPreview() {
-  const registryCountRows = await query("SELECT COUNT(*) AS total FROM j12_matricula_numeros");
-  const registryTotal = Number(registryCountRows?.[0]?.total || 0);
-
-  if (registryTotal === 0) {
-    await syncEnrollmentNumberRegistry();
-  }
-
-  const reusableRows = await query(
-    `
-      SELECT numero, status
-      FROM j12_matricula_numeros
-      WHERE status IN ('inativo', 'excluido')
-      ORDER BY numero ASC
-      LIMIT 1
-    `,
-  );
-
-  if (Array.isArray(reusableRows) && reusableRows.length > 0) {
-    return {
-      numeroMatricula: String(reusableRows[0].numero),
-      strategy: "reused",
-      reusedFrom: reusableRows[0].status,
-    };
-  }
-
-  const maxRows = await query("SELECT MAX(numero) AS numero FROM j12_matricula_numeros");
-  return {
-    numeroMatricula: String(Number(maxRows?.[0]?.numero || 0) + 1),
-    strategy: "sequential",
-    reusedFrom: null,
+async function getNextEnrollmentNumberPreview(options = {}) {
+  const queryFn = options.queryFn ?? query;
+  const syncFn = options.syncFn ?? syncEnrollmentNumberRegistry;
+  const effectiveDate = options.effectiveDate ?? new Date();
+  const readRegistryRows = async () => {
+    const rows = await queryFn(ENROLLMENT_REGISTRY_STATE_SQL, [
+      MIN_ENROLLMENT_SEQUENCE,
+      MAX_ENROLLMENT_SEQUENCE,
+    ]);
+    return Array.isArray(rows) ? rows : [];
   };
-}
 
-async function allocateEnrollmentNumber(connection) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const [reusableRows] = await connection.execute(
-      `
-        SELECT numero, status
-        FROM j12_matricula_numeros
-        WHERE status IN ('inativo', 'excluido')
-        ORDER BY numero ASC
-        LIMIT 1
-      `,
-    );
-
-    if (Array.isArray(reusableRows) && reusableRows.length > 0) {
-      const candidate = Number(reusableRows[0].numero);
-      const [updateResult] = await connection.execute(
-        `
-          UPDATE j12_matricula_numeros
-          SET
-            aluno_id = NULL,
-            aluno_nome = NULL,
-            status = 'reservado',
-            last_assigned_at = CURRENT_TIMESTAMP,
-            released_at = NULL
-          WHERE numero = ?
-            AND status IN ('inativo', 'excluido')
-        `,
-        [candidate],
-      );
-
-      if (updateResult?.affectedRows === 1) {
-        return {
-          numeroMatricula: String(candidate),
-          strategy: "reused",
-          reusedFrom: reusableRows[0].status,
-        };
-      }
-
-      continue;
-    }
-
-    const [maxRows] = await connection.execute(
-      "SELECT MAX(numero) AS numero FROM j12_matricula_numeros",
-    );
-    const candidate = Number(maxRows?.[0]?.numero || 0) + 1;
-
-    try {
-      await connection.execute(
-        `
-          INSERT INTO j12_matricula_numeros (
-            numero,
-            aluno_id,
-            aluno_nome,
-            status,
-            last_assigned_at,
-            released_at
-          ) VALUES (?, NULL, NULL, 'reservado', CURRENT_TIMESTAMP, NULL)
-        `,
-        [candidate],
-      );
-
-      return {
-        numeroMatricula: String(candidate),
-        strategy: "sequential",
-        reusedFrom: null,
-      };
-    } catch (error) {
-      if (error?.code === "ER_DUP_ENTRY") {
-        continue;
-      }
-
-      throw error;
-    }
+  let registryRows = await readRegistryRows();
+  if (getModernEnrollmentRegistryState(registryRows).modernRows.length === 0) {
+    await syncFn();
+    registryRows = await readRegistryRows();
   }
 
-  throw new Error("Nao foi possivel reservar o proximo numero de matricula.");
+  return buildEnrollmentNumberPreview({
+    registryRows,
+    effectiveDate,
+  });
 }
 
 function buildMatriculaSnapshotFromLegacyRow(row) {
@@ -2245,13 +2166,30 @@ async function syncEnrollmentNumberRegistry() {
   `);
 
   const registryEntries = new Map();
+  const { modernRows, historicalRows, invalidRows } = partitionEnrollmentRowsForRegistry(rows);
+  const ignoredHistorical = historicalRows.length;
+  const ignoredInvalid = invalidRows.length;
+  const existingRegistryRows = await query(ENROLLMENT_REGISTRY_STATE_SQL, [
+    MIN_ENROLLMENT_SEQUENCE,
+    MAX_ENROLLMENT_SEQUENCE,
+  ]);
+  const existingRegistryBySequence = new Map(
+    (Array.isArray(existingRegistryRows) ? existingRegistryRows : []).map((row) => [
+      Number(row.numero),
+      row,
+    ]),
+  );
+  let ignoredRegistryCollisions = 0;
 
-  for (const row of rows) {
-    const numero = normalizeEnrollmentNumber(row.numero_matricula);
-    if (!numero) continue;
+  for (const { row, sequence: numero } of modernRows) {
+    const existingRegistryRow = existingRegistryBySequence.get(numero);
+    if (existingRegistryRow && !isModernEnrollmentRegistryRow(existingRegistryRow)) {
+      ignoredRegistryCollisions += 1;
+      continue;
+    }
 
     const entry = {
-      numeroMatricula: numero,
+      enrollmentSequence: numero,
       alunoId: row.id,
       alunoNome: row.nome_completo,
       status: normalizeEnrollmentRegistryStatus(row.status),
@@ -2267,7 +2205,14 @@ async function syncEnrollmentNumberRegistry() {
   }
 
   if (registryEntries.size === 0) {
-    return { synced: 0, skipped: true, reason: "j12-empty" };
+    return {
+      synced: 0,
+      skipped: true,
+      reason: "j12-empty",
+      ignoredHistorical,
+      ignoredInvalid,
+      ignoredRegistryCollisions,
+    };
   }
 
   await transaction(async (connection) => {
@@ -2278,7 +2223,14 @@ async function syncEnrollmentNumberRegistry() {
 
   console.log(`[mysql] Registro de matriculas sincronizado com ${registryEntries.size} numero(s).`);
 
-  return { synced: registryEntries.size, skipped: false, reason: null };
+  return {
+    synced: registryEntries.size,
+    skipped: false,
+    reason: null,
+    ignoredHistorical,
+    ignoredInvalid,
+    ignoredRegistryCollisions,
+  };
 }
 
 // Disabled by default to avoid permanent background traffic and failure amplification.
@@ -2305,7 +2257,7 @@ module.exports = {
   syncJ12FinanceFromLegacy,
   syncEnrollmentNumberRegistry,
   getNextEnrollmentNumberPreview,
-  allocateEnrollmentNumber,
+  allocateEnrollmentSequence,
   upsertEnrollmentNumberRegistry,
   getCollectionSnapshot,
   upsertCollectionSnapshot,

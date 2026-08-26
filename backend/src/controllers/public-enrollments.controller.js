@@ -1,11 +1,12 @@
 const { randomUUID } = require("node:crypto");
 const {
-  allocateEnrollmentNumber,
+  allocateEnrollmentSequence,
   getNextEnrollmentNumberPreview,
   pool,
   transaction,
   upsertEnrollmentNumberRegistry,
 } = require("../config/db.js");
+const { formatEnrollmentNumber } = require("../config/enrollment-number.js");
 const { persistAluno } = require("./alunos.controller.js");
 const {
   createId,
@@ -304,17 +305,18 @@ async function createPublicEnrollment(req, res, next) {
     let createdEnrollment;
 
     await transaction(async (connection) => {
-      const reservation = await allocateEnrollmentNumber(connection);
+      const reservation = await allocateEnrollmentSequence(connection);
+      const enrollmentNumber = formatEnrollmentNumber(reservation.sequence, submittedAt);
       const aluno = buildAlunoFromPublicEnrollment(
         matricula,
         protocol,
-        reservation.numeroMatricula,
+        enrollmentNumber,
         submittedAt,
       );
 
       await persistAluno(connection, aluno);
       await upsertEnrollmentNumberRegistry(connection, {
-        numeroMatricula: reservation.numeroMatricula,
+        enrollmentSequence: reservation.sequence,
         alunoId: aluno.id,
         alunoNome: aluno.nome,
         status: aluno.status,
@@ -339,7 +341,7 @@ async function createPublicEnrollment(req, res, next) {
         [
           createId("mp"),
           protocol,
-          reservation.numeroMatricula,
+          enrollmentNumber,
           aluno.id,
           aluno.nome,
           aluno.responsavel,
@@ -349,7 +351,7 @@ async function createPublicEnrollment(req, res, next) {
             ...matricula,
             dadosAluno: {
               ...matricula.dadosAluno,
-              numeroMatricula: reservation.numeroMatricula,
+              numeroMatricula: enrollmentNumber,
             },
             submittedAt: req.body?.submittedAt ?? new Date().toISOString(),
           }),
@@ -362,7 +364,7 @@ async function createPublicEnrollment(req, res, next) {
         protocol,
         status: "recebida",
         createdAt,
-        numeroMatricula: reservation.numeroMatricula,
+        numeroMatricula: enrollmentNumber,
       };
     });
 
