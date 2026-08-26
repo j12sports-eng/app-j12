@@ -25,6 +25,7 @@ import {
 } from "@/lib/matricula-api";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { formatDias, useTurmas } from "@/lib/turmas-store";
+import { isSameTurmaId, normalizeTurmaId } from "@/features/enrollments/training-selection";
 import {
   usePublicModalidades,
   usePublicUnidades,
@@ -347,7 +348,8 @@ function MatriculaPage() {
       const modalidade = turma.modalidade || "Modalidade não informada";
 
       return {
-        turmaId: turma.id,
+        // O select HTML sempre devolve string, inclusive quando a API fornece um ID numérico.
+        turmaId: normalizeTurmaId(turma.id),
         turmaNome: turma.nome,
         modalidade,
         unidade,
@@ -591,24 +593,28 @@ function MatriculaPage() {
   }
 
   function syncTrainingBlocks(nextBlocks: TrainingBlock[], shouldTouch = true) {
-    const selectedOptions = nextBlocks
+    const normalizedBlocks = nextBlocks.map((training) => ({
+      ...training,
+      turmaId: normalizeTurmaId(training.turmaId),
+    }));
+    const selectedOptions = normalizedBlocks
       .map((training) =>
         horarioOptions.find(
           (option) =>
-            option.turmaId === training.turmaId &&
+            isSameTurmaId(option.turmaId, training.turmaId) &&
             option.modalidade === training.modalidade &&
             option.unidade === training.unidade,
         ),
       )
       .filter((option): option is HorarioOption => Boolean(option));
 
-    setTrainingBlocks(nextBlocks);
+    setTrainingBlocks(normalizedBlocks);
     setForm((current) => ({
       ...current,
       esportivas: {
         ...current.esportivas,
-        modalidades: uniqueValues(nextBlocks.map((training) => training.modalidade)),
-        unidades: uniqueValues(nextBlocks.map((training) => training.unidade)),
+        modalidades: uniqueValues(normalizedBlocks.map((training) => training.modalidade)),
+        unidades: uniqueValues(normalizedBlocks.map((training) => training.unidade)),
         turmas: uniqueValues(selectedOptions.map((option) => option.turmaNome)),
         horarios: uniqueValues(selectedOptions.map((option) => option.horarioLabel)),
       },
@@ -650,7 +656,10 @@ function MatriculaPage() {
         };
       }
 
-      const option = horarioOptions.find((candidate) => candidate.turmaId === value);
+      const normalizedValue = normalizeTurmaId(value);
+      const option = horarioOptions.find((candidate) =>
+        isSameTurmaId(candidate.turmaId, normalizedValue),
+      );
       if (!option) {
         return {
           ...training,
@@ -663,7 +672,7 @@ function MatriculaPage() {
           candidate.id !== blockId &&
           candidate.modalidade === option.modalidade &&
           candidate.unidade === option.unidade &&
-          candidate.turmaId === option.turmaId,
+          isSameTurmaId(candidate.turmaId, option.turmaId),
       );
 
       if (duplicateSelection) return training;
@@ -672,7 +681,7 @@ function MatriculaPage() {
         ...training,
         modalidade: option.modalidade,
         unidade: option.unidade,
-        turmaId: option.turmaId,
+        turmaId: normalizeTurmaId(option.turmaId),
       };
     });
 
@@ -1781,12 +1790,12 @@ function StepClassSelection({
                   candidate.id !== training.id &&
                   candidate.modalidade === option.modalidade &&
                   candidate.unidade === option.unidade &&
-                  candidate.turmaId === option.turmaId,
+                  isSameTurmaId(candidate.turmaId, option.turmaId),
               );
               return matchesFilters && !selectedInAnotherBlock;
             });
-            const selectedClass = horarioOptions.find(
-              (option) => option.turmaId === training.turmaId,
+            const selectedClass = horarioOptions.find((option) =>
+              isSameTurmaId(option.turmaId, training.turmaId),
             );
             const showError =
               Boolean(trainingError) &&
@@ -1868,7 +1877,7 @@ function StepClassSelection({
                   <label className="block space-y-2 sm:col-span-2">
                     <span className="text-sm font-medium text-white/88">Categoria/Turma *</span>
                     <select
-                      value={training.turmaId}
+                      value={normalizeTurmaId(training.turmaId)}
                       onChange={(event) =>
                         updateTrainingBlock(training.id, "turmaId", event.target.value)
                       }
@@ -1878,7 +1887,10 @@ function StepClassSelection({
                     >
                       <option value="">Selecione</option>
                       {availableClasses.map((option) => (
-                        <option key={option.turmaId} value={option.turmaId}>
+                        <option
+                          key={normalizeTurmaId(option.turmaId)}
+                          value={normalizeTurmaId(option.turmaId)}
+                        >
                           {option.turmaNome}
                         </option>
                       ))}
@@ -2259,7 +2271,7 @@ function StepReview({
     .map((training) => {
       const option = horarioOptions.find(
         (candidate) =>
-          candidate.turmaId === training.turmaId &&
+          isSameTurmaId(candidate.turmaId, training.turmaId) &&
           candidate.modalidade === training.modalidade &&
           candidate.unidade === training.unidade,
       );
