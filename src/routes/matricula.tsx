@@ -25,7 +25,11 @@ import {
 } from "@/lib/matricula-api";
 import { useSettingsState } from "@/lib/settings/settings-store";
 import { formatDias, useTurmas } from "@/lib/turmas-store";
-import { isSameTurmaId, normalizeTurmaId } from "@/features/enrollments/training-selection";
+import {
+  buildTrainingSelectionPayload,
+  isSameTurmaId,
+  normalizeTurmaId,
+} from "@/features/enrollments/training-selection";
 import {
   usePublicModalidades,
   usePublicUnidades,
@@ -597,26 +601,14 @@ function MatriculaPage() {
       ...training,
       turmaId: normalizeTurmaId(training.turmaId),
     }));
-    const selectedOptions = normalizedBlocks
-      .map((training) =>
-        horarioOptions.find(
-          (option) =>
-            isSameTurmaId(option.turmaId, training.turmaId) &&
-            option.modalidade === training.modalidade &&
-            option.unidade === training.unidade,
-        ),
-      )
-      .filter((option): option is HorarioOption => Boolean(option));
+    const trainingPayload = buildTrainingSelectionPayload(normalizedBlocks, horarioOptions);
 
     setTrainingBlocks(normalizedBlocks);
     setForm((current) => ({
       ...current,
       esportivas: {
         ...current.esportivas,
-        modalidades: uniqueValues(normalizedBlocks.map((training) => training.modalidade)),
-        unidades: uniqueValues(normalizedBlocks.map((training) => training.unidade)),
-        turmas: uniqueValues(selectedOptions.map((option) => option.turmaNome)),
-        horarios: uniqueValues(selectedOptions.map((option) => option.horarioLabel)),
+        ...trainingPayload,
       },
     }));
     if (shouldTouch) {
