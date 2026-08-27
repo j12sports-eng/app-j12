@@ -12,7 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { alunoPertenceATurma, getAlunosDaTurma, useAlunos } from "@/lib/alunos-store";
+import {
+  alunoPertenceATurma,
+  alunoStatusLabel,
+  getAlunosDaTurma,
+  useAlunos,
+} from "@/lib/alunos-store";
 import { turmasStore, type Turma } from "@/lib/turmas-store";
 import { cn } from "@/lib/utils";
 
@@ -87,14 +92,17 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
                 <ul className="divide-y divide-border">
                   {disponiveis.map((a) => {
                     const ativo = selecionado === a.id;
+                    const pendente = a.status === "pendente";
                     return (
                       <li key={a.id}>
                         <button
                           type="button"
                           onClick={() => setSelecionado(a.id)}
+                          disabled={pendente}
                           className={cn(
                             "flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition-colors",
                             ativo ? "bg-primary/10" : "hover:bg-accent",
+                            pendente && "cursor-not-allowed opacity-60",
                           )}
                         >
                           <div className="min-w-0">
@@ -106,6 +114,14 @@ export function AdicionarAlunoDialog({ open, onOpenChange, turma }: Props) {
                           {a.status === "experimental" && (
                             <Badge variant="outline" className="text-xs">
                               Experimental
+                            </Badge>
+                          )}
+                          {pendente && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/30 bg-amber-500/10 text-xs text-amber-300"
+                            >
+                              {alunoStatusLabel(a.status)}
                             </Badge>
                           )}
                           {ativo && <UserPlus className="h-4 w-4 text-primary" />}

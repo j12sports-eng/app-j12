@@ -707,6 +707,7 @@ export function AlunoFormDialog({ open, onOpenChange, aluno }: Props) {
                 onChange={(e) => setField("status", e.target.value as StatusAluno)}
               >
                 <option value="ativo">Ativo</option>
+                <option value="pendente">Pendente de confirmação</option>
                 <option value="experimental">Experimental</option>
                 <option value="inativo">Inativo</option>
               </select>

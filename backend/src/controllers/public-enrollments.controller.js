@@ -210,7 +210,8 @@ function buildAlunoFromPublicEnrollment(matricula, protocol, enrollmentNumber, s
     diasHorarios: horarios,
     turma: turmas[0] || "",
     plano: "",
-    status: "experimental",
+    // Matricula publica aguarda confirmacao administrativa; aula teste usa "experimental".
+    status: "pendente",
     matriculaEm: createdAt,
     numeroMatricula: enrollmentNumber,
     cpf: matricula.dadosAluno.cpf,

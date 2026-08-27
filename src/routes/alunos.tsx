@@ -20,6 +20,8 @@ import { ContratoVisualizarDialog } from "@/components/contratos/ContratoVisuali
 import { SkeletonDashboard, SkeletonTable } from "@/components/ui/skeleton";
 import type { Contrato } from "@/lib/contratos-store";
 import {
+  alunoStatusClass,
+  alunoStatusLabel,
   formatAlunoScope,
   getAlunoModalidades,
   getAlunoPlanos,
@@ -56,26 +58,25 @@ export const Route = createFileRoute("/alunos")({
 });
 
 const STATUS_OPTIONS: Array<{
-  value: "ativo" | "experimental" | "inativo" | "todos";
+  value: "ativo" | "pendente" | "experimental" | "inativo" | "todos";
   label: string;
 }> = [
   { value: "todos", label: "Todos" },
   { value: "ativo", label: "Ativos" },
+  { value: "pendente", label: "Pendentes" },
   { value: "experimental", label: "Experimentais" },
   { value: "inativo", label: "Inativos" },
 ];
 
 function statusBadge(status: AlunoStatus) {
-  const s = status === "experimental" || status === "inativo" ? status : "ativo";
-  const map = {
-    ativo: "bg-success/15 text-success border-success/30",
-    experimental: "bg-primary/15 text-primary border-primary/30",
-    inativo: "bg-muted text-muted-foreground border-border",
-  } as const;
-  const label = { ativo: "Ativo", experimental: "Experimental", inativo: "Inativo" }[s];
   return (
-    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", map[s])}>
-      {label}
+    <span
+      className={cn(
+        "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+        alunoStatusClass(status),
+      )}
+    >
+      {alunoStatusLabel(status)}
     </span>
   );
 }
@@ -159,9 +160,9 @@ function AlunosPage() {
   const settings = useSettingsState();
 
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<"ativo" | "experimental" | "inativo" | "todos">(
-    "todos",
-  );
+  const [filtroStatus, setFiltroStatus] = useState<
+    "ativo" | "pendente" | "experimental" | "inativo" | "todos"
+  >("todos");
   const [filtroModalidade, setFiltroModalidade] = useState<string | "todas">("todas");
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Aluno | null>(null);
@@ -214,6 +215,7 @@ function AlunosPage() {
     () => ({
       total: alunos.length,
       ativos: alunos.filter((a) => a.status === "ativo").length,
+      pendentes: alunos.filter((a) => a.status === "pendente").length,
       experimentais: alunos.filter((a) => a.status === "experimental").length,
       inativos: alunos.filter((a) => a.status === "inativo").length,
     }),
@@ -355,10 +357,11 @@ function AlunosPage() {
         ) : null}
 
         {/* KPIs */}
-        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
           {[
             { label: "Total", value: totais.total, tone: "text-foreground" },
             { label: "Ativos", value: totais.ativos, tone: "text-success" },
+            { label: "Pendentes", value: totais.pendentes, tone: "text-amber-400" },
             { label: "Experimentais", value: totais.experimentais, tone: "text-primary" },
             { label: "Inativos", value: totais.inativos, tone: "text-muted-foreground" },
           ].map((k) => (

@@ -147,7 +147,7 @@ const BASE_BIRTHDAY_SELECT = `
   LEFT JOIN j12_alunos_documentos docs ON docs.aluno_id = aluno.id
   LEFT JOIN j12_alunos_esportes esporte ON esporte.aluno_id = aluno.id
   WHERE aluno.data_nascimento IS NOT NULL
-    AND LOWER(COALESCE(aluno.status, 'ativo')) <> 'inativo'
+    AND LOWER(COALESCE(aluno.status, 'ativo')) IN ('ativo', 'experimental')
 `;
 
 function buildBirthdayDate(dateValue, year) {

@@ -226,6 +226,36 @@ test("preview considera 158 experimental vinculado e ignora historico 400 e cont
   });
 });
 
+test("registry pendente permanece ocupado e faz o preview avancar", async () => {
+  const registryRows = [
+    {
+      numero: 157,
+      status: "ativo",
+      alunoId: 94,
+      numeroMatricula: "20260423-157",
+    },
+    {
+      numero: 158,
+      status: "pendente",
+      alunoId: 95,
+      numeroMatricula: "20260826-158",
+    },
+  ];
+
+  assert.deepEqual(buildEnrollmentNumberPreview({ registryRows, effectiveDate: "2026-08-26" }), {
+    numeroMatricula: "20260826-159",
+    sequence: 159,
+    strategy: "sequential",
+    reusedFrom: null,
+  });
+
+  const connection = new MemoryRegistryConnection(registryRows);
+  const reservation = await allocateEnrollmentSequence(connection);
+  assert.equal(reservation.sequence, 159);
+  assert.equal(reservation.strategy, "sequential");
+  assert.equal(connection.entries.get(158).status, "pendente");
+});
+
 test("legado 400 e contaminacao nao determinam a proxima matricula", async () => {
   const connection = new MemoryRegistryConnection([
     {

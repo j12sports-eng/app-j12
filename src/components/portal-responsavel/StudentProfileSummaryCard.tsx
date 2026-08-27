@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, ShieldCheck, UserRound } from "lucide-react";
 
+import { alunoStatusClass, alunoStatusLabel, normalizeAlunoStatus } from "@/lib/alunos-store";
 import { cn } from "@/lib/utils";
 
 export type StudentProfileSummary = {
@@ -25,14 +26,6 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function statusTone(status: string | undefined) {
-  const normalized = String(status || "").toLowerCase();
-  if (normalized.includes("ativo")) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  if (normalized.includes("experimental")) return "border-primary/30 bg-primary/10 text-primary";
-  if (normalized.includes("pend")) return "border-amber-500/30 bg-amber-500/10 text-amber-200";
-  return "border-white/10 bg-white/5 text-slate-300";
-}
-
 export function StudentProfileSummaryCard({
   student,
   compact = false,
@@ -43,6 +36,7 @@ export function StudentProfileSummaryCard({
   className?: string;
 }) {
   const status = student.statusMatricula || student.status || "ativo";
+  const normalizedStatus = normalizeAlunoStatus(status);
   const category = student.categoria || student.modalidade || "Categoria J12";
 
   return (
@@ -59,7 +53,11 @@ export function StudentProfileSummaryCard({
         <div className="flex min-w-0 items-center gap-4">
           <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-primary/25 bg-primary/10 text-2xl font-black text-primary">
             {student.fotoUrl ? (
-              <img src={student.fotoUrl} alt={student.nome} className="h-full w-full object-cover" />
+              <img
+                src={student.fotoUrl}
+                alt={student.nome}
+                className="h-full w-full object-cover"
+              />
             ) : (
               <span>{initials(student.nome) || <UserRound className="h-7 w-7" />}</span>
             )}
@@ -70,10 +68,10 @@ export function StudentProfileSummaryCard({
               <span
                 className={cn(
                   "rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em]",
-                  statusTone(status),
+                  alunoStatusClass(normalizedStatus),
                 )}
               >
-                {status}
+                {alunoStatusLabel(normalizedStatus)}
               </span>
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-300">
                 {category}

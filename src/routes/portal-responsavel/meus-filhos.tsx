@@ -14,7 +14,7 @@ export const Route = createFileRoute("/portal-responsavel/meus-filhos")({
 function MeusFilhosPage() {
   const { alunos, loading, erro } = useResponsavelAlunos();
   const ativos = alunos.filter(
-    (aluno) => String(aluno.status || "").toLowerCase() !== "inativo",
+    (aluno) => String(aluno.status || "").toLowerCase() === "ativo",
   ).length;
 
   return (

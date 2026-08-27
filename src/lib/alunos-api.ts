@@ -1,4 +1,5 @@
 import type { Aluno } from "./alunos-store";
+import { normalizeAlunoStatus } from "./aluno-status";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { buildApiUrl } from "@/lib/api";
 
@@ -125,16 +126,6 @@ function normalizeId(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function normalizeStatus(value: unknown): Aluno["status"] {
-  const status = normalizeText(value).toLowerCase();
-
-  if (status.includes("experimental")) return "experimental";
-  if (status.includes("inativo")) return "inativo";
-  if (status.includes("ativo")) return "ativo";
-
-  return status || "ativo";
-}
-
 function getPlanoNome(planos: ApiPlano[], aluno: any): string {
   const planoAtual = normalizeText(
     aluno.plano ?? aluno.planoNome ?? aluno.plano_nome ?? aluno.plano_principal ?? aluno.planoName,
@@ -252,7 +243,7 @@ function normalizeAluno(
 
     plano: getPlanoNome(planos, raw),
 
-    status: normalizeStatus(raw.status),
+    status: normalizeAlunoStatus(raw.status),
 
     responsavel,
 

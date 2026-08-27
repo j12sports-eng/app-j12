@@ -63,7 +63,7 @@ export function UsersSettings() {
     [professores],
   );
   const alunoOptions = useMemo(
-    () => alunos.filter((aluno) => aluno.status !== "inativo"),
+    () => alunos.filter((aluno) => aluno.status === "ativo" || aluno.status === "experimental"),
     [alunos],
   );
 

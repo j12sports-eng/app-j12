@@ -226,6 +226,7 @@ function normalizeEnrollmentRegistryStatus(value) {
   if (normalized === "excluido") return "excluido";
   if (normalized === "reservado") return "reservado";
   if (normalized === "experimental") return "experimental";
+  if (normalized === "pendente") return "pendente";
   return "ativo";
 }
 
@@ -268,7 +269,7 @@ async function upsertEnrollmentNumberRegistry(connection, enrollment) {
         aluno_nome = VALUES(aluno_nome),
         status = VALUES(status),
         last_assigned_at = CASE
-          WHEN VALUES(status) IN ('ativo', 'experimental', 'reservado')
+          WHEN VALUES(status) IN ('ativo', 'experimental', 'pendente', 'reservado')
             THEN CURRENT_TIMESTAMP
           ELSE last_assigned_at
         END,
@@ -2296,6 +2297,8 @@ module.exports = {
   getNextEnrollmentNumberPreview,
   allocateEnrollmentSequence,
   upsertEnrollmentNumberRegistry,
+  normalizeEnrollmentRegistryStatus,
+  isReusableEnrollmentRegistryStatus,
   getCollectionSnapshot,
   upsertCollectionSnapshot,
 };

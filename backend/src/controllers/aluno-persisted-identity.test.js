@@ -2,6 +2,10 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const {
+  isReusableEnrollmentRegistryStatus,
+  normalizeEnrollmentRegistryStatus,
+} = require("../config/db.js");
 const { normalizeAlunoPayload, persistAluno } = require("./alunos.controller.js");
 const { persistPublicEnrollment } = require("./public-enrollments.controller.js");
 
@@ -154,13 +158,34 @@ test("matricula publica usa insertId no registry e em j12_matriculas_publicas", 
   });
 
   assertRelatedTablesUse(connection, 96);
+  const studentInsert = connection.findCall("INSERT INTO j12_alunos (");
+  assert.equal(studentInsert.params[13], "pendente");
   const registryCalls = connection.findCalls("INSERT INTO j12_matricula_numeros ");
   assert.equal(registryCalls.length, 2);
   for (const call of registryCalls) {
     assert.doesNotMatch(String(call.params[1]), /^a[0-9a-f]{12}$/u);
+    assert.equal(call.params[3], "pendente");
+    assert.match(call.sql, /'ativo', 'experimental', 'pendente', 'reservado'/u);
   }
 
   const publicEnrollment = connection.findCall("INSERT INTO j12_matriculas_publicas ");
   assert.ok(publicEnrollment);
   assert.equal(publicEnrollment.params[3], 96);
+});
+
+test("normalizacao de aluno preserva pendente e experimental como estados distintos", () => {
+  assert.equal(buildAluno({ id: "temporario", status: "pendente" }).status, "pendente");
+  assert.equal(buildAluno({ id: "temporario", status: "experimental" }).status, "experimental");
+  assert.equal(buildAluno({ id: "temporario", status: "ativo" }).status, "ativo");
+  assert.equal(buildAluno({ id: "temporario", status: "inativo" }).status, "inativo");
+});
+
+test("registry preserva pendente como ocupado e reutiliza somente estados liberados", () => {
+  assert.equal(normalizeEnrollmentRegistryStatus("pendente"), "pendente");
+  assert.equal(isReusableEnrollmentRegistryStatus("pendente"), false);
+  assert.equal(isReusableEnrollmentRegistryStatus("ativo"), false);
+  assert.equal(isReusableEnrollmentRegistryStatus("experimental"), false);
+  assert.equal(isReusableEnrollmentRegistryStatus("reservado"), false);
+  assert.equal(isReusableEnrollmentRegistryStatus("inativo"), true);
+  assert.equal(isReusableEnrollmentRegistryStatus("excluido"), true);
 });

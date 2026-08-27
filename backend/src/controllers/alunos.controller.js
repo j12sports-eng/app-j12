@@ -92,6 +92,7 @@ function normalizeStudentStatus(value) {
   const normalized = text(value, 30).toLowerCase();
   if (normalized === "inativo") return "inativo";
   if (normalized === "experimental") return "experimental";
+  if (normalized === "pendente") return "pendente";
   return "ativo";
 }
 

@@ -2,10 +2,15 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { buildApiUrl } from "./api";
 import { getStoredAuthToken } from "./auth-storage";
+import { normalizeAlunoStatus } from "./aluno-status";
+import { modalidadesStore, useModalidades } from "./modalidades-store";
+import { useTurmas } from "./turmas-store";
+import { unidadesStore, useUnidades } from "./unidades-store";
 
-export type AlunoStatus = "ativo" | "inativo" | "experimental" | string;
+export type AlunoStatus = "ativo" | "inativo" | "experimental" | "pendente";
 export type StatusAluno = AlunoStatus;
 export type Modalidade = string;
+export { normalizeAlunoStatus } from "./aluno-status";
 
 /**
  * DADOS DINÂMICOS - Importar de system-store
@@ -253,16 +258,6 @@ export function extractAlunoList(payload: any): any[] {
   return [];
 }
 
-function normalizeStatus(status: any): AlunoStatus {
-  const value = String(status || "ativo").toLowerCase();
-
-  if (value.includes("experimental")) return "experimental";
-  if (value.includes("inativo")) return "inativo";
-  if (value.includes("ativo")) return "ativo";
-
-  return value || "ativo";
-}
-
 function buildMatricula(raw: any): AlunoMatricula {
   const snapshot = safeJsonParse(raw.matricula_snapshot_json, {});
   const dadosAluno = snapshot?.dadosAluno || {};
@@ -375,7 +370,7 @@ function normalizeAluno(raw: any): Aluno {
     responsavel: String(
       firstValue(raw.responsavel, raw.responsavel_nome, matricula.responsavel.nomeCompleto, ""),
     ),
-    status: normalizeStatus(raw.status),
+    status: normalizeAlunoStatus(raw.status),
     modalidade: String(modalidade),
     turma: String(turma),
     turmaId:
@@ -706,7 +701,10 @@ export function getAlunoTurmaIds(aluno: Aluno | null | undefined): string[] {
 
 export function alunoPertenceATurma(
   aluno: Aluno | null | undefined,
-  turma: { id?: string | number | null; nome?: string | null; alunoIds?: Array<string | number> } | null | undefined,
+  turma:
+    | { id?: string | number | null; nome?: string | null; alunoIds?: Array<string | number> }
+    | null
+    | undefined,
 ) {
   if (!aluno || !turma) return false;
 
@@ -733,7 +731,11 @@ export function alunoPertenceATurma(
 }
 
 export function getAlunosDaTurma<
-  T extends { id?: string | number | null; nome?: string | null; alunoIds?: Array<string | number> },
+  T extends {
+    id?: string | number | null;
+    nome?: string | null;
+    alunoIds?: Array<string | number>;
+  },
 >(turma: T | null | undefined, lista: Aluno[] = alunosState) {
   if (!turma) return [];
 
@@ -767,9 +769,11 @@ export function getAlunoById(id: string | number) {
 }
 
 export function alunoStatusClass(status: AlunoStatus) {
-  switch (normalizeStatus(status)) {
+  switch (normalizeAlunoStatus(status)) {
     case "ativo":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+    case "pendente":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
     case "experimental":
       return "border-orange-500/30 bg-orange-500/10 text-orange-300";
     case "inativo":
@@ -780,9 +784,11 @@ export function alunoStatusClass(status: AlunoStatus) {
 }
 
 export function alunoStatusLabel(status: AlunoStatus) {
-  switch (normalizeStatus(status)) {
+  switch (normalizeAlunoStatus(status)) {
     case "ativo":
       return "Ativo";
+    case "pendente":
+      return "Pendente de confirmação";
     case "experimental":
       return "Experimental";
     case "inativo":
@@ -798,30 +804,15 @@ export function alunoStatusLabel(status: AlunoStatus) {
  */
 
 export function useModalidadesDinamicas() {
-  try {
-    const { useModalidades } = require("./modalidades-store");
-    return useModalidades();
-  } catch {
-    return [];
-  }
+  return useModalidades();
 }
 
 export function useUnidadesDinamicas() {
-  try {
-    const { useUnidades } = require("./unidades-store");
-    return useUnidades();
-  } catch {
-    return [];
-  }
+  return useUnidades();
 }
 
 export function useTurmasDinamicas() {
-  try {
-    const { useTurmas } = require("./turmas-store");
-    return useTurmas();
-  } catch {
-    return [];
-  }
+  return useTurmas();
 }
 
 /**
@@ -830,11 +821,8 @@ export function useTurmasDinamicas() {
  */
 export function getModalidadesLegacy(): Modalidade[] {
   try {
-    const { modalidadesStore } = require("./modalidades-store");
     const snapshot = modalidadesStore.getSnapshot();
-    return snapshot
-      .filter((m: any) => m.ativa !== false)
-      .map((m: any) => m.nome || String(m.id));
+    return snapshot.filter((m: any) => m.ativa !== false).map((m: any) => m.nome || String(m.id));
   } catch {
     // Fallback para dados estáticos se store não inicializado
     return [];
@@ -843,7 +831,6 @@ export function getModalidadesLegacy(): Modalidade[] {
 
 export function getUnidadesLegacy(): string[] {
   try {
-    const { unidadesStore } = require("./unidades-store");
     const snapshot = unidadesStore.getSnapshot();
     return snapshot.map((u: any) => u.nome || String(u.id));
   } catch {

@@ -591,6 +591,9 @@ function buildDashboardData({
   const experimentalStudents = alunos.filter(
     (aluno) => normalizeText(aluno.status) === "experimental",
   ).length;
+  const pendingStudents = alunos.filter(
+    (aluno) => normalizeText(aluno.status) === "pendente",
+  ).length;
   const newStudentsMonth = alunos.filter((aluno) =>
     isCurrentMonth(readAlunoCreatedAt(aluno), now),
   ).length;
@@ -641,6 +644,7 @@ function buildDashboardData({
 
   return {
     activeStudents,
+    pendingStudents,
     newStudentsMonth,
     todayClasses,
     alerts,
@@ -665,7 +669,7 @@ function buildDashboardData({
       {
         title: "Alunos ativos",
         value: numberFormatter.format(activeStudents),
-        subtitle: `${experimentalStudents} em periodo experimental`,
+        subtitle: `${pendingStudents} pendentes · ${experimentalStudents} em periodo experimental`,
         change: `+${newStudentsMonth} este mes`,
         trend: "up" as const,
         icon: Users,
